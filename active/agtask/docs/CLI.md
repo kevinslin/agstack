@@ -35,7 +35,9 @@ command:
   `parent_session_id`.
 - Structured thread results include a `rollouts` array ordered newest first.
   Each rollout contains `id`, `created`, `thread_id`, `turn_id`, `role`, and
-  `message`.
+  `message`. They also include a `files` array ordered by attachment time; each
+  file contains `created`, resolved absolute `path`, basename `name`, and a
+  `vscode://file` URL.
 - Without `--json`, thread results label the logical identifier as `Task ID`,
   the Codex identifier as `Session ID`, and lineage as `Parent session ID`.
   A missing parent or unavailable logical ID is shown as an em dash.
@@ -54,6 +56,7 @@ command:
 | [`add`](#add) | Register the current Codex task as an active main task. |
 | [`register`](#register) | Create or reconcile a tracked thread from its initial prompt. |
 | [`show`](#show) | Return one tracked thread and its rollouts. |
+| [`attach`](#attach) | Link a local text file to a task and update its frontmatter. |
 | [`rename`](#rename) | Plan a current-task app action, then atomically apply its ledger update. |
 | [`list`](#list) | List recently updated threads. |
 | [`search`](#search) | Search tracked thread text. |
@@ -113,7 +116,7 @@ worktree, and `local` otherwise.
 When absent, create `$HOME/.agtask.json` with mode `0600`, the bundled default
 `OnPreClose` Git-finalization prompt, and disabled `OnCreate` and `OnPostClose`
 prompts. Preserve an existing global configuration unchanged. Then create the
-schema-v5 ledger when it does not exist, initialize an empty version-zero
+schema-v7 ledger when it does not exist, initialize an empty version-zero
 SQLite file, or validate an existing current ledger.
 
 ```bash
@@ -252,7 +255,35 @@ python3 "$AGTASK" show --session-id <session-id> --json
 
 The command fails if the ledger or thread does not exist.
 The JSON thread object exposes both `id` and `session_id`, plus
-`parent_session_id`; nested rollout `thread_id` remains the logical ID.
+`parent_session_id`; nested rollout `thread_id` remains the logical ID. Its
+`files` array contains every attached resolved path and editor URL.
+
+## `attach`
+
+Attach one existing local UTF-8 text file to a tracked task:
+
+```bash
+python3 "$AGTASK" attach "./notes/task note.md" \
+  --session-id <session-id> --json
+```
+
+| Argument or flag | Values and behavior |
+| --- | --- |
+| `<file>` | Required existing regular UTF-8 text file. Relative paths resolve from the command's current directory; the ledger stores the resolved absolute path. |
+| `--id <creation-id>` / `--session-id <session-id>` | Mutually exclusive task selector; exactly one is required. |
+
+The command copies the selected task's current ledger status into the file's
+top-level YAML `status` field and sets top-level `source` to the task's encoded
+`codex://threads/<session-id>` link. It preserves other frontmatter, body text,
+line endings, and file mode; when frontmatter is absent it prepends a new
+block. Unterminated frontmatter, duplicate top-level `status` or `source`
+fields, non-UTF-8 content, and non-file paths are rejected.
+
+The first attach stores one `(thread, absolute path)` relationship, advances
+`thread.updated`, and appends one `attachment:added` meta rollout. An exact
+retry is idempotent, although it repairs the two managed frontmatter fields if
+they drifted. The result uses the normal thread shape and adds `attachment`,
+`attached`, and `file_changed`.
 
 ## `rename`
 

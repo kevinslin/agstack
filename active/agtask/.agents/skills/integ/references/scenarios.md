@@ -1,6 +1,6 @@
 # Integration scenarios
 
-Suite version: 19
+Suite version: 20
 
 Shared runner setup defaults `AGTASK_DB` to the allocated
 `.integ/proof/<n>/ledger.db` and preserves an explicit caller override. No
@@ -222,12 +222,14 @@ initial prompt remains the task description.
 
 ## dashboard-html
 
-Scenario version: 11
+Scenario version: 12
 
 After the live child task is finalized:
 
 1. Give the live child a proof-specific title so retained rows from earlier
-   proofs cannot match the current dashboard assertions.
+   proofs cannot match the current dashboard assertions. Attach one proof-local
+   text file, require its frontmatter status to match the finalized task, and
+   retain its resolved path plus `vscode://file` projection.
 2. Run `dashboard --json` through the installed CLI, narrowed by the exact
    project, parent session ID, and proof-specific child title. Require all six canonical status
    groups, the finalized child only in `done`, its logical ID, session ID,
@@ -250,7 +252,9 @@ After the live child task is finalized:
    filter-bar plus action, registry-driven field/value menu, encoded
    token-scoped detail routes on pointer-clickable task rows with native table
    semantics, while title links remain encoded `codex://threads/<session-id>`
-   deep links with keyboard activation. Require the hover-plus-`s` status picker,
+   deep links with keyboard activation. Require attached tasks to render
+   `file` badges in both list and detail views, linked through encoded
+   `vscode://file` URLs. Require the hover-plus-`s` status picker,
    its Todo/Active/Blocked/Drop choices, and its expected-status guarded PATCH route.
    Require no task values in executable assets and dashboard API parity with the
    CLI JSON snapshot.
@@ -262,10 +266,11 @@ After the live child task is finalized:
    Then PATCH blocked to Drop and require `closed = updated` plus ordered
    `status:blocked->drop` evidence.
 8. Require the task-detail view to expose title, description, Timeline, Created,
-   Updated, and Session ID structure, with Session ID rendered as an encoded
+   Updated, Session ID, and Files structure, with Session ID rendered as an encoded
    `codex://threads/<session-id>` deep link. Require its API to return the exact
    logical and session identities and description plus only `created`, `role`, and `message` for
-   every rollout in reverse chronological `(created, id)` order.
+   every rollout in reverse chronological `(created, id)` order, plus the exact
+   attachment projection.
 9. Interrupt the server cleanly, require exit status zero, and prove the schema
    version plus the known main/child thread and rollout rows are unchanged while
    the dedicated fixture contains only the expected status mutation.

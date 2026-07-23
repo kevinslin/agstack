@@ -21,12 +21,12 @@ import stat
 import sys
 import tempfile
 from typing import Any, Callable, Optional
-from urllib.parse import parse_qsl, unquote, urlencode, urlsplit
+from urllib.parse import parse_qsl, quote, unquote, urlencode, urlsplit
 import uuid
 import webbrowser
 
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 BUSY_TIMEOUT_MS = 1000
 SUMMARY_LIMIT = 240
 DASHBOARD_STATUSES = ("todo", "active", "blocked", "merging", "done", "drop")
@@ -74,7 +74,7 @@ BOOTSTRAP_TRAILER = re.compile(
     + re.escape(BOOTSTRAP_CLOSE)
     + r"\Z"
 )
-EXPECTED_OBJECTS = {
+V6_EXPECTED_OBJECTS = {
     "rollout",
     "rollout_meta_event_idx",
     "rollout_thread_order_idx",
@@ -96,6 +96,10 @@ EXPECTED_OBJECTS = {
     "thread_session_id_idx",
     "thread_project_merging_idx",
     "thread_status_updated_idx",
+}
+EXPECTED_OBJECTS = V6_EXPECTED_OBJECTS | {
+    "attachment",
+    "attachment_thread_created_idx",
 }
 
 THREAD_DDL = """CREATE TABLE thread (
@@ -152,7 +156,7 @@ V5_THREAD_DDL = """CREATE TABLE thread (
       )
     )"""
 
-DDL = (
+V6_DDL = (
     THREAD_DDL,
     "CREATE UNIQUE INDEX thread_session_id_idx ON thread(session_id)",
     "CREATE INDEX thread_created_idx ON thread(created)",
@@ -210,6 +214,20 @@ DDL = (
     END""",
 )
 
+ATTACHMENT_DDL = (
+    """CREATE TABLE attachment (
+      id        INTEGER PRIMARY KEY,
+      created   TEXT NOT NULL,
+      thread_id TEXT NOT NULL REFERENCES thread(id) ON DELETE CASCADE,
+      path      TEXT NOT NULL CHECK (path <> ''),
+      UNIQUE(thread_id, path)
+    )""",
+    """CREATE INDEX attachment_thread_created_idx
+      ON attachment(thread_id, created, id)""",
+)
+
+DDL = (*V6_DDL, *ATTACHMENT_DDL)
+
 DASHBOARD_HTML = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>agtask dashboard</title><link rel="stylesheet" href="app.css"><script src="app.js" defer></script></head>
@@ -240,7 +258,7 @@ TASK_DETAIL_HTML = """<!doctype html>
 <h1 id="task-title">Loading task…</h1><p id="task-description" class="task-description"></p>
 <section class="timeline-section" aria-labelledby="timeline-heading"><h2 id="timeline-heading">Timeline</h2><ol id="timeline" class="timeline"></ol></section>
 </article><aside class="properties" aria-labelledby="properties-heading"><h2 id="properties-heading">Properties</h2>
-<dl><div><dt>Created</dt><dd id="task-created">—</dd></div><div><dt>Updated</dt><dd id="task-updated">—</dd></div><div><dt>Session ID</dt><dd><a id="task-session-id" class="session-link" href="">—</a></dd></div></dl></aside>
+<dl><div><dt>Created</dt><dd id="task-created">—</dd></div><div><dt>Updated</dt><dd id="task-updated">—</dd></div><div><dt>Session ID</dt><dd><a id="task-session-id" class="session-link" href="">—</a></dd></div><div id="task-files-property" hidden><dt>Files</dt><dd id="task-files" class="file-badges"></dd></div></dl></aside>
 <p id="detail-notice" class="detail-notice" role="status" aria-live="polite"></p></main></body></html>
 """
 
@@ -255,7 +273,7 @@ button { cursor:pointer; font-weight:650; }button:hover { background:var(--hover
 .filter-launcher { position:relative; }.filter-menu { position:absolute; z-index:20; top:calc(100% + .5rem); right:0; width:min(21rem,calc(100vw - 2rem)); max-height:min(30rem,calc(100vh - 8rem)); overflow:hidden; padding:.4rem; border:1px solid var(--line-strong); border-radius:10px; background:var(--raised); box-shadow:0 18px 50px rgb(0 0 0 / .24); }.filter-menu[hidden] { display:none; }.filter-menu-header { min-height:2.25rem; display:grid; grid-template-columns:2rem 1fr 2rem; align-items:center; gap:.35rem; padding:.15rem .2rem .35rem; }.filter-menu-header strong { text-align:center; font-size:.82rem; }.icon-button { min-height:1.9rem; width:1.9rem; padding:0; border-color:transparent; background:transparent; color:var(--muted); }.filter-menu-search { width:100%; margin-bottom:.35rem; border-color:transparent; background:var(--bg); }.filter-menu-list { max-height:22rem; overflow:auto; display:grid; gap:.15rem; }.filter-menu-item { width:100%; min-height:2.55rem; display:grid; grid-template-columns:1fr auto; align-items:center; gap:.75rem; padding:.55rem .65rem; border-color:transparent; background:transparent; text-align:left; font-weight:550; }.filter-menu-item:hover,.filter-menu-item[aria-current="true"] { background:var(--hover); }.filter-menu-meta { display:flex; align-items:center; gap:.45rem; color:var(--muted); font-size:.75rem; }.filter-menu-check { color:var(--accent); font-weight:800; }.filter-menu-empty { margin:.35rem; padding:1rem .6rem; color:var(--muted); text-align:center; font-size:.8rem; }
 .filter-bar { min-height:3.35rem; display:flex; align-items:center; gap:.45rem; padding:.6rem 1rem; border:1px solid var(--line); border-top:0; border-radius:0 0 10px 10px; background:var(--panel); overflow:hidden; }.active-filters { min-width:0; flex:1 1 auto; display:flex; align-items:center; gap:.45rem; overflow-x:auto; }.filter-empty-label { color:var(--muted); font-size:.8rem; white-space:nowrap; }.filter-chip { flex:0 0 auto; display:flex; min-height:2rem; align-items:stretch; border:1px solid var(--line-strong); border-radius:7px; background:var(--bg); overflow:hidden; white-space:nowrap; }.chip-segment { display:flex; align-items:center; padding:.35rem .55rem; border-right:1px solid var(--line); font-size:.78rem; }.chip-field { font-weight:700; }.chip-operator { color:var(--muted); }.chip-value { max-width:20rem; overflow:hidden; text-overflow:ellipsis; }.chip-remove { min-height:0; width:2rem; padding:0; border:0; border-radius:0; background:transparent; color:var(--muted); font-size:1rem; }.chip-remove:hover { color:var(--text); }.add-filter { flex:0 0 auto; min-height:2rem; width:2rem; padding:0; border-color:transparent; background:transparent; color:var(--muted); font-size:1.2rem; }
 .notice { min-height:2.2rem; padding:.7rem .1rem; color:var(--muted); }.notice.error { color:var(--danger); font-weight:650; }.groups { display:grid; gap:1rem; }.group { background:var(--panel); border:1px solid var(--line); border-radius:10px; overflow:hidden; }.group-header { display:flex; align-items:center; gap:.55rem; padding:.8rem 1rem; border-bottom:1px solid var(--line); }.group-header h2 { margin:0; font-size:.82rem; text-transform:uppercase; letter-spacing:.08em; }.badge { min-width:1.65rem; text-align:center; padding:.15rem .4rem; border-radius:999px; background:var(--bg); color:var(--muted); font-size:.72rem; }
-.table-wrap { overflow-x:auto; }table { width:100%; border-collapse:collapse; font-size:.82rem; }th { color:var(--muted); font-size:.7rem; text-transform:uppercase; letter-spacing:.055em; text-align:left; font-weight:650; }th,td { padding:.72rem 1rem; border-bottom:1px solid var(--line); white-space:nowrap; }tr:last-child td { border-bottom:0; }td:first-child { width:42%; white-space:normal; font-weight:600; }.task-row { cursor:pointer; }.task-row:hover { background:var(--hover); }.task-link { color:inherit; text-decoration:none; }.task-link:hover { color:var(--accent); text-decoration:underline; text-underline-offset:.18em; }.empty { padding:1.2rem 1rem; color:var(--muted); font-size:.82rem; }.empty-state { padding:2.5rem 1rem; border:1px solid var(--line); border-radius:10px; background:var(--panel); text-align:center; }.empty-state h2 { margin:0 0 .45rem; font-size:1rem; }.empty-state p { margin:0 auto 1rem; color:var(--muted); font-size:.85rem; }.empty-state button { background:var(--accent); border-color:var(--accent); color:white; }
+.table-wrap { overflow-x:auto; }table { width:100%; border-collapse:collapse; font-size:.82rem; }th { color:var(--muted); font-size:.7rem; text-transform:uppercase; letter-spacing:.055em; text-align:left; font-weight:650; }th,td { padding:.72rem 1rem; border-bottom:1px solid var(--line); white-space:nowrap; }tr:last-child td { border-bottom:0; }td:first-child { width:42%; white-space:normal; font-weight:600; }.task-row { cursor:pointer; }.task-row:hover { background:var(--hover); }.task-link { color:inherit; text-decoration:none; }.task-link:hover { color:var(--accent); text-decoration:underline; text-underline-offset:.18em; }.task-file-badges,.file-badges { display:inline-flex; flex-wrap:wrap; gap:.35rem; margin-left:.55rem; vertical-align:middle; }.file-badges { margin-left:0; }.file-badge { display:inline-flex; align-items:center; min-height:1.35rem; padding:.08rem .42rem; border:1px solid var(--line-strong); border-radius:999px; color:var(--muted); background:var(--bg); font-size:.68rem; font-weight:700; line-height:1; text-decoration:none; }.file-badge:hover { color:var(--accent); border-color:var(--accent); }.empty { padding:1.2rem 1rem; color:var(--muted); font-size:.82rem; }.empty-state { padding:2.5rem 1rem; border:1px solid var(--line); border-radius:10px; background:var(--panel); text-align:center; }.empty-state h2 { margin:0 0 .45rem; font-size:1rem; }.empty-state p { margin:0 auto 1rem; color:var(--muted); font-size:.85rem; }.empty-state button { background:var(--accent); border-color:var(--accent); color:white; }
 .visually-hidden { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }.status-modal { position:fixed; z-index:50; inset:0; display:grid; place-items:start center; padding:clamp(4rem,12vh,8rem) 1rem 1rem; background:rgb(0 0 0 / .48); backdrop-filter:blur(2px); }.status-modal[hidden] { display:none; }.status-dialog { width:min(42rem,100%); overflow:hidden; padding:.75rem; border:1px solid var(--line-strong); border-radius:14px; background:var(--raised); box-shadow:0 24px 80px rgb(0 0 0 / .42); }.status-header { display:flex; align-items:start; justify-content:space-between; gap:1rem; padding:.3rem .35rem .7rem .55rem; }.status-header p { margin:0 0 .25rem; color:var(--muted); font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; }.status-header strong { display:block; max-width:35rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.9rem; }.status-search { width:100%; margin-bottom:.45rem; border-color:transparent; background:var(--bg); }.status-options { display:grid; gap:.2rem; }.status-option { width:100%; min-height:3.2rem; display:grid; grid-template-columns:1.25rem 1fr auto auto; align-items:center; gap:.75rem; padding:.65rem .75rem; border-color:transparent; background:transparent; text-align:left; font-weight:600; }.status-option:hover,.status-option:focus-visible { background:var(--hover); }.status-option[aria-selected="true"] { background:var(--accent-soft); }.status-option:disabled { cursor:not-allowed; opacity:.5; }.status-symbol { font-size:1rem; text-align:center; }.status-symbol.todo,.status-symbol.drop { color:var(--muted); }.status-symbol.active { color:#e4b400; }.status-symbol.blocked { color:var(--danger); }.status-current { color:var(--accent); font-size:.78rem; }.status-shortcut { min-width:1.8rem; padding:.18rem .35rem; border:1px solid var(--line); border-radius:5px; color:var(--muted); font-size:.7rem; text-align:center; }.status-guidance { margin:.55rem .55rem 0; color:var(--muted); font-size:.72rem; }.status-error { min-height:1.2rem; margin:.35rem .55rem 0; color:var(--danger); font-size:.78rem; font-weight:650; }
 .detail-topbar { min-height:4.5rem; display:flex; align-items:center; padding:1rem clamp(1rem,4vw,3.5rem); border-bottom:1px solid var(--line); }.back-link { color:var(--muted); font-size:.85rem; font-weight:650; text-decoration:none; }.back-link:hover { color:var(--text); }.detail-layout { max-width:88rem; margin:0 auto; display:grid; grid-template-columns:minmax(0,1fr) minmax(14rem,20rem); gap:clamp(2rem,6vw,6rem); padding:clamp(2rem,6vw,5rem) clamp(1rem,5vw,5rem); }.detail-content { min-width:0; }.detail-content h1 { margin:0; font-size:clamp(2rem,5vw,3.25rem); }.task-description { margin:2rem 0 0; max-width:52rem; white-space:pre-wrap; font-size:1rem; line-height:1.7; }.timeline-section { margin-top:3.5rem; }.timeline-section h2,.properties h2 { margin:0 0 1.25rem; font-size:1.1rem; }.timeline { margin:0; padding:0; list-style:none; border-top:1px solid var(--line); }.timeline-item { display:grid; grid-template-columns:minmax(9.5rem,12rem) minmax(5rem,7rem) minmax(0,1fr); gap:1rem; padding:1rem 0; border-bottom:1px solid var(--line); line-height:1.5; }.timeline-time,.timeline-role { color:var(--muted); font-size:.78rem; }.timeline-role { font-weight:700; text-transform:capitalize; }.timeline-message { min-width:0; white-space:pre-wrap; overflow-wrap:anywhere; }.properties { align-self:start; padding-left:clamp(1rem,3vw,2rem); border-left:1px solid var(--line); }.properties h2 { color:var(--muted); }.properties dl { margin:0; display:grid; gap:1.5rem; }.properties dl div { display:grid; gap:.4rem; }.properties dt { color:var(--muted); font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; }.properties dd { margin:0; font-size:.86rem; overflow-wrap:anywhere; }.session-link { color:var(--accent); text-decoration:none; }.session-link:hover { text-decoration:underline; text-underline-offset:.18em; }.detail-notice { grid-column:1/-1; margin:0; color:var(--danger); font-weight:650; }.timeline-empty { padding:1.25rem 0; color:var(--muted); }
 @media (max-width:900px) { .toolbar { align-items:stretch; flex-direction:column; }.search { flex:none; max-width:none; }.toolbar-actions { width:100%; margin-left:0; }.filter-launcher { margin-left:auto; } }
@@ -598,11 +616,20 @@ DASHBOARD_JS = r"""(() => {
     link.className="task-link"; link.href=taskSessionPath(thread.session_id); link.textContent=thread.title;
     link.title="Open task in Codex";
     link.addEventListener("keydown",event=>{if(event.key===" "){event.preventDefault();location.assign(link.href);}});
-    node.append(link); return {node,link};
+    const links=[link]; node.append(link);
+    if((thread.files||[]).length){
+      const badges=document.createElement("span"); badges.className="task-file-badges";
+      thread.files.forEach(file=>{
+        const badge=document.createElement("a"); badge.className="file-badge"; badge.href=file.url; badge.textContent="file"; badge.title=`Open ${file.path} in VS Code`;
+        badges.append(badge); links.push(badge);
+      });
+      node.append(badges);
+    }
+    return {node,links};
   }
-  function taskRow(thread,link) {
+  function taskRow(thread,links) {
     const row=document.createElement("tr"); row.className="task-row"; row.setAttribute("data-task-id",thread.id); row.setAttribute("data-session-id",thread.session_id); row.setAttribute("data-status",thread.status);
-    row.addEventListener("click",event=>{if(!link.contains(event.target))location.assign(taskPath(thread.session_id));});
+    row.addEventListener("click",event=>{if(!links.some(link=>link.contains(event.target)))location.assign(taskPath(thread.session_id));});
     row.addEventListener("mouseenter",()=>{hoveredTask=thread;});
     row.addEventListener("mouseleave",()=>{if(hoveredTask&&hoveredTask.session_id===thread.session_id)hoveredTask=null;});
     row.addEventListener("focusin",()=>{hoveredTask=thread;});
@@ -640,7 +667,7 @@ DASHBOARD_JS = r"""(() => {
       if(!group.threads.length){const empty=document.createElement("p");empty.className="empty";empty.textContent="No tasks in this status.";section.append(empty);return section;}
       const wrapper=document.createElement("div");wrapper.className="table-wrap";const table=document.createElement("table");const thead=document.createElement("thead");const headingRow=document.createElement("tr");
       [["Title",""],["Project",""],["Parent task","optional-parent"],["Created","optional-time"],["Updated","optional-time"],["Closed","optional-time"]].forEach(([label,className])=>{const th=document.createElement("th");th.scope="col";th.className=className;th.textContent=label;headingRow.append(th);});thead.append(headingRow);table.append(thead);
-      const tbody=document.createElement("tbody");group.threads.forEach(thread=>{const title=taskTitleCell(thread);const row=taskRow(thread,title.link);row.append(title.node,cell(thread.project),cell(thread.parent_session_id||"—","optional-parent"),cell(formatTime(thread.created),"optional-time"),cell(formatTime(thread.updated),"optional-time"),cell(formatTime(thread.closed),"optional-time"));tbody.append(row);});table.append(tbody);wrapper.append(table);section.append(wrapper);return section;
+      const tbody=document.createElement("tbody");group.threads.forEach(thread=>{const title=taskTitleCell(thread);const row=taskRow(thread,title.links);row.append(title.node,cell(thread.project),cell(thread.parent_session_id||"—","optional-parent"),cell(formatTime(thread.created),"optional-time"),cell(formatTime(thread.updated),"optional-time"),cell(formatTime(thread.closed),"optional-time"));tbody.append(row);});table.append(tbody);wrapper.append(table);section.append(wrapper);return section;
     });
     el.groups.replaceChildren(...sections);
   }
@@ -721,6 +748,9 @@ TASK_DETAIL_JS = r"""(() => {
     const message=document.createElement("span"); message.className="timeline-message"; message.textContent=rollout.message;
     item.append(time,role,message); return item;
   }
+  function fileBadge(file) {
+    const badge=document.createElement("a"); badge.className="file-badge"; badge.href=file.url; badge.textContent="file"; badge.title=`Open ${file.path} in VS Code`; return badge;
+  }
   function render(task) {
     document.title=`${task.title} · agtask`;
     byId("task-title").textContent=task.title;
@@ -731,6 +761,9 @@ TASK_DETAIL_JS = r"""(() => {
     sessionLink.textContent=task.session_id;
     sessionLink.href=`codex://threads/${encodeURIComponent(task.session_id)}`;
     sessionLink.title="Open task in Codex";
+    const files=task.files||[];
+    byId("task-files-property").hidden=!files.length;
+    byId("task-files").replaceChildren(...files.map(fileBadge));
     const items=task.rollouts.map(timelineItem);
     if(!items.length){const empty=document.createElement("li");empty.className="timeline-empty";empty.textContent="No rollout items yet.";items.push(empty);}
     byId("timeline").replaceChildren(...items);
@@ -1053,6 +1086,119 @@ def mode(path: Path) -> int:
     return stat.S_IMODE(path.stat().st_mode)
 
 
+def task_source_url(session_id: str) -> str:
+    return f"codex://threads/{quote(session_id, safe='')}"
+
+
+def file_code_url(path: str) -> str:
+    return f"vscode://file{quote(path, safe='/:')}"
+
+
+def attachment_dict(row: sqlite3.Row) -> dict[str, Any]:
+    path = row["path"]
+    return {
+        "created": row["created"],
+        "path": path,
+        "name": Path(path).name,
+        "url": file_code_url(path),
+    }
+
+
+def file_attachments(
+    connection: sqlite3.Connection, thread_id: str
+) -> list[dict[str, Any]]:
+    return [
+        attachment_dict(row)
+        for row in connection.execute(
+            "SELECT created,path FROM attachment WHERE thread_id=? "
+            "ORDER BY created,id",
+            (thread_id,),
+        )
+    ]
+
+
+def file_attachments_by_thread(
+    connection: sqlite3.Connection, thread_ids: list[str]
+) -> dict[str, list[dict[str, Any]]]:
+    values = {thread_id: [] for thread_id in thread_ids}
+    if not thread_ids:
+        return values
+    placeholders = ",".join("?" for _thread_id in thread_ids)
+    for row in connection.execute(
+        "SELECT thread_id,created,path FROM attachment "
+        f"WHERE thread_id IN ({placeholders}) ORDER BY created,id",
+        thread_ids,
+    ):
+        values[row["thread_id"]].append(attachment_dict(row))
+    return values
+
+
+def update_task_frontmatter(
+    content: str, *, status: str, source: str
+) -> str:
+    newline = "\r\n" if "\r\n" in content else "\n"
+    replacement = {"status": status, "source": source}
+    lines = content.splitlines(keepends=True)
+    has_frontmatter = bool(lines and lines[0].rstrip("\r\n") == "---")
+
+    if not has_frontmatter:
+        header = (
+            f"---{newline}"
+            f"status: {status}{newline}"
+            f"source: {source}{newline}"
+            f"---{newline}"
+        )
+        return header + content
+
+    closing = next(
+        (
+            index
+            for index, line in enumerate(lines[1:], start=1)
+            if line.rstrip("\r\n") == "---"
+        ),
+        None,
+    )
+    if closing is None:
+        raise TaskError("file has unterminated YAML frontmatter")
+
+    field_indexes: dict[str, list[int]] = {"status": [], "source": []}
+    for index, line in enumerate(lines[1:closing], start=1):
+        for field in field_indexes:
+            if re.match(rf"^{field}\s*:", line):
+                field_indexes[field].append(index)
+
+    for field, indexes in field_indexes.items():
+        if len(indexes) > 1:
+            raise TaskError(f"file frontmatter contains duplicate {field} fields")
+        rendered = f"{field}: {replacement[field]}{newline}"
+        if indexes:
+            lines[indexes[0]] = rendered
+        else:
+            lines.insert(closing, rendered)
+            closing += 1
+    return "".join(lines)
+
+
+def atomic_write_file(path: Path, content: bytes, file_mode: int) -> None:
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.agtask-", dir=path.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        os.fchmod(descriptor, file_mode)
+        with os.fdopen(descriptor, "wb") as stream:
+            descriptor = -1
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        if temporary.exists():
+            temporary.unlink()
+
+
 def ensure_mode(path: Path, expected: int, repair: bool) -> None:
     actual = mode(path)
     if actual == expected:
@@ -1103,7 +1249,8 @@ def expected_sql(statements: tuple[str, ...]) -> dict[str, str]:
 
 
 EXPECTED_SQL = expected_sql(DDL)
-V5_EXPECTED_SQL = dict(EXPECTED_SQL)
+V6_EXPECTED_SQL = expected_sql(V6_DDL)
+V5_EXPECTED_SQL = dict(V6_EXPECTED_SQL)
 V5_EXPECTED_SQL["thread"] = normalize_sql(V5_THREAD_DDL)
 
 
@@ -1111,13 +1258,15 @@ def verify_schema(
     connection: sqlite3.Connection,
     *,
     definitions: Optional[dict[str, str]] = None,
+    expected_objects: Optional[set[str]] = None,
     version: int = SCHEMA_VERSION,
 ) -> None:
     expected_definitions = definitions or EXPECTED_SQL
+    expected_object_names = expected_objects or EXPECTED_OBJECTS
     actual_objects = object_names(connection)
-    if actual_objects != EXPECTED_OBJECTS:
-        missing = sorted(EXPECTED_OBJECTS - actual_objects)
-        extra = sorted(actual_objects - EXPECTED_OBJECTS)
+    if actual_objects != expected_object_names:
+        missing = sorted(expected_object_names - actual_objects)
+        extra = sorted(actual_objects - expected_object_names)
         details = []
         if missing:
             details.append("missing " + ", ".join(missing))
@@ -1203,6 +1352,31 @@ def verify_schema(
             f"project_merge_claim foreign key does not match schema version {version}"
         )
 
+    if "attachment" in expected_object_names:
+        attachment_columns = [
+            (row[1], row[2], row[3], row[4], row[5])
+            for row in connection.execute("PRAGMA table_info(attachment)")
+        ]
+        if attachment_columns != [
+            ("id", "INTEGER", 0, None, 1),
+            ("created", "TEXT", 1, None, 0),
+            ("thread_id", "TEXT", 1, None, 0),
+            ("path", "TEXT", 1, None, 0),
+        ]:
+            raise TaskError(
+                f"attachment columns do not match schema version {version}"
+            )
+        attachment_foreign_keys = [
+            tuple(row[2:8])
+            for row in connection.execute("PRAGMA foreign_key_list(attachment)")
+        ]
+        if attachment_foreign_keys != [
+            ("thread", "thread_id", "id", "NO ACTION", "CASCADE", "NONE")
+        ]:
+            raise TaskError(
+                f"attachment foreign key does not match schema version {version}"
+            )
+
 
 def probe_fts5(connection: sqlite3.Connection) -> None:
     connection.execute("CREATE VIRTUAL TABLE temp.agtask_fts_probe USING fts5(value)")
@@ -1233,7 +1407,12 @@ def initialize_schema(connection: sqlite3.Connection) -> None:
 
 
 def migrate_v5_schema(connection: sqlite3.Connection) -> None:
-    verify_schema(connection, definitions=V5_EXPECTED_SQL, version=5)
+    verify_schema(
+        connection,
+        definitions=V5_EXPECTED_SQL,
+        expected_objects=V6_EXPECTED_OBJECTS,
+        version=5,
+    )
     thread_columns = (
         "id,session_id,parent_session_id,kind,project,title,description,"
         "created,updated,closed,status"
@@ -1260,12 +1439,12 @@ def migrate_v5_schema(connection: sqlite3.Connection) -> None:
             f"SELECT rowid,{thread_columns} FROM thread_v5"
         )
         connection.execute("DROP TABLE thread_v5")
-        for statement in DDL[1:6]:
+        for statement in V6_DDL[1:6]:
             connection.execute(statement)
-        for statement in DDL[-3:]:
+        for statement in V6_DDL[-3:]:
             connection.execute(statement)
         connection.execute("INSERT INTO thread_fts(thread_fts) VALUES('rebuild')")
-        connection.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
+        connection.execute("PRAGMA user_version=6")
         foreign_key_errors = connection.execute("PRAGMA foreign_key_check").fetchall()
         if foreign_key_errors:
             raise TaskError("schema migration failed foreign-key validation")
@@ -1276,6 +1455,33 @@ def migrate_v5_schema(connection: sqlite3.Connection) -> None:
     finally:
         connection.execute("PRAGMA legacy_alter_table=OFF")
         connection.execute("PRAGMA foreign_keys=ON")
+    verify_schema(
+        connection,
+        definitions=V6_EXPECTED_SQL,
+        expected_objects=V6_EXPECTED_OBJECTS,
+        version=6,
+    )
+
+
+def migrate_v6_schema(connection: sqlite3.Connection) -> None:
+    verify_schema(
+        connection,
+        definitions=V6_EXPECTED_SQL,
+        expected_objects=V6_EXPECTED_OBJECTS,
+        version=6,
+    )
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        for statement in ATTACHMENT_DDL:
+            connection.execute(statement)
+        connection.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
+        foreign_key_errors = connection.execute("PRAGMA foreign_key_check").fetchall()
+        if foreign_key_errors:
+            raise TaskError("schema migration failed foreign-key validation")
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
     verify_schema(connection)
 
 
@@ -1294,8 +1500,21 @@ def readonly_probe(path: Path) -> str:
                 verify_schema(connection)
                 return "current"
             if version == 5:
-                verify_schema(connection, definitions=V5_EXPECTED_SQL, version=5)
+                verify_schema(
+                    connection,
+                    definitions=V5_EXPECTED_SQL,
+                    expected_objects=V6_EXPECTED_OBJECTS,
+                    version=5,
+                )
                 return "migrate_v5"
+            if version == 6:
+                verify_schema(
+                    connection,
+                    definitions=V6_EXPECTED_SQL,
+                    expected_objects=V6_EXPECTED_OBJECTS,
+                    version=6,
+                )
+                return "migrate_v6"
             if version == 0 and not objects:
                 return "empty"
             raise TaskError(
@@ -1349,6 +1568,9 @@ def open_database(*, initialize: bool, hook_mode: bool = False) -> Optional[sqli
     try:
         if existing_state == "migrate_v5":
             migrate_v5_schema(connection)
+            existing_state = "migrate_v6"
+        if existing_state == "migrate_v6":
+            migrate_v6_schema(connection)
             existing_state = "current"
         if initialize:
             initialize_schema(connection)
@@ -2499,6 +2721,7 @@ def thread_dict(connection: sqlite3.Connection, thread_id: str) -> dict[str, Any
             (thread_id,),
         )
     ]
+    value["files"] = file_attachments(connection, thread_id)
     return value
 
 
@@ -2878,6 +3101,11 @@ def dashboard_snapshot(state: dict[str, Any]) -> dict[str, Any]:
                 "FROM thread"
             )
         ]
+        attachments = file_attachments_by_thread(
+            connection, [row["id"] for row in rows]
+        )
+        for row in rows:
+            row["files"] = attachments[row["id"]]
     finally:
         connection.close()
 
@@ -2975,6 +3203,7 @@ def dashboard_task_detail(session_id: str) -> Optional[dict[str, Any]]:
                 (row["id"],),
             )
         ]
+        detail["files"] = file_attachments(connection, row["id"])
         return detail
     finally:
         connection.close()
@@ -3534,6 +3763,83 @@ def command_show(args: argparse.Namespace) -> None:
         connection.close()
 
 
+def command_attach(args: argparse.Namespace) -> None:
+    path = Path(args.file).expanduser()
+    try:
+        path = path.resolve(strict=True)
+    except FileNotFoundError as error:
+        raise TaskError(f"attachment file does not exist: {path}") from error
+    if not path.is_file():
+        raise TaskError(f"attachment path is not a regular file: {path}")
+
+    original = path.read_bytes()
+    try:
+        original_text = original.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise TaskError(f"attachment file is not UTF-8 text: {path}") from error
+    original_mode = stat.S_IMODE(path.stat().st_mode)
+
+    connection = open_database(initialize=False)
+    wrote_file = False
+    try:
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            row = resolve_thread_selector(
+                connection, thread_id=args.id, session_id=args.session_id
+            )
+            source = task_source_url(row["session_id"])
+            updated_text = update_task_frontmatter(
+                original_text, status=row["status"], source=source
+            )
+            updated = updated_text.encode("utf-8")
+            timestamp = utc_now()
+            inserted = (
+                connection.execute(
+                    "INSERT INTO attachment(created,thread_id,path) VALUES (?,?,?) "
+                    "ON CONFLICT(thread_id,path) DO NOTHING",
+                    (timestamp, row["id"], str(path)),
+                ).rowcount
+                == 1
+            )
+            if inserted:
+                connection.execute(
+                    "UPDATE thread SET updated=? WHERE id=?",
+                    (timestamp, row["id"]),
+                )
+                append_rollout(
+                    connection,
+                    thread_id=row["id"],
+                    turn_id=fresh_event_id(),
+                    role="meta",
+                    message="attachment:added",
+                    created=timestamp,
+                )
+            if updated != original:
+                atomic_write_file(path, updated, original_mode)
+                wrote_file = True
+            connection.commit()
+        except Exception as error:
+            connection.rollback()
+            if wrote_file:
+                try:
+                    atomic_write_file(path, original, original_mode)
+                except OSError as restore_error:
+                    raise TaskError(
+                        f"attach failed and could not restore {path}: {restore_error}"
+                    ) from error
+            raise
+
+        result = thread_dict(connection, row["id"])
+        result["attachment"] = next(
+            value for value in result["files"] if value["path"] == str(path)
+        )
+        result["attached"] = inserted
+        result["file_changed"] = updated != original
+        emit(result, args.json)
+    finally:
+        connection.close()
+
+
 def command_rename(args: argparse.Namespace) -> None:
     validate_title(args.title)
     connection = open_database(initialize=False)
@@ -4075,6 +4381,12 @@ def build_parser() -> argparse.ArgumentParser:
     add_thread_selector(show)
     add_common_json(show)
     show.set_defaults(handler=command_show)
+
+    attach = subparsers.add_parser("attach")
+    attach.add_argument("file")
+    add_thread_selector(attach)
+    add_common_json(attach)
+    attach.set_defaults(handler=command_attach)
 
     rename = subparsers.add_parser("rename")
     rename.add_argument("--session-id", required=True)

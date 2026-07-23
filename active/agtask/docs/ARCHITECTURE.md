@@ -64,6 +64,11 @@ the logical UUIDv4 only for an untracked session and otherwise reuses the
 session's stored ID for exact reconciliation. Returned `OnCreate` prompt data
 is consumed in the invoking task only when the row was newly created.
 
+The attach route resolves the invoking session and delegates filesystem and
+ledger mutation to the CLI. The CLI preserves the selected text file while
+managing its top-level `status` and `source` frontmatter, stores the resolved
+absolute path, and derives editor URLs only at JSON/dashboard boundaries.
+
 Main kind is current-thread designation: a resolver-generated logical ID is
 bound to the invoking session as an active root dispatcher with null parent
 lineage. The skill does
@@ -101,7 +106,7 @@ The Python-standard-library CLI is the only database writer. Its commands group 
 | Configuration | `config` |
 | Schema and queries | `init`, `show`, `list`, `search` |
 | Local HTML dashboard and guarded status picker | `dashboard` |
-| Thread state | `add`, `register`, `rename`, `status`, `reopen`, `close`, `audit` |
+| Thread state and files | `add`, `register`, `attach`, `rename`, `status`, `reopen`, `close`, `audit` |
 | Rollout writes | `append-rollout`, `record-turn` |
 | Codex integration | `hook`, `install-hooks`, `uninstall-hooks` |
 
@@ -159,13 +164,14 @@ re-running the same audit is a no-op.
 
 `dashboard` has a grouped view-model layer shared by browser and JSON modes. It
 selects logical `id`, `session_id`, `parent_session_id`, `project`, `title`,
-`created`, `updated`, `closed`, and `status`, then derives unfiltered facets, applies exact
+`created`, `updated`, `closed`, and `status`, plus attached file projections,
+then derives unfiltered facets, applies exact
 multi-value filters and case-folded title search, sorts deterministically
 inside fixed lifecycle groups, and closes the connection. A separate point
 session-ID lookup supplies the task-detail page with logical `id`, `session_id`,
 `parent_session_id`, `title`, `description`,
-`created`, and `updated`, plus `created`, `role`, and `message` for rollouts in
-reverse chronological `(created, id)` order.
+`created`, and `updated`, plus attached file projections and `created`, `role`,
+and `message` for rollouts in reverse chronological `(created, id)` order.
 
 The browser represents each active filter dimension as one segmented chip and
 uses one registry-driven dropdown for field and value selection. Values within
@@ -192,9 +198,10 @@ transition helper; stale, terminal, and merging states fail without writes.
 snapshot once. `--no-open` retains the server but skips browser launch. Browser
 task data arrives only as JSON and is inserted into the DOM with text nodes.
 Every task row is pointer-clickable while retaining native table semantics;
-clicking outside its title opens the token-scoped
+clicking outside its title or file badges opens the token-scoped
 `tasks/~<encoded-session-id>` page, while the keyboard-accessible title remains
-an encoded `codex://threads/<session-id>` deep link. The non-dot marker prevents
+an encoded `codex://threads/<session-id>` deep link. File badges remain encoded
+`vscode://file` links. The non-dot marker prevents
 browser path normalization for legal `.` and `..` IDs. The detail page fetches
 the matching point-detail API and renders the description, newest-first
 timeline, and created and updated properties. Its session-ID property is also
@@ -238,11 +245,12 @@ The hook installer structurally merges four owned command groups into `~/.codex/
 
 ## SQLite model
 
-The canonical schema is version 6.
+The canonical schema is version 7.
 
 ```mermaid
 erDiagram
     thread ||--o{ rollout : contains
+    thread ||--o{ attachment : links
     thread ||--o| project_merge_claim : owns
     thread {
         text id PK
@@ -264,6 +272,12 @@ erDiagram
         text turn_id
         text role
         text message
+    }
+    attachment {
+        integer id PK
+        text created
+        text thread_id FK
+        text path
     }
     project_merge_claim {
         text project PK
@@ -547,7 +561,7 @@ recovery guidance before WAL selection or permission changes.
 
 The store directory uses mode `0700`; the database, WAL, and shared-memory files use `0600`. Connections enable foreign keys, WAL after compatibility is established, and a one-second busy timeout. Explicit commands fail closed and roll back on error. Hooks validate safe modes, use bounded operations, and fail open.
 
-The historical v1 database at `~/.llm/thread/thread.db` is outside the runtime path. It can be inspected manually and is never an initialization source for version 6.
+The historical v1 database at `~/.llm/thread/thread.db` is outside the runtime path. It can be inspected manually and is never an initialization source for version 7.
 
 ## Source and runtime layout
 

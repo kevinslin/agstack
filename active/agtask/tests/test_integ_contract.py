@@ -252,7 +252,7 @@ class IntegrationRunnerContractTest(unittest.TestCase):
         harness_version = re.search(r"SCENARIO_SUITE_VERSION = (\d+)", lifecycle)
         self.assertIsNotNone(manifest_version)
         self.assertIsNotNone(harness_version)
-        self.assertEqual(manifest_version.group(1), "19")
+        self.assertEqual(manifest_version.group(1), "20")
         self.assertEqual(manifest_version.group(1), harness_version.group(1))
         self.assertIn("integration scenario may fall through", scenarios)
         self.assertIn("logical creation ID", scenarios)
@@ -262,7 +262,7 @@ class IntegrationRunnerContractTest(unittest.TestCase):
         self.assertIn("## archived-session-audit", scenarios)
         self.assertIn("ADD_SCENARIO_VERSION = 1", lifecycle)
         self.assertIn("CREATION_BOOTSTRAP_SCENARIO_VERSION = 3", lifecycle)
-        self.assertIn("DASHBOARD_SCENARIO_VERSION = 11", lifecycle)
+        self.assertIn("DASHBOARD_SCENARIO_VERSION = 12", lifecycle)
         self.assertIn("RENAME_SCENARIO_VERSION = 2", lifecycle)
         self.assertIn("AUDIT_SCENARIO_VERSION = 1", lifecycle)
 

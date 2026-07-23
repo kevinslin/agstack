@@ -8,6 +8,8 @@ Each runtime flow has its own note:
   creation-ID to Codex-session binding and copied-bootstrap rejection.
 - [Rollout updates](rollout-updates.md): user, assistant, meta, and direct CLI
   event persistence.
+- [Task attachments](task-attachments.md): frontmatter updates, path
+  persistence, and dashboard file links.
 - [Task closing](task-closing.md): project merge claims, close prompts,
   finalization, and reopen behavior.
 

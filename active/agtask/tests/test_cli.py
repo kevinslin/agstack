@@ -11,6 +11,7 @@ import stat
 import subprocess
 import tempfile
 import unittest
+from urllib.parse import quote
 import uuid
 
 
@@ -1847,7 +1848,7 @@ class CliIntegrationTest(unittest.TestCase):
 
     def test_schema_permissions_and_immediate_reopen(self) -> None:
         result = self.run_cli("init", "--json")
-        self.assertEqual(json.loads(result.stdout)["schema_version"], 6)
+        self.assertEqual(json.loads(result.stdout)["schema_version"], 7)
         self.assertEqual(stat.S_IMODE(self.store.stat().st_mode), 0o700)
         self.assertEqual(stat.S_IMODE(self.db_path.stat().st_mode), 0o600)
 
@@ -1858,7 +1859,7 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertEqual(state["parent_session_id"], "parent-thread")
 
         with self.connect() as connection:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 6)
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 7)
             objects = {
                 row[0]
                 for row in connection.execute(
@@ -1890,6 +1891,8 @@ class CliIntegrationTest(unittest.TestCase):
                     "thread_ai",
                     "thread_ad",
                     "thread_au",
+                    "attachment",
+                    "attachment_thread_created_idx",
                 },
             )
             self.assertEqual(
@@ -1978,13 +1981,123 @@ class CliIntegrationTest(unittest.TestCase):
                     "VALUES ('now','thread-1','bad','system','bad')"
                 )
 
+    def test_attach_updates_frontmatter_and_tracks_file_idempotently(self) -> None:
+        self.run_cli("init")
+        self.register()
+        self.run_cli(
+            "status", "--id", "thread-1", "--status", "blocked", "--json"
+        )
+        notes = self.root / "notes"
+        notes.mkdir()
+        note = notes / "task note.md"
+        note.write_text(
+            "---\n"
+            "title: Existing note\n"
+            "status: old\n"
+            "source: old-source\n"
+            "---\n"
+            "Body stays intact.\n"
+        )
+        note.chmod(0o640)
+
+        attached = json.loads(
+            self.run_cli(
+                "attach",
+                note.name,
+                "--id",
+                "thread-1",
+                "--json",
+                cwd=notes,
+            ).stdout
+        )
+
+        self.assertTrue(attached["attached"])
+        self.assertTrue(attached["file_changed"])
+        resolved_note = note.resolve()
+        self.assertEqual(attached["attachment"]["path"], str(resolved_note))
+        self.assertEqual(attached["attachment"]["name"], note.name)
+        self.assertEqual(
+            attached["attachment"]["url"],
+            f"vscode://file{quote(str(resolved_note), safe='/:')}",
+        )
+        self.assertEqual(attached["files"], [attached["attachment"]])
+        self.assertEqual(stat.S_IMODE(note.stat().st_mode), 0o640)
+        self.assertEqual(
+            note.read_text(),
+            "---\n"
+            "title: Existing note\n"
+            "status: blocked\n"
+            "source: codex://threads/thread-1\n"
+            "---\n"
+            "Body stays intact.\n",
+        )
+        self.assertEqual(
+            [row["message"] for row in attached["rollouts"]].count("attachment:added"),
+            1,
+        )
+
+        repeated = json.loads(
+            self.run_cli(
+                "attach",
+                str(note),
+                "--session-id",
+                "thread-1",
+                "--json",
+            ).stdout
+        )
+        self.assertFalse(repeated["attached"])
+        self.assertFalse(repeated["file_changed"])
+        self.assertEqual(
+            [row["message"] for row in repeated["rollouts"]].count("attachment:added"),
+            1,
+        )
+
+        plain = notes / "plain.md"
+        plain.write_text("Plain body.\n")
+        plain_result = json.loads(
+            self.run_cli(
+                "attach", str(plain), "--id", "thread-1", "--json"
+            ).stdout
+        )
+        self.assertTrue(plain_result["attached"])
+        self.assertEqual(
+            plain.read_text(),
+            "---\n"
+            "status: blocked\n"
+            "source: codex://threads/thread-1\n"
+            "---\n"
+            "Plain body.\n",
+        )
+
+        malformed = notes / "malformed.md"
+        malformed.write_text("---\ntitle: no closing delimiter\n")
+        before = malformed.read_bytes()
+        rejected = self.run_cli(
+            "attach",
+            str(malformed),
+            "--id",
+            "thread-1",
+            check=False,
+        )
+        self.assertEqual(rejected.returncode, 1)
+        self.assertIn("unterminated YAML frontmatter", rejected.stderr)
+        self.assertEqual(malformed.read_bytes(), before)
+        with self.connect() as connection:
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM attachment WHERE path=?",
+                    (str(malformed.resolve()),),
+                ).fetchone()[0],
+                0,
+            )
+
     def test_empty_version_zero_initializes_and_default_path_ignores_v1(self) -> None:
         self.store.mkdir(mode=0o700)
         sqlite3.connect(self.db_path).close()
         self.db_path.chmod(0o600)
         self.run_cli("init")
         with self.connect() as connection:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 6)
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 7)
 
         home = self.root / "home"
         old_dir = home / ".llm" / "thread"
@@ -2009,7 +2122,7 @@ class CliIntegrationTest(unittest.TestCase):
             ("drifted-v4", None, 4),
             ("drifted-v5", None, 5),
             ("unversioned-objects", None, 0),
-            ("newer", None, 7),
+            ("newer", None, 8),
             ("malformed", b"not a sqlite database", None),
         ]
         for name, raw_bytes, version in cases:
@@ -2047,13 +2160,13 @@ class CliIntegrationTest(unittest.TestCase):
                     sorted(item.name for item in case_dir.iterdir()), before_entries
                 )
 
-    def test_exact_v5_ledger_migrates_to_v6_without_losing_data(self) -> None:
+    def test_exact_v5_ledger_migrates_to_v7_without_losing_data(self) -> None:
         runtime = runpy.run_path(str(CLI))
         self.store.mkdir(mode=0o700)
         with sqlite3.connect(self.db_path) as connection:
             connection.execute("PRAGMA foreign_keys=ON")
             connection.execute(runtime["V5_THREAD_DDL"])
-            for statement in runtime["DDL"][1:]:
+            for statement in runtime["V6_DDL"][1:]:
                 connection.execute(statement)
             connection.execute(
                 "INSERT INTO thread("
@@ -2102,7 +2215,7 @@ class CliIntegrationTest(unittest.TestCase):
         search = json.loads(self.run_cli("search", "V5 task", "--json").stdout)
         self.assertEqual([row["id"] for row in search], [fixture_creation_id("v5-thread")])
         with self.connect() as connection:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 6)
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 7)
             self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
             thread_sql = connection.execute(
                 "SELECT sql FROM sqlite_master WHERE name='thread'"
@@ -2120,6 +2233,28 @@ class CliIntegrationTest(unittest.TestCase):
         )
         self.assertEqual(dropped["status"], "drop")
         self.assertIsNotNone(dropped["closed"])
+
+    def test_exact_v6_ledger_migrates_to_v7(self) -> None:
+        runtime = runpy.run_path(str(CLI))
+        self.store.mkdir(mode=0o700)
+        with sqlite3.connect(self.db_path) as connection:
+            for statement in runtime["V6_DDL"]:
+                connection.execute(statement)
+            connection.execute("PRAGMA user_version=6")
+        self.db_path.chmod(0o600)
+
+        initialized = json.loads(self.run_cli("init", "--json").stdout)
+
+        self.assertEqual(initialized["schema_version"], 7)
+        with self.connect() as connection:
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 7)
+            self.assertEqual(
+                [
+                    row[1]
+                    for row in connection.execute("PRAGMA table_info(attachment)")
+                ],
+                ["id", "created", "thread_id", "path"],
+            )
 
     def test_kind_project_and_parent_lineage_are_immutable(self) -> None:
         self.run_cli("init")
@@ -2538,6 +2673,7 @@ class CliIntegrationTest(unittest.TestCase):
                 "closed",
                 "status",
                 "rollouts",
+                "files",
                 "hook_prompts",
             },
         )

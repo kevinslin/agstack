@@ -80,7 +80,8 @@ async function main() {
   }));
   const document = new FakeDocument([
     "detail-content", "task-title", "task-description", "task-created",
-    "task-updated", "task-session-id", "timeline", "detail-notice"
+    "task-updated", "task-session-id", "task-files-property", "task-files",
+    "timeline", "detail-notice"
   ]);
   const requests = [];
   const navigations = [];
@@ -104,6 +105,11 @@ async function main() {
   assert.equal(document.getElementById("task-session-id").textContent,"alpha-active");
   assert.equal(document.getElementById("task-session-id").href,"codex://threads/alpha-active");
   assert.equal(document.getElementById("task-session-id").title,"Open task in Codex");
+  assert.equal(document.getElementById("task-files-property").hidden,false);
+  const fileBadge = document.getElementById("task-files").children[0];
+  assert.equal(fileBadge.textContent,"file");
+  assert.equal(fileBadge.href,input.detail.files[0].url);
+  assert.match(fileBadge.title,/dashboard task\.md/);
   assert.equal(document.getElementById("detail-content").getAttribute("aria-busy"),"false");
   const timeline = document.getElementById("timeline");
   assert.equal(timeline.children.length,input.detail.rollouts.length);

@@ -144,6 +144,9 @@ class DashboardIntegrationTest(unittest.TestCase):
         )
         self.run_cli("status", "--id", "beta-blocked", "--status", "blocked")
         self.close_thread("beta-done")
+        attachment = self.root / "dashboard task.md"
+        attachment.write_text("Dashboard task file.\n")
+        self.run_cli("attach", str(attachment), "--id", "alpha-active")
         connection = sqlite3.connect(self.db_path)
         try:
             timestamps = {
@@ -263,6 +266,7 @@ class DashboardIntegrationTest(unittest.TestCase):
                 "updated",
                 "closed",
                 "status",
+                "files",
             },
         )
         self.assertEqual(
@@ -522,6 +526,7 @@ class DashboardIntegrationTest(unittest.TestCase):
         self.assertIn(b'id="timeline"', body)
         self.assertIn(b'id="task-session-id"', body)
         self.assertIn(b'id="task-session-id" class="session-link"', body)
+        self.assertIn(b'id="task-files"', body)
         self.assertNotIn(b"Polish Dashboard", body)
         detail_url = f"http://{parsed.netloc}{task_path}"
         self.assertEqual(urlsplit(urljoin(detail_url, "../app.css")).path, parsed.path + "app.css")
@@ -536,6 +541,7 @@ class DashboardIntegrationTest(unittest.TestCase):
         self.assertEqual(headers["content-type"], "text/javascript; charset=utf-8")
         self.assertIn(b"textContent", body)
         self.assertIn(b"codex://threads/", body)
+        self.assertIn(b"file-badge", body)
         self.assertIn(b"encodeURIComponent(task.session_id)", body)
         self.assertNotIn(b"innerHTML", body)
         task_script = body
@@ -558,11 +564,15 @@ class DashboardIntegrationTest(unittest.TestCase):
                 "created",
                 "updated",
                 "rollouts",
+                "files",
             },
         )
         self.assertEqual(detail["id"], fixture_creation_id("alpha-active"))
         self.assertEqual(detail["title"], "Polish Dashboard")
         self.assertEqual(detail["description"], "dashboard fixture")
+        self.assertEqual(len(detail["files"]), 1)
+        self.assertEqual(detail["files"][0]["name"], "dashboard task.md")
+        self.assertTrue(detail["files"][0]["url"].startswith("vscode://file/"))
         self.assertEqual(
             [rollout["message"] for rollout in detail["rollouts"][:2]],
             ["Newest timeline entry", "First timeline entry"],
