@@ -145,6 +145,13 @@ parent-session/project registration identity to `pin` and `title`:
 </agtask-bootstrap>
 ```
 
+For clean child creation, pass the resolved task with `--task` and the saved
+Codex project ID with `--project-id`. The resolver then returns
+a versioned `creation_plan` containing the byte-exact initial prompt and the
+next Codex app tool call. Optional `--thinking` and the existing `--model`
+override are included directly in that tool payload. Calls that omit `--task`
+retain the legacy result shape.
+
 Codex `SessionStart` runs before prompt submission but does not contain the
 prompt. The agtask hook therefore validates the envelope on the first
 `UserPromptSubmit`, whose payload contains the real session ID, turn ID, and

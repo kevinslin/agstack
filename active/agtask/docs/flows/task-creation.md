@@ -29,7 +29,7 @@ rollout; it does not create the child row.
 graph TD
     subgraph Parent["Invoking Codex task"]
         A["User invokes agtask"] --> B["Parent UserPromptSubmit records only the parent turn when tracked"]
-        B --> C["resolve-create generates logical id and canonical child prompt"]
+        B --> C["resolve-create generates logical id and, for fast clean creation, the canonical prompt and tool plan"]
         C --> D{"Task kind"}
         D -->|main| E["Register the invoking session as the task"]
         D -->|child| F{"Creation mode"}
@@ -78,7 +78,7 @@ pin policy, project, and one logical creation ID before calling a Codex task
 tool. That ID is reused for every registration and bootstrap write in this
 attempt.
 
-#### 1.1 Generate the logical ID and child trailer
+#### 1.1 Generate the logical ID, child trailer, and optional clean plan
 
 - `skills/agtask/scripts/agtask:command_resolve_create`
 
@@ -86,8 +86,11 @@ attempt.
 resolved := merge_defaults_and_explicit_inputs()
 creation_id := uuid_v4()
 if resolved.kind == "child"
-  prompt := task_text + configured_on_create + canonical_v2_trailer(creation_id)
-return resolved + creation_id + prompt_inputs
+  trailer := canonical_v2_trailer(creation_id)
+if resolved.kind == "child" and resolved.mode == "clean" and task_text exists
+  prompt := task_text + configured_on_create + trailer
+  plan := create_thread(prompt, saved_project_id, resolved.environment)
+return resolved + creation_id + trailer + optional(plan)
 ```
 
 For `kind=main`, the resolver ID identifies the current task's ledger row, but
@@ -102,7 +105,7 @@ isolated Git checkout for the child.
 
 #### 2.1 Submit the clean prompt
 
-- `skills/agtask/references/create.md:Child clean mode`
+- `skills/agtask/references/create.md:Fast path`
 
 ```ts
 result := create_thread(

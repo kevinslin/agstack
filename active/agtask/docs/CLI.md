@@ -76,13 +76,15 @@ command:
 Resolve creation settings from built-in defaults, configuration files, and
 explicit flags. This command does not create or open the ledger. It returns the
 resolved execution environment and any configured `OnCreate` entry in
-`hook_prompts`.
+`hook_prompts`. Pass `--task` to additionally build the exact initial prompt
+and the next Codex app tool call.
 
 ```bash
 python3 "$AGTASK" resolve-create \
-  --mode fork --kind child --project agtask --title agtask/bootstrap-title \
+  --mode clean --kind child --project agtask --title agtask/bootstrap-title \
   --parent-session-id 019f-parent \
-  --worktree true --model gpt-5.6-sol --nopin --json
+  --worktree false --model gpt-5.6-sol --thinking high --nopin \
+  --task "Implement the bounded task." --project-id saved-project-id --json
 ```
 
 | Flag | Values and behavior |
@@ -94,6 +96,9 @@ python3 "$AGTASK" resolve-create \
 | `--title <text>` | Required non-empty one-line resolved title without surrounding whitespace. |
 | `--worktree <boolean>` | `true` or `false`. Built-in default: `false`. |
 | `--model <name>` | Non-empty model name, or `inherit` to omit an explicit model. Built-in default: `inherit`. |
+| `--thinking <level>` | Optional reasoning override: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, `ultra`, or `inherit`. Requires `--task`. |
+| `--task <text>` | Opt into the complete clean-child creation plan. The resolved task must contain non-whitespace content; its bytes are otherwise preserved. |
+| `--project-id <id>` | Saved Codex project ID. Required with `--task` in clean mode so `next_tool` is directly executable. |
 | `--pin <boolean>` | `true` or `false`. Built-in default: `true`. |
 | `--nopin` | Shorthand for `--pin false`. |
 
@@ -110,6 +115,14 @@ The result contains a newly generated canonical UUIDv4 `id`, plus `mode`,
 as the final child-prompt block. Environment type is
 `worktree` when `worktree=true`, `same-directory` for a fork without a
 worktree, and `local` otherwise.
+
+When `--task` is present for a clean child, the result also contains `thinking`,
+`include_thinking`, and `creation_plan`. The exact prompt lives at
+`creation_plan.next_tool.arguments.prompt`, including configured `OnCreate`
+instructions and the canonical final bootstrap trailer.
+`creation_plan.next_tool` is a directly executable `create_thread` call. Fork
+and main workflows retain their existing behavior. Legacy calls without
+`--task` retain their existing JSON shape.
 
 ## `init`
 

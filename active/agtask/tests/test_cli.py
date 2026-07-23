@@ -401,6 +401,113 @@ class CliIntegrationTest(unittest.TestCase):
                 self.assertEqual(actual, expected)
         self.assertFalse(self.db_path.exists())
 
+    def test_resolve_create_builds_exact_clean_creation_plan(self) -> None:
+        result = json.loads(
+            self.run_cli(
+                "resolve-create",
+                "--title",
+                "agtask/database-proof",
+                "--parent-session-id",
+                "parent-thread",
+                "--project",
+                "agtask",
+                "--task",
+                "Write a compact database proof.",
+                "--project-id",
+                "saved-project-id",
+                "--model",
+                "gpt-5.6-sol",
+                "--thinking",
+                "high",
+                "--json",
+            ).stdout
+        )
+        creation_id = result["id"]
+        trailer = BOOTSTRAP_TRAILER.replace(CREATION_ID, creation_id)
+        prompt = "Task:\nWrite a compact database proof.\n\n" + trailer
+        self.assertEqual(result["thinking"], "high")
+        self.assertTrue(result["include_thinking"])
+        self.assertEqual(
+            result["creation_plan"],
+            {
+                "version": 1,
+                "next_tool": {
+                    "name": "create_thread",
+                    "arguments": {
+                        "prompt": prompt,
+                        "model": "gpt-5.6-sol",
+                        "thinking": "high",
+                        "target": {
+                            "type": "project",
+                            "projectId": "saved-project-id",
+                            "environment": {"type": "local"},
+                        },
+                    },
+                },
+            },
+        )
+        self.assertFalse(self.db_path.exists())
+
+    def test_resolve_create_plan_preserves_resolved_task_bytes(self) -> None:
+        result = json.loads(
+            self.run_cli(
+                "resolve-create",
+                "--title",
+                "agtask/database-proof",
+                "--parent-session-id",
+                "parent-thread",
+                "--task",
+                "  Write a compact database proof.\n",
+                "--project-id",
+                "saved-project-id",
+                "--json",
+            ).stdout
+        )
+        creation_id = result["id"]
+        trailer = BOOTSTRAP_TRAILER.replace(CREATION_ID, creation_id)
+        prompt = "Task:\n  Write a compact database proof.\n\n\n" + trailer
+        self.assertEqual(result["thinking"], "inherit")
+        self.assertFalse(result["include_thinking"])
+        self.assertEqual(
+            result["creation_plan"]["next_tool"]["arguments"]["prompt"],
+            prompt,
+        )
+        self.assertFalse(self.db_path.exists())
+
+    def test_resolve_create_plan_appends_configured_oncreate_prompt(self) -> None:
+        config = self.write_config(
+            self.root,
+            {"hooks": {"OnCreate": {"prompt": "Run the project preflight."}}},
+        )
+        result = json.loads(
+            self.run_cli(
+                "resolve-create",
+                "--title",
+                "agtask/database-proof",
+                "--parent-session-id",
+                "parent-thread",
+                "--project",
+                "agtask",
+                "--task",
+                "Write a compact database proof.",
+                "--project-id",
+                "saved-project-id",
+                "--json",
+                cwd=self.root,
+            ).stdout
+        )
+        creation_id = result["id"]
+        trailer = BOOTSTRAP_TRAILER.replace(CREATION_ID, creation_id)
+        self.assertEqual(
+            result["creation_plan"]["next_tool"]["arguments"]["prompt"],
+            "Task:\nWrite a compact database proof."
+            "\n\nConfigured OnCreate prompt:\nRun the project preflight."
+            "\n\n"
+            + trailer,
+        )
+        self.assertEqual(result["hook_prompts"][0]["source"], str(config.resolve()))
+        self.assertFalse(self.db_path.exists())
+
     def test_bootstrap_protocol_is_exact_typed_allowlisted_and_fail_open(self) -> None:
         incomplete_v2 = BOOTSTRAP_PROMPT.replace(
             '"parent_session_id":"parent-thread",', ""
@@ -1466,6 +1573,75 @@ class CliIntegrationTest(unittest.TestCase):
             with self.subTest(title=title):
                 result = self.run_cli(
                     "resolve-create", "--title", title, check=False
+                )
+                self.assertEqual(result.returncode, 1)
+                self.assertIn(message, result.stderr)
+        self.assertFalse(self.db_path.exists())
+
+    def test_resolve_create_rejects_incomplete_or_invalid_creation_plans(self) -> None:
+        cases = [
+            (
+                (
+                    "--parent-session-id",
+                    "parent-thread",
+                    "--task",
+                    "Write a compact database proof.",
+                ),
+                "clean creation with --task requires --project-id",
+            ),
+            (
+                (
+                    "--parent-session-id",
+                    "parent-thread",
+                    "--task",
+                    "Write a compact database proof.",
+                    "--project-id",
+                    " padded ",
+                ),
+                "project_id must not contain surrounding whitespace",
+            ),
+            (
+                (
+                    "--kind",
+                    "main",
+                    "--task",
+                    "Write a compact database proof.",
+                ),
+                "--task is only valid for child creation",
+            ),
+            (
+                (
+                    "--mode",
+                    "fork",
+                    "--parent-session-id",
+                    "parent-thread",
+                    "--task",
+                    "Write a compact database proof.",
+                ),
+                "--task is only supported for clean child creation",
+            ),
+            (
+                (
+                    "--parent-session-id",
+                    "parent-thread",
+                    "--project-id",
+                    "saved-project-id",
+                ),
+                "--project-id and --thinking require --task",
+            ),
+            (
+                ("--parent-session-id", "parent-thread", "--thinking", "high"),
+                "--project-id and --thinking require --task",
+            ),
+        ]
+        for arguments, message in cases:
+            with self.subTest(arguments=arguments):
+                result = self.run_cli(
+                    "resolve-create",
+                    "--title",
+                    "agtask/database-proof",
+                    *arguments,
+                    check=False,
                 )
                 self.assertEqual(result.returncode, 1)
                 self.assertIn(message, result.stderr)

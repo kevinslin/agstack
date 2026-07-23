@@ -37,6 +37,16 @@ MERGE_RETRY_MIN_MS = 750
 MERGE_RETRY_JITTER_MS = 750
 DASHBOARD_SORT_FIELDS = ("created", "updated", "closed")
 DASHBOARD_DIRECTIONS = ("asc", "desc")
+THINKING_LEVELS = (
+    "none",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+    "ultra",
+)
 CONFIG_FILENAME = ".agtask.json"
 CONFIG_TOP_LEVEL_KEYS = {"defaults", "hooks"}
 CONFIG_DEFAULT_KEYS = {"mode", "kind", "project", "worktree", "model", "pin"}
@@ -1057,6 +1067,60 @@ def prompt_hooks(configuration: dict[str, Any], event: str) -> list[dict[str, st
             "source": configuration["hook_sources"][event],
         }
     ]
+
+
+def build_creation_prompt(
+    task: str,
+    *,
+    hook_prompts: list[dict[str, str]],
+    trailer: str,
+) -> str:
+    require_nonempty(task, "task")
+    prompt = CLEAN_PREFIX + task
+    for hook in hook_prompts:
+        prompt += "\n\nConfigured OnCreate prompt:\n" + hook["prompt"]
+    return prompt + "\n\n" + trailer
+
+
+def creation_plan(
+    *,
+    task: str,
+    project_id: Optional[str],
+    environment: dict[str, str],
+    model: str,
+    thinking: str,
+    hook_prompts: list[dict[str, str]],
+    trailer: str,
+) -> dict[str, Any]:
+    prompt = build_creation_prompt(
+        task,
+        hook_prompts=hook_prompts,
+        trailer=trailer,
+    )
+    delivery_arguments: dict[str, Any] = {"prompt": prompt}
+    if model != "inherit":
+        delivery_arguments["model"] = model
+    if thinking != "inherit":
+        delivery_arguments["thinking"] = thinking
+
+    if project_id is None:
+        raise TaskError("clean creation with --task requires --project-id")
+    require_nonempty(project_id, "project_id")
+    if project_id != project_id.strip():
+        raise TaskError("project_id must not contain surrounding whitespace")
+    delivery_arguments["target"] = {
+        "type": "project",
+        "projectId": project_id,
+        "environment": environment,
+    }
+
+    return {
+        "version": 1,
+        "next_tool": {
+            "name": "create_thread",
+            "arguments": delivery_arguments,
+        },
+    }
 
 
 def default_global_configuration() -> dict[str, Any]:
@@ -3632,6 +3696,9 @@ def command_resolve_create(args: argparse.Namespace) -> None:
     require_nonempty(model, "model")
     if model != model.strip():
         raise TaskError("model must not contain surrounding whitespace")
+    thinking = resolve_repeated_input(
+        args.thinking, label="thinking", default="inherit"
+    )
 
     pin_values = list(args.pin or [])
     if args.nopin:
@@ -3670,26 +3737,43 @@ def command_resolve_create(args: argparse.Namespace) -> None:
     else:
         environment_type = "local"
 
-    emit(
-        {
-            "id": creation_id,
-            "mode": mode_value,
-            "kind": kind,
-            "project": project,
-            "title": title,
-            "worktree": worktree,
-            "model": model,
-            "pin": pin,
-            "bootstrap_args": bootstrap_arguments,
-            "bootstrap_trailer": bootstrap_trailer(
-                bootstrap_arguments, version=bootstrap_version
-            ),
-            "environment": {"type": environment_type},
-            "include_model": model != "inherit",
-            "hook_prompts": prompt_hooks(args.configuration, "OnCreate"),
-        },
-        args.json,
-    )
+    environment = {"type": environment_type}
+    hook_prompts = prompt_hooks(args.configuration, "OnCreate")
+    trailer = bootstrap_trailer(bootstrap_arguments, version=bootstrap_version)
+    result: dict[str, Any] = {
+        "id": creation_id,
+        "mode": mode_value,
+        "kind": kind,
+        "project": project,
+        "title": title,
+        "worktree": worktree,
+        "model": model,
+        "pin": pin,
+        "bootstrap_args": bootstrap_arguments,
+        "bootstrap_trailer": trailer,
+        "environment": environment,
+        "include_model": model != "inherit",
+        "hook_prompts": hook_prompts,
+    }
+    if args.task is not None:
+        if kind != "child":
+            raise TaskError("--task is only valid for child creation")
+        if mode_value != "clean":
+            raise TaskError("--task is only supported for clean child creation")
+        result["thinking"] = thinking
+        result["include_thinking"] = thinking != "inherit"
+        result["creation_plan"] = creation_plan(
+            task=args.task,
+            project_id=args.project_id,
+            environment=environment,
+            model=model,
+            thinking=thinking,
+            hook_prompts=hook_prompts,
+            trailer=trailer,
+        )
+    elif args.project_id is not None or thinking != "inherit":
+        raise TaskError("--project-id and --thinking require --task")
+    emit(result, args.json)
 
 
 def command_register(args: argparse.Namespace) -> None:
@@ -4342,6 +4426,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--worktree", choices=("true", "false"), action="append"
     )
     resolve_create.add_argument("--model", action="append")
+    resolve_create.add_argument(
+        "--thinking", choices=(*THINKING_LEVELS, "inherit"), action="append"
+    )
+    resolve_create.add_argument("--task")
+    resolve_create.add_argument("--project-id")
     resolve_create.add_argument("--pin", choices=("true", "false"), action="append")
     resolve_create.add_argument("--nopin", action="store_true")
     add_common_json(resolve_create)
