@@ -56,6 +56,8 @@ python3 "$AGTASK" append-rollout --id <creation-id> \
   --turn-id compact:<codex-turn-id>:manual \
   --role meta --message "compaction:manual" --json
 python3 "$AGTASK" show --session-id <codex-session-id> --json
+python3 "$AGTASK" attach "./notes/task note.md" \
+  --session-id <codex-session-id> --json
 python3 "$AGTASK" list --status active --json
 python3 "$AGTASK" search "task text" --json
 python3 "$AGTASK" dashboard
@@ -69,8 +71,10 @@ python3 "$AGTASK" config --json
 ```
 
 Machine-readable thread results expose logical `id`, Codex `session_id`, and
-`parent_session_id`, plus a `rollouts` array. Every rollout has `id`, `created`,
-logical `thread_id`, `turn_id`, `role`, and `message`.
+`parent_session_id`, plus `rollouts` and `files` arrays. Every rollout has
+`id`, `created`, logical `thread_id`, `turn_id`, `role`, and `message`. Every
+file has its attachment time, resolved absolute path, basename, and
+`vscode://file` editor link.
 
 `audit` is a model-mediated reconciliation workflow. Discovery emits archive
 lookup requests for active tasks using their real Codex `session_id`. Supplied
@@ -202,7 +206,8 @@ Click a task row outside its title to open the local detail page. Clicking the
 title, or focusing it and pressing Enter or Space, opens the task directly in
 Codex. The detail view shows the task description, a newest-first rollout
 timeline, and created, updated, and session-ID properties. The session ID also
-links directly to the task in Codex.
+links directly to the task in Codex. Attached tasks show `file` badges in the
+list and detail views; each badge opens its resolved path in VS Code.
 
 Use `agtask dashboard --no-open` to print and serve the URL without launching a
 browser. Use `agtask dashboard --json` for a single grouped machine-readable
@@ -251,9 +256,9 @@ sqlite3 "file:$HOME/.llm/agtask/ledger.db?mode=ro&immutable=1" \
   'SELECT id,created,thread_id,turn_id,role,message FROM rollout ORDER BY created,id;'
 ```
 
-Schema version 6 adds the terminal `drop` status. An exact version-5 ledger is
-migrated transactionally on first open; other older, newer, or drifted schemas
-are refused without mutation. The runtime opens only
+Schema version 7 adds task file attachments. Exact version-5 and version-6
+ledgers are migrated transactionally on first open; other older, newer, or
+drifted schemas are refused without mutation. The runtime opens only
 `~/.llm/agtask/ledger.db`; the v1 database at `~/.llm/thread/thread.db` remains
 a historical artifact. If the canonical path contains an incompatible
 database, move that file aside and run `init` to create a fresh ledger.

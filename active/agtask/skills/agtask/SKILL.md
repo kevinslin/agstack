@@ -1,7 +1,6 @@
 ---
 name: agtask
-description: Create, rename, audit, or close a tracked Codex task whose turns and status are persisted
-  in the local thread ledger.
+description: Create, rename, audit, or close a tracked Codex task whose turns and status are persisted in the local thread ledger. Only use when directly invoked.
 dependencies:
 - dev.llm-session
 ---
@@ -15,6 +14,8 @@ exactly one workflow below and read that reference completely before acting.
 
 - **Add the current task:** For `$agtask add <project>`, follow
   [`./references/add.md`](./references/add.md).
+- **Attach a file:** For `$agtask attach <file>`, follow
+  [`./references/attach.md`](./references/attach.md).
 - **Create or designate (default):** For a task prompt, `kind=main`, `new`,
   `fork`, worktree/model/reasoning settings, or `nopin`, follow
   [`./references/create.md`](./references/create.md).
@@ -29,7 +30,8 @@ exactly one workflow below and read that reference completely before acting.
   workflow returns the configured default `OnPreClose` instruction.
 
 Do not combine routes. Add registers the current task without changing it in
-the Codex app. A create/designate invocation creates at most one child; main
+the Codex app. Attach updates one local text file and links it to the current
+ledger task. A create/designate invocation creates at most one child; main
 designation never creates another task. Audit requires explicit confirmation
 before mutation. Rename coordinates the Codex app and ledger without silently
 accepting divergence. Close owns its merge lease through completion or release.
@@ -39,6 +41,7 @@ accepting divergence. Close owns its merge lease through completion or release.
 ```text
 $agtask [task]
 $agtask add <project>
+$agtask attach <file>
 $agtask kind=main [summary]
 $agtask new task: [task]
 $agtask fork task: [task]
@@ -55,6 +58,8 @@ $agtask close [task-id-or-session-id]
 - Normalize creation inputs: `./scripts/agtask resolve-create`
 - Add the current task:
   `./scripts/agtask add <project> --session-id <id> --title <title> --initial-prompt <prompt>`
+- Attach a local file:
+  `./scripts/agtask attach <file> --session-id <id>`
 - Inspect merged configuration: `./scripts/agtask config --json`
 - Initialize/query: `./scripts/agtask init|show|list|search|dashboard`
 - Audit/update:

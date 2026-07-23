@@ -40,7 +40,7 @@ BOOTSTRAP_FALSE_TRAILER = """<agtask-bootstrap version="1">
 {"pin":false,"title":"agtask/integ-configured-title"}
 </agtask-bootstrap>"""
 PROJECT = "agtask"
-SCENARIO_SUITE_VERSION = 19
+SCENARIO_SUITE_VERSION = 20
 ADD_SCENARIO_NAME = "current-task-add"
 ADD_SCENARIO_VERSION = 1
 MAIN_SCENARIO_NAME = "main-dispatch-lineage"
@@ -54,7 +54,7 @@ CREATION_BOOTSTRAP_SCENARIO_VERSION = 3
 LIFECYCLE_SCENARIO_NAME = "lifecycle-create-directive-close-hooks"
 LIFECYCLE_SCENARIO_VERSION = 13
 DASHBOARD_SCENARIO_NAME = "dashboard-html"
-DASHBOARD_SCENARIO_VERSION = 11
+DASHBOARD_SCENARIO_VERSION = 12
 RENAME_SCENARIO_NAME = "current-task-rename"
 RENAME_SCENARIO_VERSION = 2
 AUDIT_SCENARIO_NAME = "archived-session-audit"
@@ -319,6 +319,20 @@ def verify_dashboard(
     title: str,
     closed_thread: dict[str, Any],
 ) -> dict[str, Any]:
+    attachment_path = database.parent / "dashboard-task.md"
+    attachment_path.write_text("Dashboard integration attachment.\n")
+    attachment_result = run_cli(
+        cli,
+        "attach",
+        str(attachment_path),
+        "--id",
+        thread_id,
+    )
+    require(
+        attachment_result["attachment"]["path"] == str(attachment_path.resolve())
+        and attachment_result["status"] == "done",
+        "dashboard attachment did not copy the finalized task status",
+    )
     before = query_known_rows(database, main_thread_id, thread_id)
     status_fixture_id = str(uuid.uuid4())
     status_fixture_session_id = f"dashboard-status-{status_fixture_id[:8]}"
@@ -375,6 +389,7 @@ def verify_dashboard(
             "updated",
             "closed",
             "status",
+            "files",
         },
         "dashboard child projection has unexpected fields",
     )
@@ -387,6 +402,10 @@ def verify_dashboard(
     require(projection["project"] == PROJECT, "dashboard project mismatch")
     require(projection["title"] == title, "dashboard title mismatch")
     require(projection["status"] == "done", "dashboard child is not done")
+    require(
+        projection["files"] == [attachment_result["attachment"]],
+        "dashboard child attachment projection mismatch",
+    )
     require(projection["closed"] == closed_thread["closed"], "dashboard close time mismatch")
     require(
         snapshot["filters"]
@@ -516,6 +535,7 @@ def verify_dashboard(
                             b'id="task-created"',
                             b'id="task-updated"',
                             b'id="task-session-id"',
+                            b'id="task-files"',
                             b'class="session-link"',
                             b'href="../app.css"',
                             b'src="../task.js"',
@@ -534,6 +554,7 @@ def verify_dashboard(
                     and b"STATUS_OPTIONS" in body
                     and b'value:"drop"' in body
                     and b"expected_status" in body
+                    and b"file-badge" in body
                     and b"/status" in body,
                     "dashboard client interactions or task-row links are missing",
                 )
@@ -543,6 +564,7 @@ def verify_dashboard(
                     and b"task-description" in body
                     and b"timelineItem" in body
                     and b"codex://threads/${encodeURIComponent(task.session_id)}" in body
+                    and b"fileBadge" in body
                     and b"textContent" in body
                     and b"innerHTML" not in body,
                     "dashboard task detail client behavior is missing",
@@ -564,6 +586,7 @@ def verify_dashboard(
                         "created",
                         "updated",
                         "rollouts",
+                        "files",
                     },
                     "dashboard task detail projection has unexpected fields",
                 )
@@ -577,6 +600,10 @@ def verify_dashboard(
                     "dashboard detail parent mismatch",
                 )
                 require(detail_snapshot["title"] == title, "dashboard detail title mismatch")
+                require(
+                    detail_snapshot["files"] == [attachment_result["attachment"]],
+                    "dashboard detail attachment projection mismatch",
+                )
                 require(
                     detail_snapshot["description"] == closed_thread["description"],
                     "dashboard detail description mismatch",
@@ -748,6 +775,7 @@ def verify_dashboard(
         "snapshot": snapshot,
         "status_filter_snapshot": done_snapshot,
         "detail_snapshot": detail_snapshot,
+        "attachment": attachment_result["attachment"],
         "status_update": {
             "result": status_update_snapshot,
             "stale_conflict": True,

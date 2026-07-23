@@ -258,6 +258,21 @@ async function main() {
     `codex://threads/${encodeURIComponent(firstTaskRow.getAttribute("data-session-id"))}`,
     "task title links to the Codex session"
   );
+  const fileBadge = allNodes(document.getElementById("groups")).find(
+    node => node.tagName === "A" && node.className === "file-badge"
+  );
+  assert.ok(fileBadge,"an attached task renders a file badge");
+  assert.equal(fileBadge.textContent,"file");
+  assert.match(fileBadge.href,/^vscode:\/\/file\//);
+  assert.match(fileBadge.title,/dashboard task\.md/);
+  const fileTaskRow = fileBadge.parentNode.parentNode.parentNode;
+  const beforeFileClick = location.assigned.length;
+  fileTaskRow.dispatchEvent({type:"click",target:fileBadge});
+  assert.equal(
+    location.assigned.length,
+    beforeFileClick,
+    "clicking a file badge does not open the task detail page"
+  );
   firstTaskRow.dispatchEvent({type:"click",target:firstTaskRow.children[1]});
   assert.equal(
     location.assigned.at(-1),

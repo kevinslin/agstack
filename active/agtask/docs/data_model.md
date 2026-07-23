@@ -6,7 +6,7 @@ conversation and native rollout history. The ledger contains only current
 thread state, task kind, project identity, origin lineage, bounded turn
 summaries, lifecycle events, and short-lived project merge claims.
 
-The canonical schema is version 6. Its executable source of truth is `DDL` in
+The canonical schema is version 7. Its executable source of truth is `DDL` in
 [`skills/agtask/scripts/agtask`](../skills/agtask/scripts/agtask).
 This document describes that schema and the application contract around it.
 
@@ -20,16 +20,18 @@ This document describes that schema and the application contract around it.
   established, and set a 1,000 ms busy timeout.
 - Timestamps written by the application are UTC RFC 3339 strings with
   millisecond precision, for example `2026-07-16T18:28:46.513Z`.
-- `PRAGMA user_version` is `6`. Existing databases are inspected read-only
-  before a writer opens them. An exact version-5 schema is migrated
-  transactionally to version 6; a missing database or empty version-0 database
-  may be initialized. Any other shape is rejected without project backfill.
+- `PRAGMA user_version` is `7`. Existing databases are inspected read-only
+  before a writer opens them. Exact version-5 and version-6 schemas are
+  migrated transactionally to version 7; a missing database or empty
+  version-0 database may be initialized. Any other shape is rejected without
+  project backfill.
 
 ## Entity relationship
 
 ```mermaid
 erDiagram
     thread ||--o{ rollout : contains
+    thread ||--o{ attachment : links
     thread ||--o| project_merge_claim : owns
     thread {
         TEXT id PK
@@ -52,6 +54,12 @@ erDiagram
         TEXT role
         TEXT message
     }
+    attachment {
+        INTEGER id PK
+        TEXT created
+        TEXT thread_id FK
+        TEXT path
+    }
     project_merge_claim {
         TEXT project PK
         TEXT owner_thread_id FK
@@ -63,9 +71,10 @@ erDiagram
     }
 ```
 
-There is one `thread` row for each tracked Codex task and zero or more ordered
-`rollout` rows for its summarized conversation and lifecycle history. A thread
-may own at most one short-lived project merge claim.
+There is one `thread` row for each tracked Codex task, zero or more ordered
+`rollout` rows for its summarized conversation and lifecycle history, and zero
+or more attached file paths. A thread may own at most one short-lived project
+merge claim.
 
 ## `thread`
 
@@ -106,8 +115,8 @@ The narrow exception is authoritative one-shot reconciliation of a provisional
 copied-helper binding, which replaces the session and prompt-derived
 description before canonical task history is recorded. Direct `add` treats the
 current Codex title as an exact reconciliation value and rejects a session
-already stored as child kind. Version 6 is an exact-schema compatibility
-boundary; the CLI does not migrate version-4 ledgers in place.
+already stored as child kind. Version 7 is an exact-schema compatibility
+boundary; the CLI migrates only exact version-5 and version-6 ledgers.
 
 ### Thread indexes
 
@@ -121,6 +130,32 @@ boundary; the CLI does not migrate version-4 ledgers in place.
 
 `list` returns rows ordered by `updated DESC, created DESC`, optionally filtered
 by `status`.
+
+## `attachment`
+
+`attachment` links a tracked task to an existing file on local disk.
+
+| Column | SQLite declaration | Contract |
+| --- | --- | --- |
+| `id` | `INTEGER PRIMARY KEY` | SQLite row identifier and stable ordering tie-breaker. |
+| `created` | `TEXT NOT NULL` | Time the relationship was first recorded. |
+| `thread_id` | `TEXT NOT NULL` | Owning thread. References `thread(id)` with `ON DELETE CASCADE`. |
+| `path` | `TEXT NOT NULL` | Nonempty resolved absolute filesystem path. |
+
+`UNIQUE(thread_id, path)` makes attach idempotent, while
+`attachment_thread_created_idx(thread_id, created, id)` supplies deterministic
+per-task order. The database stores the path, not file contents or an editor
+URL. JSON projections derive the basename and encoded `vscode://file` URL at
+read time.
+
+`attach` requires an existing regular UTF-8 text file. It atomically inserts
+the relationship with the ledger update and updates the file through a
+same-directory replacement that preserves its mode. The managed top-level YAML
+fields are `status`, copied from the selected ledger row at attach time, and
+`source`, set to its `codex://threads/<session_id>` link. A new relationship
+advances `thread.updated` and appends `attachment:added`; an existing
+relationship is a ledger no-op even when frontmatter repair changes the file.
+Later task status transitions do not rewrite attached files.
 
 ## `project_merge_claim`
 
@@ -151,7 +186,7 @@ identity. Consequently same-named unrelated projects intentionally contend in
 one local ledger, while different labels do not. Randomized retry has
 best-effort fairness and may starve under sustained contention; strict FIFO
 would require durable waiter rows, stale-waiter cleanup, and more cancellation
-state, which version 6 deliberately avoids.
+state, which the current schema deliberately avoids.
 
 ### Dashboard projection and status mutation
 
@@ -159,12 +194,12 @@ state, which version 6 deliberately avoids.
 HTTP API read every current `thread` row through an
 explicit nine-column projection: logical `id`, `session_id`,
 `parent_session_id`, `project`, `title`, `created`, `updated`, `closed`, and
-`status`. They never return kind,
-description, rollout history, HTML, or preformatted timestamps.
+`status`. Each row also includes its ordered file projection. They never return
+kind, description, rollout history, HTML, or preformatted timestamps.
 
 The token-scoped task-detail API resolves its route by `session_id` and projects
 logical `id`, `session_id`, `parent_session_id`, `title`, `description`,
-`created`, and `updated`. It adds rollout values
+`created`, and `updated`. It adds both the ordered file projection and rollout values
 projected as `created`, `role`, and `message`, ordered by `created DESC, id DESC`.
 The rollout ID is only a deterministic tie-breaker and is not returned. Both
 dashboard projections remain read-only and leave the persisted rows unchanged.
@@ -567,4 +602,4 @@ snapshot is the workflow's normal write-verification and orchestration
 boundary. Claimed, waiting, heartbeat, cancel, and completed close results also
 include `merge_claim`; only the claimed form includes its opaque token, and only
 the waiting form includes randomized `retry_after_ms`. Prompt data is not a
-rollout and does not affect schema version 6.
+rollout and does not affect schema version 7.
