@@ -7,7 +7,6 @@ dependencies:
 - babysit-pr
 - branch
 - dev.review
-- oai-push
 - spec-simulate
 - specy
 ---

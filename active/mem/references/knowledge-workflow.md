@@ -92,7 +92,7 @@ Delete only when explicitly requested. Prefer targeted removal over deleting an 
 
 ## Failure states
 
-- Missing config: ask where `.mem.yaml` should live.
+- Missing config: exit the `$mem` workflow successfully and continue the underlying task without `$mem`. Do not ask for setup or report a blocker solely because neither the nearest ancestor `.mem.yaml` nor `$HOME/.mem.yaml` exists.
 - Invalid config: report the parser error and stop.
 - Missing root: report the configured path and stop.
 - Missing optional base skill: report it and stop before operating in that base.
