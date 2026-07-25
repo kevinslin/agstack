@@ -1,12 +1,10 @@
 ## agstack
 
-![stacki](https://ik.imagekit.io/fpjzhqpv1/cc7b7a2e-0d8c-4475-bfd1-218ccea63da2_Iw8M2bCD2.png)
+<img src="https://ik.imagekit.io/fpjzhqpv1/cc7b7a2e-0d8c-4475-bfd1-218ccea63da2_Iw8M2bCD2.png" width="400" alt="stacki">
 
 This is a opinionated collection of skills that I've been developing and using for my day to day work with agents. 
 
-This used to be called `skills` but my claw thought it was a boring name and I agree so I'm now rebranding this to `agstack`. 
-
-We have a cute logo.
+This used to be called `skills` but my claw thought it was a boring name so we've rebranded to `agstack` - the all in one stack for augmented agents. 
 
 ## Top Skills
 
