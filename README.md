@@ -1,4 +1,12 @@
-Collection of LLM agent [skills](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview) that I use in my day to day.
+## agstack
+
+![stacki](https://ik.imagekit.io/fpjzhqpv1/cc7b7a2e-0d8c-4475-bfd1-218ccea63da2_Iw8M2bCD2.png)
+
+This is a opinionated collection of skills that I've been developing and using for my day to day work with agents. 
+
+This used to be called `skills` but my claw thought it was a boring name and I agree so I'm now rebranding this to `agstack`. 
+
+We have a cute logo.
 
 ## Top Skills
 
