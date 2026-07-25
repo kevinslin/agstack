@@ -5,18 +5,21 @@ boundary: the Codex app owns archive state and the CLI owns ledger state. Never
 infer archive state from a missing list result, task age, title, or conversation
 status.
 
-1. Run `python3 ./scripts/agtask audit --json`. It returns every ledger row
-   whose status is exactly `active` plus one lookup request per real
-   `session_id`; it does not mutate.
+1. Run `python3 ./scripts/agtask audit --json`. It returns every nonterminal
+   ledger row whose status is `todo`, `active`, or `blocked`, plus one lookup
+   request per real `session_id`; it does not mutate. It excludes `merging`
+   rows because their fenced close workflow owns that transition.
 2. Resolve every requested session through Codex app thread APIs. Prefer an
    exact per-session read so an archived thread can be distinguished from a
-   missing session. Classify each request as `archived`, `not_archived`,
-   `missing`, or `error`. Use `archived` only when the exact API result
-   explicitly reports archived state; a successful exact read with any other
-   state is `not_archived`, an explicit not-found result is `missing`, and
-   unavailable hosts or all other failures are `error`. Preserve the exact
-   failure diagnostic in `detail`; do not turn missing or failed lookups into
-   `archived`.
+   missing session. Do not interpret runtime load states such as `active`,
+   `idle`, or `notLoaded` as archive state. If the exact app read omits archive
+   state, query the current Codex-owned state database read-only for the exact
+   `threads.id` and use only its `archived` field. Treat multiple plausible
+   state databases or a failed query as `error`; treat an exact missing row as
+   `missing`. Classify each request as `archived`, `not_archived`, `missing`,
+   or `error`, and preserve the exact failure diagnostic in `detail`. Never
+   infer archive state from a missing list result, task age, title, or
+   conversation/runtime status.
 3. Pass one version-1 observation document to
    `audit --observations-json '<json>' --json`:
 
@@ -50,10 +53,11 @@ status.
    pre-confirmation observations without refreshing them or substitute a token
    from another run.
 
-The apply phase moves only still-active, positively observed archived sessions
-to the ledger's existing terminal `done` state. It sets `closed`, appends
-`status:active->done` and `archival:codex-thread-archived`, and does not run
-close hooks or acquire a merge claim because Codex is already archived.
-Repeated discovery and planning are read-only; repeating an applied audit is a
-no-op once no matching active task remains. Logical `id` stays ledger-owned and
-Codex lookups always use `session_id`.
+The apply phase moves only still-auditable, positively observed archived
+sessions to the ledger's existing terminal `done` state. It sets `closed`,
+appends `status:<previous>->done` and
+`archival:codex-thread-archived`, and does not run close hooks or acquire a
+merge claim because Codex is already archived. Repeated discovery and planning
+are read-only; repeating an applied audit is a no-op once no matching
+auditable task remains. Logical `id` stays ledger-owned and Codex lookups
+always use `session_id`.

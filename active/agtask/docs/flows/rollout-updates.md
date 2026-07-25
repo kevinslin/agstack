@@ -1,7 +1,7 @@
 ---
 created: 2026-07-21
-updated: 2026-07-21
-last_updated_session: codex/019f6e7b-6fee-7b22-9ee7-0448a1431036
+updated: 2026-07-24
+last_updated_session: codex/019f23e4-65cf-75f0-bf69-4fffdcac44b7
 ---
 
 # Rollout Update Flow
@@ -24,8 +24,10 @@ history-only writes.
 ```mermaid
 graph TD
     subgraph Inputs["Event sources"]
-        A["UserPromptSubmit"] --> D["Resolve payload session_id"]
-        B["Stop"] --> D
+        A["UserPromptSubmit"] --> V{"Guardian review metadata?"}
+        B["Stop"] --> V
+        V -->|yes| W["Return without ledger or context changes"]
+        V -->|no| D["Resolve payload session_id"]
         C["record-turn or append-rollout"] --> E["Resolve explicit id or session_id selector"]
         F["PostCompact"] --> D
     end
@@ -58,13 +60,24 @@ graph TD
 
 ## Execution Trace
 
-### 1. Resolve the tracked task
+### 1. Reject auxiliary guardian review hooks
+
+Codex guardian approval review runs as a separate subagent conversation but
+may carry the reviewed task's session ID through command-hook payloads. Before
+session lookup, agtask rejects hooks whose `model` is the reserved
+`codex-auto-review` slug or whose Codex-owned transcript begins with
+`session_meta.payload.source.subagent.other = "guardian"`. The transcript
+marker covers reviewer fallback to the parent model without depending on
+synthetic prompt wording. Rejected hooks produce no rollout, lifecycle update,
+bootstrap action, or task context.
+
+### 2. Resolve the tracked task
 
 Codex hooks enter with a real `session_id`. The adapter looks up
 `thread.session_id`, then passes the row's logical `thread.id` to rollout and
 lifecycle helpers.
 
-#### 1.1 Map session identity to logical ownership
+#### 2.1 Map session identity to logical ownership
 
 - `skills/agtask/scripts/agtask:handle_hook`
 
@@ -78,13 +91,13 @@ logical_id := thread.id
 Direct commands instead accept exactly one `--id` or `--session-id` selector
 and resolve it to the same row.
 
-### 2. Normalize and classify the event
+### 3. Normalize and classify the event
 
 The CLI unwraps supported task and delegation shapes, removes common Markdown
 prefixes, collapses whitespace, selects the first sentence when present, and
 caps stored messages at 240 Unicode code points.
 
-#### 2.1 Select role and desired lifecycle state
+#### 3.1 Select role and desired lifecycle state
 
 - `skills/agtask/scripts/agtask:record_turn`
 
@@ -101,13 +114,13 @@ else if role == "assistant"
 Status derives from raw assistant content before normalization. The stable task
 description continues to come only from the initial creation prompt.
 
-### 3. Write or reconcile idempotently
+### 4. Write or reconcile idempotently
 
 Every read/check/write sequence takes a SQLite write reservation before
 checking event identity. A real initial prompt and the reserved `bootstrap`
 fallback may reconcile to one user rollout.
 
-#### 3.1 Apply role-aware event identity
+#### 4.1 Apply role-aware event identity
 
 - `skills/agtask/scripts/agtask:record_turn`
 
@@ -127,14 +140,14 @@ else
 For user and assistant events, the idempotency key is
 `(thread_id, role, turn_id)`. Meta events use `(thread_id, turn_id)`.
 
-### 4. Preserve terminal and history-only state
+### 5. Preserve terminal and history-only state
 
 Ordinary conversation may advance `updated`, but it cannot leave `done` or
 `drop`.
 While a project merge claim is live, ordinary turns update the claim's saved
 underlying status rather than replacing visible `merging`.
 
-#### 4.1 Handle compaction and append-only history
+#### 5.1 Handle compaction and append-only history
 
 - `skills/agtask/scripts/agtask:append_rollout`
 
@@ -186,4 +199,5 @@ Logs:
 [keep this for the user to add notes. do not change between edits]
 
 ## Changelog
+- 2026-07-24 17:20: Excluded guardian approval-review hook traffic using Codex model and transcript-source metadata (codex/019f23e4-65cf-75f0-bf69-4fffdcac44b7)
 - 2026-07-21 10:07: Split rollout persistence and status derivation into a dedicated runtime flow (019f6e7b-6fee-7b22-9ee7-0448a1431036 - d0ab5633f6fc478e631614a90bf4c7e2054faafa)

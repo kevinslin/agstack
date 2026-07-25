@@ -77,11 +77,12 @@ file has its attachment time, resolved absolute path, basename, and
 `vscode://file` editor link.
 
 `audit` is a model-mediated reconciliation workflow. Discovery emits archive
-lookup requests for active tasks using their real Codex `session_id`. Supplied
+lookup requests for `todo`, `active`, and `blocked` tasks using their real
+Codex `session_id`. Supplied
 Codex app observations produce an exact affected set and plan token without
 writing. Only a second call with that token, made after explicit user
 confirmation, moves positively archived rows to `done`; missing or failed
-lookups remain active and are reported as unresolved. See
+lookups retain their prior status and are reported as unresolved. See
 [the CLI contract](docs/CLI.md#audit).
 
 ## Configuration and prompt hooks
@@ -159,6 +160,12 @@ prompt. The hook returns the validated request through Codex's structured
 `hookSpecificOutput.additionalContext` field. A valid version-2 first prompt
 also initializes the ledger if needed, atomically binds the creation ID to its
 now-real child session ID, and records the real user turn under the logical ID.
+Guardian approval-review sessions are auxiliary Codex conversations rather
+than user task turns. The hook ignores them before registration, persistence,
+or context injection using the reserved reviewer model metadata and the
+Codex-owned transcript's
+`session_meta.payload.source.subagent.other = "guardian"` marker, which also
+covers reviewer fallback to the parent model.
 If another session replays a creation ID already bound to the real child, the
 hook emits no row, rollout, tracked context, title action, or pin action.
 Version 1 remains action-only.

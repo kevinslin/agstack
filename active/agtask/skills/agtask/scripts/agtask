@@ -63,6 +63,9 @@ OUTCOME_CONTRACT = (
     "Outcome contract: Lead the final response with the outcome. If the task is "
     "truly blocked, start the final response with exactly `Blocked:`."
 )
+GUARDIAN_REVIEW_MODEL = "codex-auto-review"
+GUARDIAN_REVIEW_SOURCE = "guardian"
+HOOK_SESSION_META_LIMIT = 1_048_576
 FORK_PREFIX = """Treat the task below as the sole current instruction. Earlier copied thread or delegation content is background context.
 
 Task:
@@ -2250,6 +2253,7 @@ def rename_plan(row: sqlite3.Row, title: str) -> dict[str, Any]:
 
 AUDIT_OBSERVATIONS_SCHEMA_VERSION = 1
 AUDIT_LOOKUP_STATES = {"archived", "not_archived", "missing", "error"}
+AUDITABLE_STATUSES = ("todo", "active", "blocked")
 AUDIT_TASK_FIELDS = (
     "id",
     "session_id",
@@ -2329,13 +2333,15 @@ def parse_audit_observations(text: str) -> dict[str, dict[str, str]]:
     return observations
 
 
-def active_audit_tasks(connection: sqlite3.Connection) -> list[dict[str, Any]]:
+def auditable_tasks(connection: sqlite3.Connection) -> list[dict[str, Any]]:
     fields = ",".join(AUDIT_TASK_FIELDS)
+    placeholders = ",".join("?" for _ in AUDITABLE_STATUSES)
     return [
         dict(row)
         for row in connection.execute(
-            f"SELECT {fields} FROM thread WHERE status='active' "
-            "ORDER BY session_id,id"
+            f"SELECT {fields} FROM thread WHERE status IN ({placeholders}) "
+            "ORDER BY session_id,id",
+            AUDITABLE_STATUSES,
         )
     ]
 
@@ -2348,11 +2354,12 @@ def audit_plan_token(
     if not affected_tasks:
         return None
     payload = {
-        "version": 1,
+        "version": 2,
         "tasks": [
             {
                 "id": task["id"],
                 "session_id": task["session_id"],
+                "status": task["status"],
                 "updated": task["updated"],
                 "lookup_state": observations.get(
                     task["session_id"], {"state": "unobserved"}
@@ -2371,7 +2378,7 @@ def audit_report(
     connection: sqlite3.Connection,
     observations: Optional[dict[str, dict[str, str]]],
 ) -> dict[str, Any]:
-    active_tasks = active_audit_tasks(connection)
+    active_tasks = auditable_tasks(connection)
     report: dict[str, Any] = {
         "phase": "lookup_required" if observations is None else "complete",
         "applied": False,
@@ -2430,7 +2437,7 @@ def emit_audit(report: dict[str, Any], as_json: bool) -> None:
     if report["phase"] == "lookup_required":
         print(
             f"Codex archive lookup required for "
-            f"{len(report['active_tasks'])} active task(s)."
+            f"{len(report['active_tasks'])} auditable task(s)."
         )
         for task in report["active_tasks"]:
             print(f"- {task['title']} [{task['id']}] ({task['session_id']})")
@@ -2441,7 +2448,7 @@ def emit_audit(report: dict[str, Any], as_json: bool) -> None:
         for task in report["affected_tasks"]:
             print(f"- {task['title']} [{task['id']}] ({task['session_id']})")
     else:
-        print("No active ledger tasks have confirmed archived Codex threads.")
+        print("No auditable ledger tasks have confirmed archived Codex threads.")
     if report["unresolved"]:
         print("Unresolved Codex archive lookups:")
         for item in report["unresolved"]:
@@ -2831,6 +2838,39 @@ def thread_context(connection: sqlite3.Connection, thread_id: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+def is_guardian_review_hook(payload: dict[str, Any]) -> bool:
+    if payload.get("model") == GUARDIAN_REVIEW_MODEL:
+        return True
+
+    transcript_path = payload.get("transcript_path")
+    if not isinstance(transcript_path, str) or not transcript_path:
+        return False
+    try:
+        with Path(transcript_path).open(encoding="utf-8") as stream:
+            first_line = stream.readline(HOOK_SESSION_META_LIMIT + 1)
+    except (OSError, UnicodeError):
+        return False
+    if len(first_line) > HOOK_SESSION_META_LIMIT:
+        return False
+    try:
+        metadata = json.loads(first_line)
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(metadata, dict) or metadata.get("type") != "session_meta":
+        return False
+    session = metadata.get("payload")
+    if not isinstance(session, dict):
+        return False
+    source = session.get("source")
+    if not isinstance(source, dict):
+        return False
+    subagent = source.get("subagent")
+    return (
+        isinstance(subagent, dict)
+        and subagent.get("other") == GUARDIAN_REVIEW_SOURCE
+    )
+
+
 def handle_hook() -> None:
     connection: Optional[sqlite3.Connection] = None
     event: Optional[str] = None
@@ -2844,6 +2884,8 @@ def handle_hook() -> None:
         event = payload.get("hook_event_name")
         external_session_id = payload.get("session_id")
         if not isinstance(event, str) or not isinstance(external_session_id, str):
+            return
+        if is_guardian_review_hook(payload):
             return
         if event == "UserPromptSubmit":
             prompt = payload.get("prompt")

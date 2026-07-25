@@ -158,7 +158,7 @@ class IntegrationRunnerContractTest(unittest.TestCase):
             )
 
         self.assertEqual(result["scenario"], "archived-session-audit")
-        self.assertEqual(result["scenario_version"], 1)
+        self.assertEqual(result["scenario_version"], 2)
         self.assertTrue(result["applied"]["applied"])
         self.assertEqual(result["archived_thread"]["status"], "done")
         self.assertEqual(result["rerun"]["affected_tasks"], [])
@@ -264,7 +264,7 @@ class IntegrationRunnerContractTest(unittest.TestCase):
         self.assertIn("CREATION_BOOTSTRAP_SCENARIO_VERSION = 3", lifecycle)
         self.assertIn("DASHBOARD_SCENARIO_VERSION = 12", lifecycle)
         self.assertIn("RENAME_SCENARIO_VERSION = 2", lifecycle)
-        self.assertIn("AUDIT_SCENARIO_VERSION = 1", lifecycle)
+        self.assertIn("AUDIT_SCENARIO_VERSION = 2", lifecycle)
 
 
 if __name__ == "__main__":
