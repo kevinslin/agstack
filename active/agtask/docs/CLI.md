@@ -76,13 +76,15 @@ command:
 Resolve creation settings from built-in defaults, configuration files, and
 explicit flags. This command does not create or open the ledger. It returns the
 resolved execution environment and any configured `OnCreate` entry in
-`hook_prompts`.
+`hook_prompts`. Pass `--task` to additionally build the exact initial prompt
+and the next Codex app tool call.
 
 ```bash
 python3 "$AGTASK" resolve-create \
-  --mode fork --kind child --project agtask --title agtask/bootstrap-title \
+  --mode clean --kind child --project agtask --title agtask/bootstrap-title \
   --parent-session-id 019f-parent \
-  --worktree true --model gpt-5.6-sol --nopin --json
+  --worktree false --model gpt-5.6-sol --thinking high --nopin \
+  --task "Implement the bounded task." --project-id saved-project-id --json
 ```
 
 | Flag | Values and behavior |
@@ -94,6 +96,9 @@ python3 "$AGTASK" resolve-create \
 | `--title <text>` | Required non-empty one-line resolved title without surrounding whitespace. |
 | `--worktree <boolean>` | `true` or `false`. Built-in default: `false`. |
 | `--model <name>` | Non-empty model name, or `inherit` to omit an explicit model. Built-in default: `inherit`. |
+| `--thinking <level>` | Optional reasoning override: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, `ultra`, or `inherit`. Requires `--task`. |
+| `--task <text>` | Opt into the complete clean-child creation plan. The resolved task must contain non-whitespace content; its bytes are otherwise preserved. |
+| `--project-id <id>` | Saved Codex project ID. Required with `--task` in clean mode so `next_tool` is directly executable. |
 | `--pin <boolean>` | `true` or `false`. Built-in default: `true`. |
 | `--nopin` | Shorthand for `--pin false`. |
 
@@ -110,6 +115,14 @@ The result contains a newly generated canonical UUIDv4 `id`, plus `mode`,
 as the final child-prompt block. Environment type is
 `worktree` when `worktree=true`, `same-directory` for a fork without a
 worktree, and `local` otherwise.
+
+When `--task` is present for a clean child, the result also contains `thinking`,
+`include_thinking`, and `creation_plan`. The exact prompt lives at
+`creation_plan.next_tool.arguments.prompt`, including configured `OnCreate`
+instructions and the canonical final bootstrap trailer.
+`creation_plan.next_tool` is a directly executable `create_thread` call. Fork
+and main workflows retain their existing behavior. Legacy calls without
+`--task` retain their existing JSON shape.
 
 ## `init`
 
@@ -487,7 +500,8 @@ python3 "$AGTASK" audit \
   --json
 ```
 
-If any active task has a positive `archived` observation, the result has
+If any `todo`, `active`, or `blocked` task has a positive `archived`
+observation, the result has
 `phase: "confirmation_required"`, lists the exact `affected_tasks`, and returns
 a deterministic `plan_token`; no state has changed. The caller must show that
 set and obtain explicit user confirmation. Declining, omitting, or being unable
@@ -506,13 +520,14 @@ python3 "$AGTASK" audit \
 The apply phase begins an immediate SQLite transaction, rebuilds the candidate
 set, and rejects a stale or mismatched token before writing. A refreshed result
 that no longer contains archive candidates is a read-only no-op. Each
-still-active candidate moves to the existing terminal `done` state, receives one shared
-`closed`/`updated` timestamp, and appends `status:active->done` followed by
+still-auditable candidate moves to the existing terminal `done` state, receives
+one shared `closed`/`updated` timestamp, and appends
+`status:<previous>->done` followed by
 `archival:codex-thread-archived`. It does not acquire a merge claim or surface
 close hooks because it reconciles a Codex thread that is already archived.
-Tasks in any non-active status are ignored. Re-running discovery or planning is
-read-only, and re-running after a successful apply finds no matching active
-candidate.
+Terminal tasks and fenced `merging` tasks are ignored. Re-running discovery or
+planning is read-only, and re-running after a successful apply finds no
+matching auditable candidate.
 
 | Flag | Values and behavior |
 | --- | --- |
@@ -521,7 +536,7 @@ candidate.
 | `--json` | Emit the structured protocol result. Human output lists lookup requests, affected tasks, and unresolved sessions. |
 
 Codex lookup requests always use `thread.session_id`; affected rows retain their
-logical `thread.id`. Observations for sessions that are no longer active are
+logical `thread.id`. Observations for sessions that are no longer auditable are
 returned in `ignored_observations`, which makes a repeated audit safe without
 silently reclassifying another task.
 
@@ -639,6 +654,12 @@ in `session_id`. Supported mappings are:
 | `UserPromptSubmit` | Validate an exact final bootstrap envelope and render allowlisted child action context. A valid version-2 prompt atomically binds its logical ID to an untracked real session and records the real user turn under that logical ID; otherwise recording requires a tracked payload session. Description remains stable. Conflicting/copied bindings are silent. |
 | `Stop` | Record the final assistant message and update lifecycle status without replacing the description. |
 | `PostCompact` | Append `compaction:manual` or `compaction:auto` metadata. |
+
+Hooks from Codex guardian approval-review sessions are ignored before session
+lookup or output. Detection uses the reserved `codex-auto-review` model and,
+to cover parent-model fallback, the Codex transcript metadata marker
+`session_meta.payload.source.subagent.other = "guardian"`. Prompt text is not
+used as the discriminator.
 
 Missing ledgers and untracked sessions are ignored unless a valid version-2
 creation prompt authorizes initialization and self-registration. Malformed payloads, unsafe permissions,

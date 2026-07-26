@@ -58,7 +58,7 @@ DASHBOARD_SCENARIO_VERSION = 12
 RENAME_SCENARIO_NAME = "current-task-rename"
 RENAME_SCENARIO_VERSION = 2
 AUDIT_SCENARIO_NAME = "archived-session-audit"
-AUDIT_SCENARIO_VERSION = 1
+AUDIT_SCENARIO_VERSION = 2
 
 
 def parse_args() -> argparse.Namespace:
@@ -1293,7 +1293,7 @@ def verify_archived_session_audit(
     discovery = run_cli(
         cli, "audit", cwd=cwd, environment=audit_environment
     )
-    expected_active_sessions = {fixture[1] for fixture in fixtures[:-1]}
+    expected_auditable_sessions = {fixture[1] for fixture in fixtures}
     require(
         discovery["phase"] == "lookup_required"
         and discovery["applied"] is False
@@ -1302,12 +1302,12 @@ def verify_archived_session_audit(
     )
     require(
         {task["session_id"] for task in discovery["active_tasks"]}
-        == expected_active_sessions
+        == expected_auditable_sessions
         and {
             request["session_id"] for request in discovery["lookup_requests"]
         }
-        == expected_active_sessions,
-        "audit discovery did not request exactly the active real sessions",
+        == expected_auditable_sessions,
+        "audit discovery did not request exactly the auditable real sessions",
     )
 
     observations = json.dumps(
@@ -1322,6 +1322,7 @@ def verify_archived_session_audit(
                     "state": "error",
                     "detail": "integration lookup unavailable",
                 },
+                {"session_id": fixtures[4][1], "state": "archived"},
                 {"session_id": "audit-session-old", "state": "archived"},
             ],
         },
@@ -1347,7 +1348,7 @@ def verify_archived_session_audit(
         plan["phase"] == "confirmation_required"
         and plan["applied"] is False
         and [task["session_id"] for task in plan["affected_tasks"]]
-        == [fixtures[0][1]]
+        == [fixtures[0][1], fixtures[4][1]]
         and {
             (item["session_id"], item["lookup_state"])
             for item in plan["unresolved"]
@@ -1376,6 +1377,8 @@ def verify_archived_session_audit(
     )
     archived_thread = query_thread(audit_database, fixtures[0][0])
     archived_rollouts = query_rollouts(audit_database, fixtures[0][0])
+    blocked_archived_thread = query_thread(audit_database, fixtures[4][0])
+    blocked_archived_rollouts = query_rollouts(audit_database, fixtures[4][0])
     require(
         applied["phase"] == "complete"
         and applied["applied"] is True
@@ -1397,8 +1400,20 @@ def verify_archived_session_audit(
         query_thread(audit_database, fixtures[1][0])["status"] == "active"
         and query_thread(audit_database, fixtures[2][0])["status"] == "active"
         and query_thread(audit_database, fixtures[3][0])["status"] == "active"
-        and query_thread(audit_database, fixtures[4][0])["status"] == "blocked",
-        "audit mutated a current, missing, failed, or non-active task",
+        and blocked_archived_thread is not None
+        and blocked_archived_thread["status"] == "done"
+        and bool(blocked_archived_thread["closed"]),
+        "audit did not preserve unresolved tasks or close the blocked archive",
+    )
+    require(
+        [row["message"] for row in blocked_archived_rollouts]
+        == [
+            "thread.created",
+            "status:active->blocked",
+            "status:blocked->done",
+            "archival:codex-thread-archived",
+        ],
+        "confirmed audit did not retain blocked archive lifecycle evidence",
     )
 
     rerun = run_cli(
@@ -1425,6 +1440,8 @@ def verify_archived_session_audit(
         "applied": applied,
         "archived_thread": archived_thread,
         "archived_rollouts": archived_rollouts,
+        "blocked_archived_thread": blocked_archived_thread,
+        "blocked_archived_rollouts": blocked_archived_rollouts,
         "rerun": rerun,
     }
 

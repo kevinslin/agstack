@@ -18,6 +18,8 @@ Also invoke `$mem` when inspecting, validating, or materializing a bundled file 
 
 When project or workspace instructions require `$mem` for context lookup, invoke it even without durable-output intent. Context lookup is read-only: select the configured base, resolve its schemas, infer likely nodes from their descriptions, and search existing knowledge before inspecting source.
 
+Treat configuration as optional. Before starting a managed operation, check for the nearest ancestor `.mem.yaml` and `$HOME/.mem.yaml`. If neither exists, stop the `$mem` workflow successfully and continue the underlying task without `$mem`. Do not ask the user to create configuration or report a blocker solely because configuration is absent.
+
 Do not auto-write merely because information might be useful later. Require explicit durable-output intent or an applicable project instruction. Do not use `$mem` for transient answers or files whose repository-owned workflow and exact destination the user already specified.
 
 ## Operating Modes
@@ -81,15 +83,16 @@ Use `python3 ./scripts/mem.py config show --pretty` instead of hand-parsing conf
 ## Managed Workflow
 
 1. Parse the request into a context lookup, read, write, update, delete, schema-inspection, or materialization operation.
-2. Load merged configuration.
-3. Select an explicit base name or alias when provided. Otherwise run `mem.py route`.
-4. Stop for clarification when routing returns `ambiguous` or `no_match`.
-5. Resolve every configured schema for the selected base before operating.
-6. Infer the most likely schema nodes from their descriptions and derive concrete candidate paths. This is model judgment; do not add a separate path-ranking service.
-7. Search candidate paths, filenames, headings, and body text before creating a near-duplicate.
-8. Materialize only that node. Do not create sibling placeholders or an entire schema tree.
-9. Read the existing target before editing and preserve user-owned sections.
-10. Verify the expected path, containment, route metadata, protected sections, and changelog.
+2. Check for the nearest ancestor `.mem.yaml` and `$HOME/.mem.yaml`. If neither exists, exit this workflow successfully and continue the underlying task without `$mem`.
+3. Load merged configuration.
+4. Select an explicit base name or alias when provided. Otherwise run `mem.py route`.
+5. Stop for clarification when routing returns `ambiguous` or `no_match`.
+6. Resolve every configured schema for the selected base before operating.
+7. Infer the most likely schema nodes from their descriptions and derive concrete candidate paths. This is model judgment; do not add a separate path-ranking service.
+8. Search candidate paths, filenames, headings, and body text before creating a near-duplicate.
+9. Materialize only that node. Do not create sibling placeholders or an entire schema tree.
+10. Read the existing target before editing and preserve user-owned sections.
+11. Verify the expected path, containment, route metadata, protected sections, and changelog.
 
 For complete knowledge read/write/delete rules, read `./references/knowledge-workflow.md`.
 For schema fields, composition, authoring, and CLI behavior, read `./references/schema-workflow.md`.

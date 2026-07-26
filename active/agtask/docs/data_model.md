@@ -433,7 +433,9 @@ stateDiagram-v2
     merging --> active: cancel or stale lease
     merging --> blocked: cancel or stale lease
     merging --> done: fenced close
+    todo --> done: confirmed archived-session audit
     active --> done: confirmed archived-session audit
+    blocked --> done: confirmed archived-session audit
     done --> active: reopen
     todo --> drop: explicit status
     active --> drop: explicit status
@@ -446,8 +448,9 @@ The explicit `status` command may move any nonterminal thread among `todo`,
 first be closed or have its claim released. A terminal thread must be reopened
 before other explicit updates. Exact-pair re-registration is verification-only
 and does not alter lifecycle state, including `merging`, `done`, and `drop`.
-The confirmed archive audit is the only direct `active -> done` path; its
-unchanged plan token binds the user-reviewed active row snapshot to the write.
+The confirmed archive audit is the only direct path from `todo`, `active`, or
+`blocked` to `done`; its unchanged plan token binds the user-reviewed
+auditable row snapshot to the write.
 
 Status and timestamp rules are:
 
@@ -495,9 +498,9 @@ Status and timestamp rules are:
   visible transition; cancel or stale reaping restores that latest value.
 - A fenced `close` sets `status = 'done'` and gives `updated`, `closed`, the
   `status:merging->done` rollout, and the finalization rollout the same timestamp.
-- A confirmed archive audit moves only a still-`active` row whose Codex
-  `session_id` was positively observed as archived to `done`. It gives
-  `updated`, `closed`, `status:active->done`, and
+- A confirmed archive audit moves only a still-`todo`, `active`, or `blocked`
+  row whose Codex `session_id` was positively observed as archived to `done`.
+  It gives `updated`, `closed`, `status:<previous>->done`, and
   `archival:codex-thread-archived` one timestamp. Missing, omitted, failed, or
   non-archived observations never mutate a row. The audit does not create a
   merge claim or finalization event because the underlying Codex thread is
@@ -527,6 +530,14 @@ app-action `threadId` values, and deep links continue to use the session ID.
 | `Stop` | Record one `assistant` rollout by Codex turn ID. | Preserve description; select `blocked` for an exact leading `Blocked:`, otherwise `active`, unless terminal. While merging, keep the visible status and update the claim's underlying state. | None. |
 | `PostCompact` | Append one deterministic `meta` rollout. | None. | None. |
 | `SessionStart` | Read the thread and five newest rollouts. Its payload has no prompt, so it cannot parse bootstrap metadata. | None. | Render tracked context for supported start sources. |
+
+Before event dispatch, the hook adapter ignores Codex guardian approval-review
+sessions. It first checks the reserved `codex-auto-review` model metadata, then
+uses the Codex-owned transcript's
+`session_meta.payload.source.subagent.other = "guardian"` marker so fallback
+reviewers using the parent model are also excluded. Prompt wording is not part
+of this classification. Ignored reviewer hooks create no rollout, status or
+timestamp update, bootstrap registration, or additional context.
 
 Hooks are silent for a missing ledger or untracked thread unless a valid
 version-2 creation envelope authorizes initialization and child registration.
@@ -582,13 +593,13 @@ and apply require `--session-id` because the plan contains a Codex app action.
 An untracked
 `close --if-tracked --session-id ... --json` result can return the requested
 session ID but does not fabricate a logical ID.
-`audit --json` returns active task snapshots and one Codex lookup request per
+`audit --json` returns auditable task snapshots and one Codex lookup request per
 real `session_id`. A strict version-1 observation document classifies each
 session as `archived`, `not_archived`, `missing`, or `error`; it is transient
 input and is never persisted. Planning returns `affected_tasks`, `unresolved`,
 `ignored_observations`, and an exact `plan_token`. Confirmed apply recomputes
-that token under `BEGIN IMMEDIATE` before writing, so a changed active row is
-not silently archived.
+that token under `BEGIN IMMEDIATE` before writing, so a changed auditable row
+is not silently archived.
 `resolve-create`, a newly inserted direct `add` row, and a newly inserted
 parent-side `register` row also return the pending or triggered `OnCreate`
 prompt. An exact add retry and a parent registration retry after hook-owned

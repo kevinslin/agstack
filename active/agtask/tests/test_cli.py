@@ -156,6 +156,109 @@ class CliIntegrationTest(unittest.TestCase):
         )
         return output["hookSpecificOutput"]["additionalContext"]
 
+    def test_guardian_review_hooks_are_ignored_using_hook_metadata(self) -> None:
+        logical_id = fixture_creation_id("guardian-hook-filter")
+        session_id = "tracked-session"
+        self.register(
+            logical_id,
+            session_id=session_id,
+            title="agtask/guardian-hook-filter",
+        )
+        before = self.show(logical_id)
+
+        preferred_model = self.hook(
+            {
+                "hook_event_name": "UserPromptSubmit",
+                "session_id": session_id,
+                "turn_id": "guardian-preferred-model",
+                "model": "codex-auto-review",
+                "permission_mode": "bypassPermissions",
+                "prompt": (
+                    "The following is the Codex agent history added since your "
+                    "last approval assessment."
+                ),
+            }
+        )
+        self.assertEqual((preferred_model.stdout, preferred_model.stderr), ("", ""))
+        self.assertEqual(self.show(logical_id), before)
+
+        guardian_transcript = self.root / "guardian-review.jsonl"
+        guardian_transcript.write_text(
+            json.dumps(
+                {
+                    "type": "session_meta",
+                    "payload": {
+                        "source": {"subagent": {"other": "guardian"}},
+                    },
+                }
+            )
+            + "\n"
+        )
+        fallback_model = self.hook(
+            {
+                "hook_event_name": "UserPromptSubmit",
+                "session_id": session_id,
+                "turn_id": "guardian-fallback-model",
+                "model": "parent-model",
+                "permission_mode": "bypassPermissions",
+                "transcript_path": str(guardian_transcript),
+                "prompt": (
+                    "The following is the Codex agent history whose request "
+                    "action you are assessing."
+                ),
+            }
+        )
+        self.assertEqual((fallback_model.stdout, fallback_model.stderr), ("", ""))
+        self.assertEqual(self.show(logical_id), before)
+
+        guardian_stop = self.hook(
+            {
+                "hook_event_name": "Stop",
+                "session_id": session_id,
+                "turn_id": "guardian-stop",
+                "model": "parent-model",
+                "permission_mode": "bypassPermissions",
+                "transcript_path": str(guardian_transcript),
+                "last_assistant_message": '{"outcome":"allow"}',
+            }
+        )
+        self.assertEqual((guardian_stop.stdout, guardian_stop.stderr), ("", ""))
+        self.assertEqual(self.show(logical_id), before)
+
+        ordinary_subagent_transcript = self.root / "ordinary-subagent.jsonl"
+        ordinary_subagent_transcript.write_text(
+            json.dumps(
+                {
+                    "type": "session_meta",
+                    "payload": {
+                        "source": {"subagent": {"other": "explorer"}},
+                    },
+                }
+            )
+            + "\n"
+        )
+        ordinary = self.hook(
+            {
+                "hook_event_name": "UserPromptSubmit",
+                "session_id": session_id,
+                "turn_id": "ordinary-subagent-turn",
+                "model": "parent-model",
+                "permission_mode": "bypassPermissions",
+                "transcript_path": str(ordinary_subagent_transcript),
+                "prompt": "Write a compact database proof.",
+            }
+        )
+        self.assertIn("Tracked agtask thread", self.hook_context(ordinary))
+        state = self.show(logical_id)
+        self.assertEqual(
+            [
+                (row["turn_id"], row["message"])
+                for row in state["rollouts"]
+                if row["role"] == "user"
+            ],
+            [("ordinary-subagent-turn", "Write a compact database proof.")],
+        )
+
     def connect(self, path: Path | None = None) -> sqlite3.Connection:
         connection = sqlite3.connect(path or self.db_path)
         connection.row_factory = sqlite3.Row
@@ -399,6 +502,113 @@ class CliIntegrationTest(unittest.TestCase):
                         CREATION_ID, creation_id
                     )
                 self.assertEqual(actual, expected)
+        self.assertFalse(self.db_path.exists())
+
+    def test_resolve_create_builds_exact_clean_creation_plan(self) -> None:
+        result = json.loads(
+            self.run_cli(
+                "resolve-create",
+                "--title",
+                "agtask/database-proof",
+                "--parent-session-id",
+                "parent-thread",
+                "--project",
+                "agtask",
+                "--task",
+                "Write a compact database proof.",
+                "--project-id",
+                "saved-project-id",
+                "--model",
+                "gpt-5.6-sol",
+                "--thinking",
+                "high",
+                "--json",
+            ).stdout
+        )
+        creation_id = result["id"]
+        trailer = BOOTSTRAP_TRAILER.replace(CREATION_ID, creation_id)
+        prompt = "Task:\nWrite a compact database proof.\n\n" + trailer
+        self.assertEqual(result["thinking"], "high")
+        self.assertTrue(result["include_thinking"])
+        self.assertEqual(
+            result["creation_plan"],
+            {
+                "version": 1,
+                "next_tool": {
+                    "name": "create_thread",
+                    "arguments": {
+                        "prompt": prompt,
+                        "model": "gpt-5.6-sol",
+                        "thinking": "high",
+                        "target": {
+                            "type": "project",
+                            "projectId": "saved-project-id",
+                            "environment": {"type": "local"},
+                        },
+                    },
+                },
+            },
+        )
+        self.assertFalse(self.db_path.exists())
+
+    def test_resolve_create_plan_preserves_resolved_task_bytes(self) -> None:
+        result = json.loads(
+            self.run_cli(
+                "resolve-create",
+                "--title",
+                "agtask/database-proof",
+                "--parent-session-id",
+                "parent-thread",
+                "--task",
+                "  Write a compact database proof.\n",
+                "--project-id",
+                "saved-project-id",
+                "--json",
+            ).stdout
+        )
+        creation_id = result["id"]
+        trailer = BOOTSTRAP_TRAILER.replace(CREATION_ID, creation_id)
+        prompt = "Task:\n  Write a compact database proof.\n\n\n" + trailer
+        self.assertEqual(result["thinking"], "inherit")
+        self.assertFalse(result["include_thinking"])
+        self.assertEqual(
+            result["creation_plan"]["next_tool"]["arguments"]["prompt"],
+            prompt,
+        )
+        self.assertFalse(self.db_path.exists())
+
+    def test_resolve_create_plan_appends_configured_oncreate_prompt(self) -> None:
+        config = self.write_config(
+            self.root,
+            {"hooks": {"OnCreate": {"prompt": "Run the project preflight."}}},
+        )
+        result = json.loads(
+            self.run_cli(
+                "resolve-create",
+                "--title",
+                "agtask/database-proof",
+                "--parent-session-id",
+                "parent-thread",
+                "--project",
+                "agtask",
+                "--task",
+                "Write a compact database proof.",
+                "--project-id",
+                "saved-project-id",
+                "--json",
+                cwd=self.root,
+            ).stdout
+        )
+        creation_id = result["id"]
+        trailer = BOOTSTRAP_TRAILER.replace(CREATION_ID, creation_id)
+        self.assertEqual(
+            result["creation_plan"]["next_tool"]["arguments"]["prompt"],
+            "Task:\nWrite a compact database proof."
+            "\n\nConfigured OnCreate prompt:\nRun the project preflight."
+            "\n\n"
+            + trailer,
+        )
+        self.assertEqual(result["hook_prompts"][0]["source"], str(config.resolve()))
         self.assertFalse(self.db_path.exists())
 
     def test_bootstrap_protocol_is_exact_typed_allowlisted_and_fail_open(self) -> None:
@@ -1466,6 +1676,75 @@ class CliIntegrationTest(unittest.TestCase):
             with self.subTest(title=title):
                 result = self.run_cli(
                     "resolve-create", "--title", title, check=False
+                )
+                self.assertEqual(result.returncode, 1)
+                self.assertIn(message, result.stderr)
+        self.assertFalse(self.db_path.exists())
+
+    def test_resolve_create_rejects_incomplete_or_invalid_creation_plans(self) -> None:
+        cases = [
+            (
+                (
+                    "--parent-session-id",
+                    "parent-thread",
+                    "--task",
+                    "Write a compact database proof.",
+                ),
+                "clean creation with --task requires --project-id",
+            ),
+            (
+                (
+                    "--parent-session-id",
+                    "parent-thread",
+                    "--task",
+                    "Write a compact database proof.",
+                    "--project-id",
+                    " padded ",
+                ),
+                "project_id must not contain surrounding whitespace",
+            ),
+            (
+                (
+                    "--kind",
+                    "main",
+                    "--task",
+                    "Write a compact database proof.",
+                ),
+                "--task is only valid for child creation",
+            ),
+            (
+                (
+                    "--mode",
+                    "fork",
+                    "--parent-session-id",
+                    "parent-thread",
+                    "--task",
+                    "Write a compact database proof.",
+                ),
+                "--task is only supported for clean child creation",
+            ),
+            (
+                (
+                    "--parent-session-id",
+                    "parent-thread",
+                    "--project-id",
+                    "saved-project-id",
+                ),
+                "--project-id and --thinking require --task",
+            ),
+            (
+                ("--parent-session-id", "parent-thread", "--thinking", "high"),
+                "--project-id and --thinking require --task",
+            ),
+        ]
+        for arguments, message in cases:
+            with self.subTest(arguments=arguments):
+                result = self.run_cli(
+                    "resolve-create",
+                    "--title",
+                    "agtask/database-proof",
+                    *arguments,
+                    check=False,
                 )
                 self.assertEqual(result.returncode, 1)
                 self.assertIn(message, result.stderr)
@@ -3709,6 +3988,7 @@ class CliIntegrationTest(unittest.TestCase):
             {task["session_id"] for task in discovery["active_tasks"]},
             {
                 "session-archived",
+                "session-blocked",
                 "session-current",
                 "session-missing",
                 "session-failed",
@@ -3734,6 +4014,7 @@ class CliIntegrationTest(unittest.TestCase):
                         "state": "error",
                         "detail": "remote host unavailable",
                     },
+                    {"session_id": "session-blocked", "state": "archived"},
                     {"session_id": "already-closed", "state": "archived"},
                 ],
             },
@@ -3749,7 +4030,7 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertRegex(plan["plan_token"], r"^[0-9a-f]{64}$")
         self.assertEqual(
             [task["session_id"] for task in plan["affected_tasks"]],
-            ["session-archived"],
+            ["session-archived", "session-blocked"],
         )
         self.assertEqual(
             [(item["session_id"], item["lookup_state"]) for item in plan["unresolved"]],
@@ -3822,7 +4103,7 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertTrue(applied["applied"])
         self.assertEqual(
             [task["session_id"] for task in applied["affected_tasks"]],
-            ["session-archived"],
+            ["session-archived", "session-blocked"],
         )
         archived_state = self.show("audit-archived")
         self.assertEqual(archived_state["status"], "done")
@@ -3838,7 +4119,18 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertEqual(self.show("audit-current")["status"], "active")
         self.assertEqual(self.show("audit-missing")["status"], "active")
         self.assertEqual(self.show("audit-failed")["status"], "active")
-        self.assertEqual(self.show("audit-blocked")["status"], "blocked")
+        blocked_archived_state = self.show("audit-blocked")
+        self.assertEqual(blocked_archived_state["status"], "done")
+        self.assertIsNotNone(blocked_archived_state["closed"])
+        self.assertEqual(
+            [row["message"] for row in reversed(blocked_archived_state["rollouts"])],
+            [
+                "thread.created",
+                "status:active->blocked",
+                "status:blocked->done",
+                "archival:codex-thread-archived",
+            ],
+        )
 
         rerun = json.loads(
             self.run_cli(

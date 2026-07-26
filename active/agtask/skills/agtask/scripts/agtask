@@ -37,6 +37,16 @@ MERGE_RETRY_MIN_MS = 750
 MERGE_RETRY_JITTER_MS = 750
 DASHBOARD_SORT_FIELDS = ("created", "updated", "closed")
 DASHBOARD_DIRECTIONS = ("asc", "desc")
+THINKING_LEVELS = (
+    "none",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+    "ultra",
+)
 CONFIG_FILENAME = ".agtask.json"
 CONFIG_TOP_LEVEL_KEYS = {"defaults", "hooks"}
 CONFIG_DEFAULT_KEYS = {"mode", "kind", "project", "worktree", "model", "pin"}
@@ -53,6 +63,9 @@ OUTCOME_CONTRACT = (
     "Outcome contract: Lead the final response with the outcome. If the task is "
     "truly blocked, start the final response with exactly `Blocked:`."
 )
+GUARDIAN_REVIEW_MODEL = "codex-auto-review"
+GUARDIAN_REVIEW_SOURCE = "guardian"
+HOOK_SESSION_META_LIMIT = 1_048_576
 FORK_PREFIX = """Treat the task below as the sole current instruction. Earlier copied thread or delegation content is background context.
 
 Task:
@@ -1057,6 +1070,60 @@ def prompt_hooks(configuration: dict[str, Any], event: str) -> list[dict[str, st
             "source": configuration["hook_sources"][event],
         }
     ]
+
+
+def build_creation_prompt(
+    task: str,
+    *,
+    hook_prompts: list[dict[str, str]],
+    trailer: str,
+) -> str:
+    require_nonempty(task, "task")
+    prompt = CLEAN_PREFIX + task
+    for hook in hook_prompts:
+        prompt += "\n\nConfigured OnCreate prompt:\n" + hook["prompt"]
+    return prompt + "\n\n" + trailer
+
+
+def creation_plan(
+    *,
+    task: str,
+    project_id: Optional[str],
+    environment: dict[str, str],
+    model: str,
+    thinking: str,
+    hook_prompts: list[dict[str, str]],
+    trailer: str,
+) -> dict[str, Any]:
+    prompt = build_creation_prompt(
+        task,
+        hook_prompts=hook_prompts,
+        trailer=trailer,
+    )
+    delivery_arguments: dict[str, Any] = {"prompt": prompt}
+    if model != "inherit":
+        delivery_arguments["model"] = model
+    if thinking != "inherit":
+        delivery_arguments["thinking"] = thinking
+
+    if project_id is None:
+        raise TaskError("clean creation with --task requires --project-id")
+    require_nonempty(project_id, "project_id")
+    if project_id != project_id.strip():
+        raise TaskError("project_id must not contain surrounding whitespace")
+    delivery_arguments["target"] = {
+        "type": "project",
+        "projectId": project_id,
+        "environment": environment,
+    }
+
+    return {
+        "version": 1,
+        "next_tool": {
+            "name": "create_thread",
+            "arguments": delivery_arguments,
+        },
+    }
 
 
 def default_global_configuration() -> dict[str, Any]:
@@ -2186,6 +2253,7 @@ def rename_plan(row: sqlite3.Row, title: str) -> dict[str, Any]:
 
 AUDIT_OBSERVATIONS_SCHEMA_VERSION = 1
 AUDIT_LOOKUP_STATES = {"archived", "not_archived", "missing", "error"}
+AUDITABLE_STATUSES = ("todo", "active", "blocked")
 AUDIT_TASK_FIELDS = (
     "id",
     "session_id",
@@ -2265,13 +2333,15 @@ def parse_audit_observations(text: str) -> dict[str, dict[str, str]]:
     return observations
 
 
-def active_audit_tasks(connection: sqlite3.Connection) -> list[dict[str, Any]]:
+def auditable_tasks(connection: sqlite3.Connection) -> list[dict[str, Any]]:
     fields = ",".join(AUDIT_TASK_FIELDS)
+    placeholders = ",".join("?" for _ in AUDITABLE_STATUSES)
     return [
         dict(row)
         for row in connection.execute(
-            f"SELECT {fields} FROM thread WHERE status='active' "
-            "ORDER BY session_id,id"
+            f"SELECT {fields} FROM thread WHERE status IN ({placeholders}) "
+            "ORDER BY session_id,id",
+            AUDITABLE_STATUSES,
         )
     ]
 
@@ -2284,11 +2354,12 @@ def audit_plan_token(
     if not affected_tasks:
         return None
     payload = {
-        "version": 1,
+        "version": 2,
         "tasks": [
             {
                 "id": task["id"],
                 "session_id": task["session_id"],
+                "status": task["status"],
                 "updated": task["updated"],
                 "lookup_state": observations.get(
                     task["session_id"], {"state": "unobserved"}
@@ -2307,7 +2378,7 @@ def audit_report(
     connection: sqlite3.Connection,
     observations: Optional[dict[str, dict[str, str]]],
 ) -> dict[str, Any]:
-    active_tasks = active_audit_tasks(connection)
+    active_tasks = auditable_tasks(connection)
     report: dict[str, Any] = {
         "phase": "lookup_required" if observations is None else "complete",
         "applied": False,
@@ -2366,7 +2437,7 @@ def emit_audit(report: dict[str, Any], as_json: bool) -> None:
     if report["phase"] == "lookup_required":
         print(
             f"Codex archive lookup required for "
-            f"{len(report['active_tasks'])} active task(s)."
+            f"{len(report['active_tasks'])} auditable task(s)."
         )
         for task in report["active_tasks"]:
             print(f"- {task['title']} [{task['id']}] ({task['session_id']})")
@@ -2377,7 +2448,7 @@ def emit_audit(report: dict[str, Any], as_json: bool) -> None:
         for task in report["affected_tasks"]:
             print(f"- {task['title']} [{task['id']}] ({task['session_id']})")
     else:
-        print("No active ledger tasks have confirmed archived Codex threads.")
+        print("No auditable ledger tasks have confirmed archived Codex threads.")
     if report["unresolved"]:
         print("Unresolved Codex archive lookups:")
         for item in report["unresolved"]:
@@ -2767,6 +2838,39 @@ def thread_context(connection: sqlite3.Connection, thread_id: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+def is_guardian_review_hook(payload: dict[str, Any]) -> bool:
+    if payload.get("model") == GUARDIAN_REVIEW_MODEL:
+        return True
+
+    transcript_path = payload.get("transcript_path")
+    if not isinstance(transcript_path, str) or not transcript_path:
+        return False
+    try:
+        with Path(transcript_path).open(encoding="utf-8") as stream:
+            first_line = stream.readline(HOOK_SESSION_META_LIMIT + 1)
+    except (OSError, UnicodeError):
+        return False
+    if len(first_line) > HOOK_SESSION_META_LIMIT:
+        return False
+    try:
+        metadata = json.loads(first_line)
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(metadata, dict) or metadata.get("type") != "session_meta":
+        return False
+    session = metadata.get("payload")
+    if not isinstance(session, dict):
+        return False
+    source = session.get("source")
+    if not isinstance(source, dict):
+        return False
+    subagent = source.get("subagent")
+    return (
+        isinstance(subagent, dict)
+        and subagent.get("other") == GUARDIAN_REVIEW_SOURCE
+    )
+
+
 def handle_hook() -> None:
     connection: Optional[sqlite3.Connection] = None
     event: Optional[str] = None
@@ -2780,6 +2884,8 @@ def handle_hook() -> None:
         event = payload.get("hook_event_name")
         external_session_id = payload.get("session_id")
         if not isinstance(event, str) or not isinstance(external_session_id, str):
+            return
+        if is_guardian_review_hook(payload):
             return
         if event == "UserPromptSubmit":
             prompt = payload.get("prompt")
@@ -3632,6 +3738,9 @@ def command_resolve_create(args: argparse.Namespace) -> None:
     require_nonempty(model, "model")
     if model != model.strip():
         raise TaskError("model must not contain surrounding whitespace")
+    thinking = resolve_repeated_input(
+        args.thinking, label="thinking", default="inherit"
+    )
 
     pin_values = list(args.pin or [])
     if args.nopin:
@@ -3670,26 +3779,43 @@ def command_resolve_create(args: argparse.Namespace) -> None:
     else:
         environment_type = "local"
 
-    emit(
-        {
-            "id": creation_id,
-            "mode": mode_value,
-            "kind": kind,
-            "project": project,
-            "title": title,
-            "worktree": worktree,
-            "model": model,
-            "pin": pin,
-            "bootstrap_args": bootstrap_arguments,
-            "bootstrap_trailer": bootstrap_trailer(
-                bootstrap_arguments, version=bootstrap_version
-            ),
-            "environment": {"type": environment_type},
-            "include_model": model != "inherit",
-            "hook_prompts": prompt_hooks(args.configuration, "OnCreate"),
-        },
-        args.json,
-    )
+    environment = {"type": environment_type}
+    hook_prompts = prompt_hooks(args.configuration, "OnCreate")
+    trailer = bootstrap_trailer(bootstrap_arguments, version=bootstrap_version)
+    result: dict[str, Any] = {
+        "id": creation_id,
+        "mode": mode_value,
+        "kind": kind,
+        "project": project,
+        "title": title,
+        "worktree": worktree,
+        "model": model,
+        "pin": pin,
+        "bootstrap_args": bootstrap_arguments,
+        "bootstrap_trailer": trailer,
+        "environment": environment,
+        "include_model": model != "inherit",
+        "hook_prompts": hook_prompts,
+    }
+    if args.task is not None:
+        if kind != "child":
+            raise TaskError("--task is only valid for child creation")
+        if mode_value != "clean":
+            raise TaskError("--task is only supported for clean child creation")
+        result["thinking"] = thinking
+        result["include_thinking"] = thinking != "inherit"
+        result["creation_plan"] = creation_plan(
+            task=args.task,
+            project_id=args.project_id,
+            environment=environment,
+            model=model,
+            thinking=thinking,
+            hook_prompts=hook_prompts,
+            trailer=trailer,
+        )
+    elif args.project_id is not None or thinking != "inherit":
+        raise TaskError("--project-id and --thinking require --task")
+    emit(result, args.json)
 
 
 def command_register(args: argparse.Namespace) -> None:
@@ -4342,6 +4468,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--worktree", choices=("true", "false"), action="append"
     )
     resolve_create.add_argument("--model", action="append")
+    resolve_create.add_argument(
+        "--thinking", choices=(*THINKING_LEVELS, "inherit"), action="append"
+    )
+    resolve_create.add_argument("--task")
+    resolve_create.add_argument("--project-id")
     resolve_create.add_argument("--pin", choices=("true", "false"), action="append")
     resolve_create.add_argument("--nopin", action="store_true")
     add_common_json(resolve_create)

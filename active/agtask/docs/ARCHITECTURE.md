@@ -352,6 +352,10 @@ one-line `title: str` envelope. Child creation emits version 2, which also
 requires a canonical UUIDv4 creation `id` plus nonempty `parent_session_id` and
 `project` strings. Each resolver call creates a new ID; orchestration reuses it
 for the whole creation attempt.
+For the default clean-child path, opt-in `--task` and `--project-id` inputs
+also return a versioned `creation_plan` with byte-exact prompt assembly and
+directly executable `create_thread` arguments. Calls without `--task` retain
+the legacy result shape used by advanced creation routes.
 Validation requires the envelope to be final, the JSON to be canonical and
 duplicate-free, every key to exist in the typed handler registry, and every
 value's exact Python type to match. The hook does not evaluate input, dispatch
@@ -424,6 +428,13 @@ platform vocabulary and always use the Codex session ID.
 | `Stop` | Record assistant rollout without replacing the description; exact leading `Blocked:` ordinarily transitions to `blocked`, other final results to `active`. While merging, keep the visible status and update only the claim's underlying state; done and drop remain terminal. | None |
 | `PostCompact` | Record deterministic `meta` compaction rollout | None |
 | `SessionStart` | Read the tracked thread and recent rollouts; never parse bootstrap metadata because the payload has no prompt | Current title, status, stable description, five recent rollouts, result contract |
+
+Before this mapping, the adapter rejects auxiliary guardian review sessions
+using hook metadata. The reserved `codex-auto-review` model is the fast path;
+the Codex-owned transcript's
+`session_meta.payload.source.subagent.other = "guardian"` marker covers
+reviewer fallback to the parent model. Rejected reviewer hooks do not resolve a
+ledger session, mutate lifecycle state, or inject task context.
 
 Hooks are silent for missing ledgers and untracked sessions except when an exact
 version-2 creation prompt initializes the ledger and registers its own real
@@ -503,7 +514,9 @@ stateDiagram-v2
     merging --> active: cancel or stale takeover restores prior state
     merging --> blocked: cancel or stale takeover restores prior state
     merging --> done: close --merge-token
+    todo --> done: confirmed audit of archived Codex thread
     active --> done: confirmed audit of archived Codex thread
+    blocked --> done: confirmed audit of archived Codex thread
     done --> active: reopen
     todo --> drop: explicit status
     active --> drop: explicit status
@@ -515,8 +528,8 @@ Every actual transition and successful tokenized close is recorded in the same
 transaction as current-state mutation. A normal tracked close reaches `done`
 only from `merging` with the live fencing token returned by `close --prepare`;
 archive reconciliation is the narrow exception and requires an unchanged
-confirmed audit plan for a still-active row. Repeating the current state is a
-no-op.
+confirmed audit plan for a `todo`, `active`, or `blocked` row. Repeating the
+current state is a no-op.
 
 ### Compaction and restoration
 

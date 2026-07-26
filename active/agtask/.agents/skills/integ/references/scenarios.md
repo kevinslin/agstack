@@ -317,29 +317,29 @@ SQLite CLI can call or transact with the Codex app.
 
 ## archived-session-audit
 
-Scenario version: 1
+Scenario version: 2
 
 Before the live child lifecycle, exercise the audit protocol against a separate
 proof-local ledger:
 
 1. Register active fixtures for archived, current, missing, and failed Codex
-   lookup outcomes plus one blocked fixture. Require discovery to emit lookup
-   requests for exactly the active fixtures, keyed by their real `session_id`,
+   lookup outcomes plus one blocked archived fixture. Require discovery to emit
+   lookup requests for every auditable fixture, keyed by its real `session_id`,
    with no plan token or ledger mutation.
 2. Supply one strict version-1 observation document. Require the positively
-   archived session to be the only affected task, the missing and failed
-   sessions to remain explicitly unresolved, the current session to remain
-   unaffected, and an observation for a non-active session to be ignored.
+   archived active and blocked sessions to be the only affected tasks, the
+   missing and failed sessions to remain explicitly unresolved, the current
+   session to remain unaffected, and an observation for a non-auditable session
+   to be ignored.
 3. Require planning to return `confirmation_required` and a 64-character plan
    token while preserving every task row byte-for-byte. Require the canonical
    skill workflow to show the exact affected set and demand explicit user
    confirmation rather than treating silence or unavailable confirmation as
    consent.
-4. Apply the unchanged token and require only the archived active fixture to
-   reach `done` with a close timestamp and ordered
-   `status:active->done` / `archival:codex-thread-archived` meta evidence.
-   Current, missing, failed, and blocked fixtures must retain their prior
-   states.
+4. Apply the unchanged token and require the archived active and blocked
+   fixtures to reach `done` with close timestamps and ordered
+   `status:<previous>->done` / `archival:codex-thread-archived` meta evidence.
+   Current, missing, and failed fixtures must retain their prior states.
 5. Repeat planning with the same observations and require a read-only complete
    result with no candidates or token, proving safe reruns.
 
