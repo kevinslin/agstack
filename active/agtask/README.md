@@ -270,9 +270,10 @@ sqlite3 "file:$HOME/.llm/agtask/ledger.db?mode=ro&immutable=1" \
   'SELECT id,created,thread_id,turn_id,role,message FROM rollout ORDER BY created,id;'
 ```
 
-Schema version 7 adds task file attachments. Exact version-5 and version-6
-ledgers are migrated transactionally on first open; other older, newer, or
-drifted schemas are refused without mutation. The runtime opens only
+Schema version 8 adds saved dashboard views and seeds the Today view; version 7
+added task file attachments. Exact version-5, version-6, and version-7 ledgers
+are migrated transactionally on first open; other older, newer, or drifted
+schemas are refused without mutation. The runtime opens only
 `~/.llm/agtask/ledger.db`; the v1 database at `~/.llm/thread/thread.db` remains
 a historical artifact. If the canonical path contains an incompatible
 database, move that file aside and run `init` to create a fresh ledger.

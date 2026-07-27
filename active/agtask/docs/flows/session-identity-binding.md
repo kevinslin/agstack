@@ -112,7 +112,7 @@ extra-field envelopes cannot register an untracked session or render actions.
 
 ### 3. Bind the pair transactionally
 
-The hook opens schema version 7 and takes a write reservation before reading
+The hook opens schema version 8 and takes a write reservation before reading
 either unique identity. SQLite primary-key and unique-index constraints remain
 backstops; the application classifies conflicts before attempting a write.
 
@@ -227,7 +227,8 @@ the canonical initial user turn.
   `parent_session_id`, Codex links, routes, and app actions are Codex identities.
 - Hooks fail open on malformed input, database incompatibility, lock timeout,
   or identity conflicts. Explicit CLI commands fail closed with an error.
-- Schema version 7 transactionally migrates exact version-5 and version-6 ledgers.
+- Schema version 8 transactionally migrates exact version-5, version-6, and
+  version-7 ledgers.
   Other older or drifted ledgers are refused without reinterpretation.
 
 ## Observability

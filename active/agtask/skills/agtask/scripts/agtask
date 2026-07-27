@@ -26,7 +26,7 @@ import uuid
 import webbrowser
 
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 BUSY_TIMEOUT_MS = 1000
 SUMMARY_LIMIT = 240
 DASHBOARD_STATUSES = ("todo", "active", "blocked", "merging", "done", "drop")
@@ -110,10 +110,11 @@ V6_EXPECTED_OBJECTS = {
     "thread_project_merging_idx",
     "thread_status_updated_idx",
 }
-EXPECTED_OBJECTS = V6_EXPECTED_OBJECTS | {
+V7_EXPECTED_OBJECTS = V6_EXPECTED_OBJECTS | {
     "attachment",
     "attachment_thread_created_idx",
 }
+EXPECTED_OBJECTS = V7_EXPECTED_OBJECTS | {"views"}
 
 THREAD_DDL = """CREATE TABLE thread (
       id               TEXT PRIMARY KEY NOT NULL,
@@ -239,13 +240,26 @@ ATTACHMENT_DDL = (
       ON attachment(thread_id, created, id)""",
 )
 
-DDL = (*V6_DDL, *ATTACHMENT_DDL)
+VIEW_DDL = (
+    """CREATE TABLE views (
+      id        TEXT PRIMARY KEY NOT NULL CHECK (id <> ''),
+      name      TEXT NOT NULL CHECK (length(trim(name)) > 0),
+      filters   TEXT NOT NULL CHECK (json_valid(filters)),
+      created   TEXT NOT NULL,
+      updated   TEXT NOT NULL
+    )""",
+)
+
+TODAY_VIEW_ID = "today"
+TODAY_VIEW_FILTERS = {"created": "today", "exclude_statuses": ["done", "drop"]}
+
+DDL = (*V6_DDL, *ATTACHMENT_DDL, *VIEW_DDL)
 
 DASHBOARD_HTML = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>agtask dashboard</title><link rel="stylesheet" href="app.css"><script src="app.js" defer></script></head>
 <body><header class="topbar"><div><p class="eyebrow">LOCAL TASK LEDGER</p><h1>agtask dashboard</h1></div><div class="summary" id="summary">Loading tasks…</div></header>
-<main><section class="toolbar" aria-label="Dashboard controls">
+<main><nav id="view-tabs" class="view-tabs" aria-label="Task views"></nav><section class="toolbar" aria-label="Dashboard controls">
 <label class="search">Title search<input id="search" type="search" autocomplete="off" placeholder="Search titles"></label>
 <div class="toolbar-actions"><label>Sort by<select id="sort"><option value="updated">Updated</option><option value="created">Created</option><option value="closed">Closed</option></select></label>
 <label>Direction<select id="direction"><option value="desc">Newest first</option><option value="asc">Oldest first</option></select></label>
@@ -266,7 +280,7 @@ DASHBOARD_HTML = """<!doctype html>
 TASK_DETAIL_HTML = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Task detail · agtask</title><link rel="stylesheet" href="../app.css"><script src="../task.js" defer></script></head>
-<body class="task-detail-page"><header class="detail-topbar"><a class="back-link" href="../">← All tasks</a></header>
+<body class="task-detail-page"><header class="detail-topbar"><a id="back-link" class="back-link" href="../">← All tasks</a></header>
 <main class="detail-layout"><article id="detail-content" class="detail-content" aria-busy="true">
 <h1 id="task-title">Loading task…</h1><p id="task-description" class="task-description"></p>
 <section class="timeline-section" aria-labelledby="timeline-heading"><h2 id="timeline-heading">Timeline</h2><ol id="timeline" class="timeline"></ol></section>
@@ -280,7 +294,7 @@ DASHBOARD_CSS = """:root { color-scheme:light dark; --bg:#f7f7f8; --panel:#fff; 
 * { box-sizing:border-box; } body { margin:0; background:var(--bg); color:var(--text); min-height:100vh; }
 .topbar { display:flex; justify-content:space-between; gap:1rem; align-items:end; padding:2rem clamp(1rem,4vw,3.5rem) 1.25rem; border-bottom:1px solid var(--line); }
 h1 { font-size:clamp(1.5rem,3vw,2.25rem); line-height:1.1; margin:.1rem 0 0; letter-spacing:-.035em; }.eyebrow { color:var(--muted); font-size:.7rem; font-weight:700; letter-spacing:.14em; margin:0; }.summary { color:var(--muted); font-size:.9rem; }
-main { padding:1.25rem clamp(1rem,4vw,3.5rem) 3rem; }.toolbar { position:relative; display:flex; align-items:end; gap:.75rem; padding:1rem; background:var(--panel); border:1px solid var(--line); border-radius:10px 10px 0 0; }.toolbar-actions { display:flex; align-items:end; gap:.65rem; margin-left:auto; }
+main { padding:1.25rem clamp(1rem,4vw,3.5rem) 3rem; }.view-tabs { display:flex; align-items:end; gap:1.25rem; min-height:2.75rem; padding:0 .25rem; border-bottom:1px solid var(--line); overflow-x:auto; }.view-tab { position:relative; flex:0 0 auto; min-height:2.75rem; padding:.6rem .1rem; border:0; border-radius:0; background:transparent; color:var(--muted); font-size:.84rem; font-weight:650; }.view-tab:hover { background:transparent; color:var(--text); }.view-tab[aria-current="page"] { color:var(--text); }.view-tab[aria-current="page"]::after { content:""; position:absolute; right:0; bottom:-1px; left:0; height:2px; border-radius:2px 2px 0 0; background:var(--accent); }.toolbar { position:relative; display:flex; align-items:end; gap:.75rem; margin-top:1rem; padding:1rem; background:var(--panel); border:1px solid var(--line); border-radius:10px 10px 0 0; }.toolbar-actions { display:flex; align-items:end; gap:.65rem; margin-left:auto; }
 label { display:flex; flex-direction:column; gap:.4rem; color:var(--muted); font-size:.72rem; font-weight:650; letter-spacing:.02em; }.search { flex:1 1 20rem; max-width:34rem; }input,select,button { min-height:2.25rem; color:var(--text); background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:.45rem .6rem; font:inherit; }
 button { cursor:pointer; font-weight:650; }button:hover { background:var(--hover); border-color:var(--line-strong); }:focus-visible { outline:3px solid var(--accent); outline-offset:2px; }.secondary-button { background:var(--bg); }.filter-trigger { display:flex; align-items:center; gap:.35rem; background:var(--accent); border-color:var(--accent); color:white; white-space:nowrap; }.filter-trigger:hover { background:var(--accent); filter:brightness(1.08); border-color:var(--accent); }
 .filter-launcher { position:relative; }.filter-menu { position:absolute; z-index:20; top:calc(100% + .5rem); right:0; width:min(21rem,calc(100vw - 2rem)); max-height:min(30rem,calc(100vh - 8rem)); overflow:hidden; padding:.4rem; border:1px solid var(--line-strong); border-radius:10px; background:var(--raised); box-shadow:0 18px 50px rgb(0 0 0 / .24); }.filter-menu[hidden] { display:none; }.filter-menu-header { min-height:2.25rem; display:grid; grid-template-columns:2rem 1fr 2rem; align-items:center; gap:.35rem; padding:.15rem .2rem .35rem; }.filter-menu-header strong { text-align:center; font-size:.82rem; }.icon-button { min-height:1.9rem; width:1.9rem; padding:0; border-color:transparent; background:transparent; color:var(--muted); }.filter-menu-search { width:100%; margin-bottom:.35rem; border-color:transparent; background:var(--bg); }.filter-menu-list { max-height:22rem; overflow:auto; display:grid; gap:.15rem; }.filter-menu-item { width:100%; min-height:2.55rem; display:grid; grid-template-columns:1fr auto; align-items:center; gap:.75rem; padding:.55rem .65rem; border-color:transparent; background:transparent; text-align:left; font-weight:550; }.filter-menu-item:hover,.filter-menu-item[aria-current="true"] { background:var(--hover); }.filter-menu-meta { display:flex; align-items:center; gap:.45rem; color:var(--muted); font-size:.75rem; }.filter-menu-check { color:var(--accent); font-weight:800; }.filter-menu-empty { margin:.35rem; padding:1rem .6rem; color:var(--muted); text-align:center; font-size:.8rem; }
@@ -297,7 +311,7 @@ DASHBOARD_JS = r"""(() => {
   "use strict";
   const ROOT_PARENT = "__root__";
   const ids = [
-    "search", "sort", "direction", "refresh", "filter-trigger", "filter-menu",
+    "view-tabs", "search", "sort", "direction", "refresh", "filter-trigger", "filter-menu",
     "filter-menu-title", "filter-menu-back", "filter-menu-close", "filter-menu-search",
     "filter-menu-list", "filter-bar", "active-filters", "add-filter", "notice",
     "groups", "summary", "status-modal", "status-task-title", "status-close",
@@ -350,7 +364,7 @@ DASHBOARD_JS = r"""(() => {
       projects:query.getAll("project"), parents:query.getAll("parent_session_id"),
       root:query.get("root_parent")==="1", statuses:query.getAll("status"),
       sort:query.get("sort")||"updated", direction:query.get("direction")||"desc",
-      search:query.get("search")||""
+      search:query.get("search")||"", view:query.get("view")||null
     };
   }
 
@@ -358,7 +372,8 @@ DASHBOARD_JS = r"""(() => {
     return {
       projects:snapshot.filters.projects, parents:snapshot.filters.parent_session_ids,
       root:snapshot.filters.include_root, statuses:snapshot.filters.statuses,
-      sort:snapshot.sort.field, direction:snapshot.sort.direction, search:snapshot.search
+      sort:snapshot.sort.field, direction:snapshot.sort.direction, search:snapshot.search,
+      view:snapshot.selected_view
     };
   }
 
@@ -372,6 +387,7 @@ DASHBOARD_JS = r"""(() => {
     if(state.sort!=="updated")query.set("sort",state.sort);
     if(state.direction!=="desc")query.set("direction",state.direction);
     if(state.search)query.set("search",state.search);
+    if(state.view)query.set("view",state.view);
     return query.toString();
   }
 
@@ -384,6 +400,7 @@ DASHBOARD_JS = r"""(() => {
     if(state.sort!=="updated")query.set("sort",state.sort);
     if(state.direction!=="desc")query.set("direction",state.direction);
     if(state.search)query.set("search",state.search);
+    if(state.view)query.set("view",state.view);
     return query.toString();
   }
 
@@ -425,6 +442,21 @@ DASHBOARD_JS = r"""(() => {
       const empty=document.createElement("span"); empty.className="filter-empty-label"; empty.textContent="No filters applied";
       el.activeFilters.replaceChildren(empty);
     }else el.activeFilters.replaceChildren(...chips);
+  }
+
+  function renderViewTabs(snapshot) {
+    const tabs=[{id:null,name:"All tasks"},...snapshot.views].map(view=>{
+      const button=document.createElement("button");
+      button.type="button"; button.className="view-tab"; button.textContent=view.name;
+      if(view.id===currentState.view)button.setAttribute("aria-current","page");
+      button.addEventListener("click",()=>{
+        if(currentState.view===view.id)return;
+        currentState={...currentState,view:view.id};
+        load(currentState);
+      });
+      return button;
+    });
+    el.viewTabs.replaceChildren(...tabs);
   }
 
   function availableOptions(definition) {
@@ -622,7 +654,7 @@ DASHBOARD_JS = r"""(() => {
 
   function formatTime(value) { return value ? value.slice(0,16).replace("T"," ")+"Z" : "—"; }
   function cell(value,className) { const node=document.createElement("td"); if(className)node.className=className; node.textContent=value; return node; }
-  function taskPath(sessionId) { return `tasks/~${encodeURIComponent(sessionId)}`; }
+  function taskPath(sessionId) { return `tasks/~${encodeURIComponent(sessionId)}${location.search}`; }
   function taskSessionPath(sessionId) { return `codex://threads/${encodeURIComponent(sessionId)}`; }
   function taskTitleCell(thread) {
     const node=document.createElement("td"); const link=document.createElement("a");
@@ -690,7 +722,7 @@ DASHBOARD_JS = r"""(() => {
     const acceptedQuery=acceptedQueryFor(currentState);
     history.replaceState(null,"",acceptedQuery?`?${acceptedQuery}`:location.pathname);
     el.search.value=currentState.search; el.sort.value=currentState.sort; el.direction.value=currentState.direction;
-    renderActiveFilters(); renderGroups(snapshot); if(!el.filterMenu.hidden)renderFilterMenu(); el.groups.setAttribute("aria-busy","false");
+    renderViewTabs(snapshot); renderActiveFilters(); renderGroups(snapshot); if(!el.filterMenu.hidden)renderFilterMenu(); el.groups.setAttribute("aria-busy","false");
     el.summary.textContent=`${snapshot.visible_count} visible · ${snapshot.total_count} total`;
     el.notice.textContent=`Updated ${new Date().toLocaleTimeString()}`; el.notice.className="notice";
   }
@@ -739,6 +771,8 @@ DASHBOARD_JS = r"""(() => {
 TASK_DETAIL_JS = r"""(() => {
   "use strict";
   const byId = id => document.getElementById(id);
+  const dashboardPath = `../${location.search}`;
+  byId("back-link").href=dashboardPath;
   const pathParts = location.pathname.split("/").filter(Boolean);
   let sessionId;
   const markedSessionId = pathParts.at(-1)||"";
@@ -793,7 +827,7 @@ TASK_DETAIL_JS = r"""(() => {
   document.addEventListener("keydown",event=>{
     if(event.key!=="Escape")return;
     event.preventDefault();
-    location.assign("../");
+    location.assign(dashboardPath);
   });
   load();
 })();
@@ -805,6 +839,10 @@ class TaskError(RuntimeError):
 
 
 class StatusConflict(TaskError):
+    pass
+
+
+class UnknownDashboardView(TaskError):
     pass
 
 
@@ -1317,6 +1355,7 @@ def expected_sql(statements: tuple[str, ...]) -> dict[str, str]:
 
 EXPECTED_SQL = expected_sql(DDL)
 V6_EXPECTED_SQL = expected_sql(V6_DDL)
+V7_EXPECTED_SQL = expected_sql((*V6_DDL, *ATTACHMENT_DDL))
 V5_EXPECTED_SQL = dict(V6_EXPECTED_SQL)
 V5_EXPECTED_SQL["thread"] = normalize_sql(V5_THREAD_DDL)
 
@@ -1444,10 +1483,39 @@ def verify_schema(
                 f"attachment foreign key does not match schema version {version}"
             )
 
+    if "views" in expected_object_names:
+        view_columns = [
+            (row[1], row[2], row[3], row[4], row[5])
+            for row in connection.execute("PRAGMA table_info(views)")
+        ]
+        if view_columns != [
+            ("id", "TEXT", 1, None, 1),
+            ("name", "TEXT", 1, None, 0),
+            ("filters", "TEXT", 1, None, 0),
+            ("created", "TEXT", 1, None, 0),
+            ("updated", "TEXT", 1, None, 0),
+        ]:
+            raise TaskError(f"view columns do not match schema version {version}")
+
 
 def probe_fts5(connection: sqlite3.Connection) -> None:
     connection.execute("CREATE VIRTUAL TABLE temp.agtask_fts_probe USING fts5(value)")
     connection.execute("DROP TABLE temp.agtask_fts_probe")
+
+
+def seed_default_views(connection: sqlite3.Connection) -> None:
+    timestamp = utc_now()
+    connection.execute(
+        "INSERT OR IGNORE INTO views(id,name,filters,created,updated) "
+        "VALUES (?,?,?,?,?)",
+        (
+            TODAY_VIEW_ID,
+            "Today",
+            json.dumps(TODAY_VIEW_FILTERS, separators=(",", ":"), sort_keys=True),
+            timestamp,
+            timestamp,
+        ),
+    )
 
 
 def initialize_schema(connection: sqlite3.Connection) -> None:
@@ -1460,6 +1528,7 @@ def initialize_schema(connection: sqlite3.Connection) -> None:
         if version == 0 and not objects:
             for statement in DDL:
                 connection.execute(statement)
+            seed_default_views(connection)
             connection.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
         elif version != SCHEMA_VERSION:
             raise TaskError(
@@ -1541,10 +1610,35 @@ def migrate_v6_schema(connection: sqlite3.Connection) -> None:
         connection.execute("BEGIN IMMEDIATE")
         for statement in ATTACHMENT_DDL:
             connection.execute(statement)
-        connection.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
+        connection.execute("PRAGMA user_version=7")
         foreign_key_errors = connection.execute("PRAGMA foreign_key_check").fetchall()
         if foreign_key_errors:
             raise TaskError("schema migration failed foreign-key validation")
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    verify_schema(
+        connection,
+        definitions=V7_EXPECTED_SQL,
+        expected_objects=V7_EXPECTED_OBJECTS,
+        version=7,
+    )
+
+
+def migrate_v7_schema(connection: sqlite3.Connection) -> None:
+    verify_schema(
+        connection,
+        definitions=V7_EXPECTED_SQL,
+        expected_objects=V7_EXPECTED_OBJECTS,
+        version=7,
+    )
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        for statement in VIEW_DDL:
+            connection.execute(statement)
+        seed_default_views(connection)
+        connection.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
         connection.commit()
     except Exception:
         connection.rollback()
@@ -1582,6 +1676,14 @@ def readonly_probe(path: Path) -> str:
                     version=6,
                 )
                 return "migrate_v6"
+            if version == 7:
+                verify_schema(
+                    connection,
+                    definitions=V7_EXPECTED_SQL,
+                    expected_objects=V7_EXPECTED_OBJECTS,
+                    version=7,
+                )
+                return "migrate_v7"
             if version == 0 and not objects:
                 return "empty"
             raise TaskError(
@@ -1638,6 +1740,9 @@ def open_database(*, initialize: bool, hook_mode: bool = False) -> Optional[sqli
             existing_state = "migrate_v6"
         if existing_state == "migrate_v6":
             migrate_v6_schema(connection)
+            existing_state = "migrate_v7"
+        if existing_state == "migrate_v7":
+            migrate_v7_schema(connection)
             existing_state = "current"
         if initialize:
             initialize_schema(connection)
@@ -3066,6 +3171,7 @@ def dashboard_state(
     sort_field: str = "updated",
     direction: str = "desc",
     search: str = "",
+    view_id: Optional[str] = None,
 ) -> dict[str, Any]:
     normalized_projects = dashboard_sorted_values(projects or [])
     normalized_parents = dashboard_sorted_values(parent_session_ids or [])
@@ -3086,6 +3192,8 @@ def dashboard_state(
         raise TaskError(f"invalid dashboard sort field: {sort_field}")
     if direction not in DASHBOARD_DIRECTIONS:
         raise TaskError(f"invalid dashboard direction: {direction}")
+    if view_id == "":
+        raise TaskError("view must not be empty")
     return {
         "projects": normalized_projects,
         "parent_session_ids": normalized_parents,
@@ -3094,6 +3202,7 @@ def dashboard_state(
         "sort_field": sort_field,
         "direction": direction,
         "search": search,
+        "view_id": view_id,
     }
 
 
@@ -3133,13 +3242,14 @@ def dashboard_state_from_query(query: str) -> dict[str, Any]:
         "sort",
         "direction",
         "search",
+        "view",
     }
     values: dict[str, list[str]] = {}
     for key, value in pairs:
         if key not in allowed:
             raise TaskError(f"unknown query parameter: {key}")
         values.setdefault(key, []).append(value)
-    for key in ("root_parent", "sort", "direction", "search"):
+    for key in ("root_parent", "sort", "direction", "search", "view"):
         if len(values.get(key, [])) > 1:
             raise TaskError(f"duplicate query parameter: {key}")
     for key in ("project", "parent_session_id", "status"):
@@ -3156,6 +3266,7 @@ def dashboard_state_from_query(query: str) -> dict[str, Any]:
         sort_field=values.get("sort", ["updated"])[0],
         direction=values.get("direction", ["desc"])[0],
         search=values.get("search", [""])[0],
+        view_id=values.get("view", [None])[0],
     )
 
 
@@ -3174,7 +3285,56 @@ def dashboard_query(state: dict[str, Any]) -> str:
         pairs.append(("direction", state["direction"]))
     if state["search"]:
         pairs.append(("search", state["search"]))
+    if state["view_id"]:
+        pairs.append(("view", state["view_id"]))
     return urlencode(pairs)
+
+
+def dashboard_local_day_bounds_utc() -> tuple[str, str]:
+    local_date = dt.datetime.now().astimezone().date()
+    local_start = dt.datetime.combine(local_date, dt.time.min).astimezone()
+    local_end = dt.datetime.combine(
+        local_date + dt.timedelta(days=1), dt.time.min
+    ).astimezone()
+
+    def render(value: dt.datetime) -> str:
+        return (
+            value.astimezone(dt.timezone.utc)
+            .isoformat(timespec="milliseconds")
+            .replace("+00:00", "Z")
+        )
+
+    return render(local_start), render(local_end)
+
+
+def dashboard_view_filters(value: str) -> dict[str, Any]:
+    try:
+        filters = json.loads(value)
+    except json.JSONDecodeError as error:
+        raise TaskError("saved view filters are invalid JSON") from error
+    if not isinstance(filters, dict):
+        raise TaskError("saved view filters must be an object")
+    allowed = {"created", "exclude_statuses"}
+    unknown = set(filters) - allowed
+    if unknown:
+        raise TaskError(f"unknown saved view filter: {sorted(unknown)[0]}")
+    if filters.get("created") not in {None, "today"}:
+        raise TaskError("saved view created filter must equal today")
+    excluded = filters.get("exclude_statuses", [])
+    if (
+        not isinstance(excluded, list)
+        or any(
+            not isinstance(status, str) or status not in DASHBOARD_STATUSES
+            for status in excluded
+        )
+    ):
+        raise TaskError("saved view excluded statuses are invalid")
+    return {
+        "created": filters.get("created"),
+        "exclude_statuses": [
+            status for status in DASHBOARD_STATUSES if status in set(excluded)
+        ],
+    }
 
 
 def dashboard_compare(
@@ -3200,6 +3360,20 @@ def dashboard_compare(
 def dashboard_snapshot(state: dict[str, Any]) -> dict[str, Any]:
     connection = open_database(initialize=False)
     try:
+        views = [
+            {
+                **dict(row),
+                "filters": dashboard_view_filters(row["filters"]),
+            }
+            for row in connection.execute(
+                "SELECT id,name,filters,created,updated FROM views ORDER BY created,id"
+            )
+        ]
+        selected_view = next(
+            (view for view in views if view["id"] == state["view_id"]), None
+        )
+        if state["view_id"] is not None and selected_view is None:
+            raise UnknownDashboardView(f"unknown saved view: {state['view_id']}")
         rows = [
             dict(row)
             for row in connection.execute(
@@ -3228,6 +3402,13 @@ def dashboard_snapshot(state: dict[str, Any]) -> dict[str, Any]:
     parent_filter = set(state["parent_session_ids"])
     status_filter = set(state["statuses"])
     search = state["search"].casefold()
+    view_filters = selected_view["filters"] if selected_view else {}
+    excluded_statuses = set(view_filters.get("exclude_statuses", []))
+    created_bounds = (
+        dashboard_local_day_bounds_utc()
+        if view_filters.get("created") == "today"
+        else None
+    )
 
     def visible(row: dict[str, Any]) -> bool:
         parent_matches = (
@@ -3239,6 +3420,11 @@ def dashboard_snapshot(state: dict[str, Any]) -> dict[str, Any]:
             (not project_filter or row["project"] in project_filter)
             and parent_matches
             and (not status_filter or row["status"] in status_filter)
+            and row["status"] not in excluded_statuses
+            and (
+                created_bounds is None
+                or created_bounds[0] <= row["created"] < created_bounds[1]
+            )
             and (not search or search in row["title"].casefold())
         )
 
@@ -3251,7 +3437,9 @@ def dashboard_snapshot(state: dict[str, Any]) -> dict[str, Any]:
             direction=state["direction"],
         )
     )
-    group_statuses = state["statuses"] or list(DASHBOARD_STATUSES)
+    group_statuses = state["statuses"] or [
+        status for status in DASHBOARD_STATUSES if status not in excluded_statuses
+    ]
     groups = []
     for status in group_statuses:
         threads = sorted(
@@ -3270,6 +3458,8 @@ def dashboard_snapshot(state: dict[str, Any]) -> dict[str, Any]:
             "statuses": state["statuses"],
         },
         "search": state["search"],
+        "selected_view": state["view_id"],
+        "views": views,
         "sort": {"field": state["sort_field"], "direction": state["direction"]},
         "total_count": len(rows),
         "visible_count": len(filtered),
@@ -3462,8 +3652,11 @@ def dashboard_handler(token: str, expected_host: str) -> type[BaseHTTPRequestHan
                 return
             if page_session_id is not None:
                 if parsed.query:
-                    self.send_json_error(404, "not found")
-                    return
+                    try:
+                        dashboard_state_from_query(parsed.query)
+                    except TaskError as error:
+                        self.send_json_error(400, str(error))
+                        return
                 self.send_payload(
                     200,
                     "text/html; charset=utf-8",
@@ -3499,6 +3692,9 @@ def dashboard_handler(token: str, expected_host: str) -> type[BaseHTTPRequestHan
                 return
             try:
                 snapshot = dashboard_snapshot(state)
+            except UnknownDashboardView as error:
+                self.send_json_error(400, str(error))
+                return
             except (TaskError, sqlite3.Error, OSError, ValueError) as error:
                 print(f"agtask: dashboard snapshot unavailable: {error}", file=sys.stderr)
                 self.send_json_error(503, "dashboard data unavailable")

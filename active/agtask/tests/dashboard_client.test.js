@@ -127,16 +127,21 @@ function snapshotFor(base, requestUrl) {
   const root = query.get("root_parent") === "1";
   const statuses = query.getAll("status");
   const search = (query.get("search") || "").toLocaleLowerCase();
+  const viewId = query.get("view");
+  const savedView = base.views.find(view => view.id === viewId);
+  const excludedStatuses = new Set(savedView?.filters.exclude_statuses || []);
   const allThreads = base.groups.flatMap(group => group.threads);
   const visible = allThreads.filter(thread =>
     (!projects.length || projects.includes(thread.project)) &&
     ((!parents.length && !root) || parents.includes(thread.parent_session_id) || (root && thread.parent_session_id === null)) &&
     (!statuses.length || statuses.includes(thread.status)) &&
+    !excludedStatuses.has(thread.status) &&
     (!search || thread.title.toLocaleLowerCase().includes(search))
   );
-  const groupOrder = statuses.length ? ["todo","active","blocked","merging","done","drop"].filter(status => statuses.includes(status)) : ["todo","active","blocked","merging","done","drop"];
+  const groupOrder = statuses.length ? ["todo","active","blocked","merging","done","drop"].filter(status => statuses.includes(status)) : ["todo","active","blocked","merging","done","drop"].filter(status => !excludedStatuses.has(status));
   snapshot.filters = {projects,parent_session_ids:parents,include_root:root,statuses};
   snapshot.search = query.get("search") || "";
+  snapshot.selected_view = viewId;
   snapshot.sort = {field:query.get("sort") || "updated",direction:query.get("direction") || "desc"};
   snapshot.visible_count = visible.length;
   snapshot.groups = groupOrder.map(status => ({status,count:visible.filter(thread => thread.status === status).length,threads:visible.filter(thread => thread.status === status)}));
@@ -173,7 +178,7 @@ async function main() {
     process.stdin.on("end", () => resolve(value));
   }));
   const ids = [
-    "search", "sort", "direction", "refresh", "filter-trigger", "filter-menu",
+    "view-tabs", "search", "sort", "direction", "refresh", "filter-trigger", "filter-menu",
     "filter-menu-title", "filter-menu-back", "filter-menu-close", "filter-menu-search",
     "filter-menu-list", "filter-bar", "active-filters", "add-filter", "notice",
     "groups", "summary", "status-modal", "status-task-title", "status-close",
@@ -245,6 +250,36 @@ async function main() {
   const trigger = document.getElementById("filter-trigger");
   const plus = document.getElementById("add-filter");
   const chips = document.getElementById("active-filters");
+  const viewTabs = document.getElementById("view-tabs");
+  assert.deepEqual(
+    viewTabs.children.map(tab => tab.textContent),
+    ["All tasks","Today"],
+    "the dashboard renders Linear-style saved view tabs"
+  );
+  assert.equal(viewTabs.children[0].getAttribute("aria-current"),"page");
+  viewTabs.children[1].click();
+  await settle();
+  assert.equal(history.urls.at(-1),"?view=today","choosing Today applies its saved view");
+  assert.equal(viewTabs.children[1].getAttribute("aria-current"),"page");
+  assert.equal(
+    allNodes(document.getElementById("groups")).some(
+      node => node.tagName === "TR" && ["done","drop"].includes(node.getAttribute("data-status"))
+    ),
+    false,
+    "the Today view excludes terminal task rows"
+  );
+  const todayTaskRow = allNodes(document.getElementById("groups")).find(
+    node => node.tagName === "TR" && node.getAttribute("data-task-id")
+  );
+  todayTaskRow.click();
+  assert.equal(
+    location.assigned.at(-1),
+    `tasks/~${encodeURIComponent(todayTaskRow.getAttribute("data-session-id"))}?view=today`,
+    "opening task detail preserves the selected view in its URL"
+  );
+  viewTabs.children[0].click();
+  await settle();
+  assert.equal(history.urls.at(-1),"/token/","All tasks restores the unfiltered dashboard");
 
   const firstTaskRow = allNodes(document.getElementById("groups")).find(
     node => node.tagName === "TR" && node.getAttribute("data-task-id")

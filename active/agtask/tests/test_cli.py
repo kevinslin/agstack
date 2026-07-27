@@ -2127,7 +2127,7 @@ class CliIntegrationTest(unittest.TestCase):
 
     def test_schema_permissions_and_immediate_reopen(self) -> None:
         result = self.run_cli("init", "--json")
-        self.assertEqual(json.loads(result.stdout)["schema_version"], 7)
+        self.assertEqual(json.loads(result.stdout)["schema_version"], 8)
         self.assertEqual(stat.S_IMODE(self.store.stat().st_mode), 0o700)
         self.assertEqual(stat.S_IMODE(self.db_path.stat().st_mode), 0o600)
 
@@ -2138,7 +2138,7 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertEqual(state["parent_session_id"], "parent-thread")
 
         with self.connect() as connection:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 7)
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 8)
             objects = {
                 row[0]
                 for row in connection.execute(
@@ -2172,6 +2172,7 @@ class CliIntegrationTest(unittest.TestCase):
                     "thread_au",
                     "attachment",
                     "attachment_thread_created_idx",
+                    "views",
                 },
             )
             self.assertEqual(
@@ -2194,6 +2195,16 @@ class CliIntegrationTest(unittest.TestCase):
                 [row[1] for row in connection.execute("PRAGMA table_info(rollout)")],
                 ["id", "created", "thread_id", "turn_id", "role", "message"],
             )
+            self.assertEqual(
+                [row[1] for row in connection.execute("PRAGMA table_info(views)")],
+                ["id", "name", "filters", "created", "updated"],
+            )
+            today_view = connection.execute(
+                "SELECT id,name,filters,created,updated FROM views WHERE id='today'"
+            ).fetchone()
+            self.assertIsNotNone(today_view)
+            self.assertEqual(today_view[0:3], ("today", "Today", '{"created":"today","exclude_statuses":["done","drop"]}'))
+            self.assertEqual(today_view[3], today_view[4])
             foreign_key = connection.execute("PRAGMA foreign_key_list(rollout)").fetchone()
             self.assertEqual(
                 tuple(foreign_key[2:8]),
@@ -2376,7 +2387,7 @@ class CliIntegrationTest(unittest.TestCase):
         self.db_path.chmod(0o600)
         self.run_cli("init")
         with self.connect() as connection:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 7)
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 8)
 
         home = self.root / "home"
         old_dir = home / ".llm" / "thread"
@@ -2439,7 +2450,7 @@ class CliIntegrationTest(unittest.TestCase):
                     sorted(item.name for item in case_dir.iterdir()), before_entries
                 )
 
-    def test_exact_v5_ledger_migrates_to_v7_without_losing_data(self) -> None:
+    def test_exact_v5_ledger_migrates_to_v8_without_losing_data(self) -> None:
         runtime = runpy.run_path(str(CLI))
         self.store.mkdir(mode=0o700)
         with sqlite3.connect(self.db_path) as connection:
@@ -2494,7 +2505,7 @@ class CliIntegrationTest(unittest.TestCase):
         search = json.loads(self.run_cli("search", "V5 task", "--json").stdout)
         self.assertEqual([row["id"] for row in search], [fixture_creation_id("v5-thread")])
         with self.connect() as connection:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 7)
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 8)
             self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
             thread_sql = connection.execute(
                 "SELECT sql FROM sqlite_master WHERE name='thread'"
@@ -2513,7 +2524,7 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertEqual(dropped["status"], "drop")
         self.assertIsNotNone(dropped["closed"])
 
-    def test_exact_v6_ledger_migrates_to_v7(self) -> None:
+    def test_exact_v6_ledger_migrates_to_v8(self) -> None:
         runtime = runpy.run_path(str(CLI))
         self.store.mkdir(mode=0o700)
         with sqlite3.connect(self.db_path) as connection:
@@ -2524,15 +2535,49 @@ class CliIntegrationTest(unittest.TestCase):
 
         initialized = json.loads(self.run_cli("init", "--json").stdout)
 
-        self.assertEqual(initialized["schema_version"], 7)
+        self.assertEqual(initialized["schema_version"], 8)
         with self.connect() as connection:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 7)
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 8)
             self.assertEqual(
                 [
                     row[1]
                     for row in connection.execute("PRAGMA table_info(attachment)")
                 ],
                 ["id", "created", "thread_id", "path"],
+            )
+            self.assertEqual(
+                connection.execute("SELECT name FROM views WHERE id='today'").fetchone()[0],
+                "Today",
+            )
+
+    def test_exact_v7_ledger_migrates_to_v8_and_seeds_today_view(self) -> None:
+        runtime = runpy.run_path(str(CLI))
+        self.store.mkdir(mode=0o700)
+        with sqlite3.connect(self.db_path) as connection:
+            for statement in (*runtime["V6_DDL"], *runtime["ATTACHMENT_DDL"]):
+                connection.execute(statement)
+            connection.execute("PRAGMA user_version=7")
+        self.db_path.chmod(0o600)
+
+        initialized = json.loads(self.run_cli("init", "--json").stdout)
+
+        self.assertEqual(initialized["schema_version"], 8)
+        with self.connect() as connection:
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 8)
+            self.assertEqual(
+                [
+                    tuple(row)
+                    for row in connection.execute(
+                        "SELECT id,name,filters FROM views ORDER BY id"
+                    )
+                ],
+                [
+                    (
+                        "today",
+                        "Today",
+                        '{"created":"today","exclude_statuses":["done","drop"]}',
+                    )
+                ],
             )
 
     def test_kind_project_and_parent_lineage_are_immutable(self) -> None:

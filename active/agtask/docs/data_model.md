@@ -4,9 +4,10 @@
 `~/.llm/agtask/ledger.db`. Codex remains authoritative for the complete
 conversation and native rollout history. The ledger contains only current
 thread state, task kind, project identity, origin lineage, bounded turn
-summaries, lifecycle events, and short-lived project merge claims.
+summaries, lifecycle events, saved dashboard views, and short-lived project
+merge claims.
 
-The canonical schema is version 7. Its executable source of truth is `DDL` in
+The canonical schema is version 8. Its executable source of truth is `DDL` in
 [`skills/agtask/scripts/agtask`](../skills/agtask/scripts/agtask).
 This document describes that schema and the application contract around it.
 
@@ -20,9 +21,9 @@ This document describes that schema and the application contract around it.
   established, and set a 1,000 ms busy timeout.
 - Timestamps written by the application are UTC RFC 3339 strings with
   millisecond precision, for example `2026-07-16T18:28:46.513Z`.
-- `PRAGMA user_version` is `7`. Existing databases are inspected read-only
-  before a writer opens them. Exact version-5 and version-6 schemas are
-  migrated transactionally to version 7; a missing database or empty
+- `PRAGMA user_version` is `8`. Existing databases are inspected read-only
+  before a writer opens them. Exact version-5, version-6, and version-7 schemas
+  are migrated transactionally to version 8; a missing database or empty
   version-0 database may be initialized. Any other shape is rejected without
   project backfill.
 
@@ -33,6 +34,13 @@ erDiagram
     thread ||--o{ rollout : contains
     thread ||--o{ attachment : links
     thread ||--o| project_merge_claim : owns
+    views {
+        TEXT id PK
+        TEXT name
+        TEXT filters
+        TEXT created
+        TEXT updated
+    }
     thread {
         TEXT id PK
         TEXT session_id UK
@@ -115,8 +123,9 @@ The narrow exception is authoritative one-shot reconciliation of a provisional
 copied-helper binding, which replaces the session and prompt-derived
 description before canonical task history is recorded. Direct `add` treats the
 current Codex title as an exact reconciliation value and rejects a session
-already stored as child kind. Version 7 is an exact-schema compatibility
-boundary; the CLI migrates only exact version-5 and version-6 ledgers.
+already stored as child kind. Version 8 is an exact-schema compatibility
+boundary; the CLI migrates only exact version-5, version-6, and version-7
+ledgers.
 
 ### Thread indexes
 
@@ -157,6 +166,32 @@ advances `thread.updated` and appends `attachment:added`; an existing
 relationship is a ledger no-op even when frontmatter repair changes the file.
 Later task status transitions do not rewrite attached files.
 
+## `views`
+
+`views` persists named dashboard filters independently of task rows.
+
+| Column | SQLite declaration | Contract |
+| --- | --- | --- |
+| `id` | `TEXT PRIMARY KEY NOT NULL` | Stable nonempty identifier used by the dashboard query string. |
+| `name` | `TEXT NOT NULL` | Nonempty display name shown in the dashboard tab row. |
+| `filters` | `TEXT NOT NULL` | JSON object validated by SQLite and interpreted by the dashboard projection. |
+| `created` | `TEXT NOT NULL` | Time the saved view was first persisted. |
+| `updated` | `TEXT NOT NULL` | Time the saved view definition was last changed. |
+
+Schema initialization and the version-7 migration insert the `today` view
+idempotently. Its stored filter is
+`{"created":"today","exclude_statuses":["done","drop"]}`. The dashboard
+interprets `created: today` against the machine's current local calendar day:
+it converts local midnight and the next local midnight to UTC before comparing
+the canonical `thread.created` timestamps. This preserves local-day semantics
+across UTC offsets and daylight-saving transitions. The terminal-status
+exclusion is applied in addition to any ad hoc dashboard filters.
+
+Saved views are returned in deterministic `created, id` order. Selecting one
+adds its ID to the canonical dashboard query; an unknown ID or unsupported
+filter shape is rejected rather than silently ignored. The unselected
+dashboard remains the existing all-task view.
+
 ## `project_merge_claim`
 
 `project_merge_claim` is the authoritative mutual-exclusion lease. It contains
@@ -190,8 +225,8 @@ state, which the current schema deliberately avoids.
 
 ### Dashboard projection and status mutation
 
-`dashboard` does not change the schema. Its grouped JSON mode and dashboard
-HTTP API read every current `thread` row through an
+The dashboard's grouped JSON mode and HTTP API read every current `thread` row
+through an
 explicit nine-column projection: logical `id`, `session_id`,
 `parent_session_id`, `project`, `title`, `created`, `updated`, `closed`, and
 `status`. Each row also includes its ordered file projection. They never return
@@ -613,4 +648,4 @@ snapshot is the workflow's normal write-verification and orchestration
 boundary. Claimed, waiting, heartbeat, cancel, and completed close results also
 include `merge_claim`; only the claimed form includes its opaque token, and only
 the waiting form includes randomized `retry_after_ms`. Prompt data is not a
-rollout and does not affect schema version 7.
+rollout and does not affect schema version 8.

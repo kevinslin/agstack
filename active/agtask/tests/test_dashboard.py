@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 import http.client
 import json
 import os
@@ -401,6 +402,73 @@ class DashboardIntegrationTest(unittest.TestCase):
         self.assertEqual(empty_selected_group["filters"]["projects"], ["missing"])
         self.assertEqual(empty_selected_group["groups"], [{"status": "done", "count": 0, "threads": []}])
 
+    def test_today_saved_view_uses_local_calendar_day_and_excludes_terminal_tasks(self) -> None:
+        self.seed_dashboard()
+        local_today = dt.datetime.now().astimezone().date()
+
+        def utc_stamp(day: dt.date, hour: int = 12) -> str:
+            return (
+                dt.datetime.combine(day, dt.time(hour=hour))
+                .astimezone()
+                .astimezone(dt.timezone.utc)
+                .isoformat(timespec="milliseconds")
+                .replace("+00:00", "Z")
+            )
+
+        with sqlite3.connect(self.db_path) as connection:
+            connection.execute(
+                "UPDATE thread SET created=? WHERE id=?",
+                (utc_stamp(local_today), fixture_creation_id("alpha-active")),
+            )
+            connection.execute(
+                "UPDATE thread SET created=? WHERE id=?",
+                (utc_stamp(local_today), fixture_creation_id("beta-done")),
+            )
+            connection.execute(
+                "UPDATE thread SET created=? WHERE id=?",
+                (
+                    utc_stamp(local_today - dt.timedelta(days=1)),
+                    fixture_creation_id("beta-blocked"),
+                ),
+            )
+            connection.commit()
+
+        _process, url = self.start_server()
+        parsed = urlsplit(url)
+        status, _headers, body = self.request(
+            url, path=parsed.path + "api/dashboard?view=today"
+        )
+        self.assertEqual(status, 200, body.decode("utf-8", errors="replace"))
+        payload = json.loads(body)
+        self.assertEqual(payload["selected_view"], "today")
+        self.assertEqual(
+            payload["views"],
+            [
+                {
+                    "id": "today",
+                    "name": "Today",
+                    "filters": {
+                        "created": "today",
+                        "exclude_statuses": ["done", "drop"],
+                    },
+                    "created": payload["views"][0]["created"],
+                    "updated": payload["views"][0]["updated"],
+                }
+            ],
+        )
+        self.assertEqual(
+            [
+                thread["session_id"]
+                for group in payload["groups"]
+                for thread in group["threads"]
+            ],
+            ["alpha-active"],
+        )
+        self.assertEqual(
+            [group["status"] for group in payload["groups"]],
+            ["todo", "active", "blocked", "merging"],
+        )
+
     def test_dashboard_rejects_conflicting_output_modes(self) -> None:
         result = self.run_cli("dashboard", "--json", "--no-open", check=False)
         self.assertNotEqual(result.returncode, 0)
@@ -528,6 +596,10 @@ class DashboardIntegrationTest(unittest.TestCase):
         self.assertIn(b'id="task-session-id" class="session-link"', body)
         self.assertIn(b'id="task-files"', body)
         self.assertNotIn(b"Polish Dashboard", body)
+        status, _headers, _body = self.request(
+            url, path=task_path + "?view=today"
+        )
+        self.assertEqual(status, 200)
         detail_url = f"http://{parsed.netloc}{task_path}"
         self.assertEqual(urlsplit(urljoin(detail_url, "../app.css")).path, parsed.path + "app.css")
         self.assertEqual(urlsplit(urljoin(detail_url, "../task.js")).path, parsed.path + "task.js")
@@ -888,6 +960,11 @@ class DashboardIntegrationTest(unittest.TestCase):
             url, path=parsed.path + "api/dashboard?project=%ZZ"
         )
         self.assertEqual(status, 400)
+        status, _headers, body = self.request(
+            url, path=parsed.path + "api/dashboard?view=missing"
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(json.loads(body), {"error": "unknown saved view: missing"})
 
     def test_dashboard_reads_do_not_mutate_and_return_503_after_ledger_disappears(self) -> None:
         self.seed_dashboard()

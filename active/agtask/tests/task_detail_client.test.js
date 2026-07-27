@@ -79,7 +79,7 @@ async function main() {
     process.stdin.on("end",() => resolve(value));
   }));
   const document = new FakeDocument([
-    "detail-content", "task-title", "task-description", "task-created",
+    "back-link", "detail-content", "task-title", "task-description", "task-created",
     "task-updated", "task-session-id", "task-files-property", "task-files",
     "timeline", "detail-notice"
   ]);
@@ -88,6 +88,7 @@ async function main() {
   global.document = document;
   global.location = {
     pathname:"/token/tasks/~alpha-active",
+    search:"?view=today",
     assign:path => { navigations.push(path); }
   };
   global.fetch = async url => {
@@ -99,6 +100,7 @@ async function main() {
   await settle();
 
   assert.deepEqual(requests,["../api/tasks/~alpha-active"]);
+  assert.equal(document.getElementById("back-link").href,"../?view=today");
   assert.equal(document.title,"Polish Dashboard · agtask");
   assert.equal(document.getElementById("task-title").textContent,"Polish Dashboard");
   assert.equal(document.getElementById("task-description").textContent,"dashboard fixture");
@@ -125,7 +127,7 @@ async function main() {
     preventDefault:() => { prevented = true; }
   });
   assert.equal(prevented,true);
-  assert.deepEqual(navigations,["../"]);
+  assert.deepEqual(navigations,["../?view=today"]);
   process.stdout.write("task detail client passed\n");
 }
 

@@ -245,13 +245,20 @@ The hook installer structurally merges four owned command groups into `~/.codex/
 
 ## SQLite model
 
-The canonical schema is version 7.
+The canonical schema is version 8.
 
 ```mermaid
 erDiagram
     thread ||--o{ rollout : contains
     thread ||--o{ attachment : links
     thread ||--o| project_merge_claim : owns
+    views {
+        text id PK
+        text name
+        text filters
+        text created
+        text updated
+    }
     thread {
         text id PK
         text session_id UK
@@ -304,6 +311,10 @@ constraint couples both terminal states to a non-null `closed` timestamp.
 `project_merge_claim` remains
 owned by logical `thread.id`, and a partial unique index defensively permits
 only one `merging` thread per project.
+
+`views` persists named JSON filter definitions for the dashboard. Version 8
+seeds the `today` view, which applies local-calendar-day creation bounds and
+excludes terminal tasks.
 
 `rollout` contains explicit event identity and presentation data:
 
@@ -566,15 +577,15 @@ never removes the current worktree.
 
 The runtime opens only `~/.llm/agtask/ledger.db`, with `AGTASK_DB` reserved for
 isolated environments. A missing database or empty version-0 file is initialized
-transactionally. Every existing file is first inspected read-only; an exact
-version-6 schema is reopened normally and an exact version-5 schema is migrated
-transactionally by rebuilding `thread`, preserving row IDs and data, rebuilding
-FTS, and validating foreign keys. Any other schema is rejected with move-aside
+transactionally. Every existing file is first inspected read-only. Exact
+version-5, version-6, and version-7 schemas migrate transactionally to version
+8; the version-5 step rebuilds `thread`, preserves row IDs and data, rebuilds
+FTS, and validates foreign keys. Any other schema is rejected with move-aside
 recovery guidance before WAL selection or permission changes.
 
 The store directory uses mode `0700`; the database, WAL, and shared-memory files use `0600`. Connections enable foreign keys, WAL after compatibility is established, and a one-second busy timeout. Explicit commands fail closed and roll back on error. Hooks validate safe modes, use bounded operations, and fail open.
 
-The historical v1 database at `~/.llm/thread/thread.db` is outside the runtime path. It can be inspected manually and is never an initialization source for version 7.
+The historical v1 database at `~/.llm/thread/thread.db` is outside the runtime path. It can be inspected manually and is never an initialization source for version 8.
 
 ## Source and runtime layout
 
