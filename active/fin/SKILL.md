@@ -77,12 +77,12 @@ Run `fin [context] [target]`.
 - If the task includes a requested external notification after green CI, such as Slack or another chat notice, track that notification as a separate finalization gate from PR mergeability and CI. Check notification prerequisites when feasible, such as required local credential files or configured CLIs, and record any missing prerequisite as a notification blocker, not as a CI failure.
 - If the target PR is already merged into the verified origin main branch, treat the PR landing precondition as satisfied and skip mergeability repair. Continue with any matching spec archival, worktree cleanup, local `main` refresh, and retrospective.
 - For `gh`, when the target PR is still open, confirm it is mergeable against the verified origin main branch.
-  - If GraphQL or `gh pr view` reports `UNKNOWN`/indeterminate mergeability while checks and reviews otherwise look green, poll the REST pull-request endpoint once or twice for `mergeable` and `mergeable_state` before invoking conflict repair. Treat REST `mergeable: true` with `mergeable_state: clean` as the mergeability confirmation; treat repeated `null`/unknown as indeterminate and wait or report it.
+  - If GraphQL or `gh pr view` reports `UNKNOWN`/indeterminate mergeability while checks and reviews otherwise look green, poll the REST pull-request endpoint once or twice for `mergeable` and `mergeable_state` before invoking conflict repair. Treat REST `mergeable: true` with `mergeable_state: clean` as the mergeability confirmation. If repeated REST results remain `null`/unknown, record the state as bounded-indeterminate and allow the merge attempt to continue when the exact PR head identity is known and there is no positive evidence of conflicts or unmergeability. Treat the repository merge operation as the authoritative final mergeability check.
 - For `local`, confirm the current branch is mergeable into the verified local origin main branch.
 - If the `gh` flow is blocked only by base-branch conflicts, run `trigger:fix-pr-conflict` against the locked target PR and let it try to restore a clean merge state.
 - If the `gh` flow is blocked by broader PR issues, or conflict repair needs a fuller pass, run `trigger:fix-pr` against the locked target PR.
 - If the `local` flow is blocked only by trunk drift, run `trigger:sync-branch` or otherwise rebase the current branch onto the merge target before retrying the check.
-- Continue only after mergeability is confirmed or the matching PR is already merged. If repair cannot restore a mergeable state, stop and report the blockage instead of archiving the spec or landing the change.
+- Continue after mergeability is confirmed, the matching PR is already merged, or a `gh` target meets the bounded-indeterminate conditions above. If repair cannot clear positive evidence of conflicts or unmergeability, stop and report the blockage instead of archiving the spec or landing the change.
 
 ### Explicit Blocker Override
 
@@ -90,7 +90,7 @@ Run `fin [context] [target]`.
 - Restate the target identity and the exact waived blockers before proceeding. Do not infer an override from a generic approval, an earlier broad permission, silence, or a request that does not clearly authorize landing.
 - An override may waive failing or pending checks, review/proof/approval gates, waiting periods, and incomplete-spec landing gates. It does not waive a missing or failed default-branch gate, a non-main merge target, an unmergeable/conflicting target, a target mismatch, unknown commit identity, dirty-worktree preservation, malformed or failed final hooks, missing repository permission, or post-merge verification and cleanup.
 - Keep incomplete specs and milestones active and unarchived. Do not mark them complete merely to satisfy the normal archival-before-landing order. Record the spec exception in the final report.
-- In `gh` context, re-confirm `mergeable: true` for the exact PR head, then use a repository-supported administrator or maintainer override merge. If merge commits are disallowed, retry once with the supported squash method. Never use the override to merge a conflicting or indeterminate head.
+- In `gh` context, re-confirm the exact PR head identity and require no positive evidence of conflicts or unmergeability, then use a repository-supported administrator or maintainer override merge. If merge commits are disallowed, retry once with the supported squash method. An indeterminate mergeability value alone does not prohibit the override; never use the override to merge a conflicting or explicitly unmergeable head.
 - Preserve the waived state in the final report: who authorized it, which blockers were ignored, whether an administrator merge was used, and which spec artifacts intentionally remained active.
 
 ### PR Automation Lookup
@@ -247,7 +247,7 @@ Run `fin [context] [target]`.
 - State whether that context was explicitly requested, implied by heartbeat or active task context, or auto-detected from current-branch PR state.
 - State the default-branch gate's `status`, `repository_default_branch`, `target_base_ref`, and `matches` fields. For a missing or failed gate, report the blocker and retarget-or-create-PR guidance instead of a finished state.
 - For `gh`, state the target identity line with PR number, branch, and source before reporting mergeability, checks, blockers, merge, or cleanup. If another PR was also present in the current checkout, explicitly state that it was not the finalization target.
-- State whether the mergeability check passed directly, was skipped because the PR was already merged, or required `fix-pr-conflict` / `fix-pr` / `sync-branch` / manual repair.
+- State whether the mergeability check passed directly, was skipped because the PR was already merged, continued as bounded-indeterminate, or required `fix-pr-conflict` / `fix-pr` / `sync-branch` / manual repair.
 - State whether a spec was archived and include the source and destination paths when applicable.
 - If an explicit blocker override was used, state the authorizing user instruction, the exact waived blockers, the override merge method, and every incomplete spec or milestone intentionally left active.
 - For `gh`, state whether the PR was already merged and `merge-pr` was skipped, or whether `merge-pr` ran successfully, including whether the remote merge succeeded directly or required separate post-merge worktree cleanup because local branch deletion failed.
@@ -273,14 +273,14 @@ Run `fin [context] [target]`.
 - Do not archive unrelated active specs.
 - Never archive, merge, clean up, or claim full finalization without a current passing `./scripts/check_default_branch.py` record. Never merge or finalize a PR whose base is not the repository's origin main branch.
 - Do not try to finalize directly from detached `HEAD`; create a named branch first.
-- Do not archive a spec or land the change before the current branch or PR is confirmed mergeable for the chosen context, unless the matching PR is already merged.
+- Do not archive a spec or land the change before the local branch is confirmed mergeable, the GitHub PR is confirmed mergeable, the matching PR is already merged, or the GitHub PR meets the bounded-indeterminate conditions in the shared workflow.
 - Do not silently switch from `gh` to `local` or from `local` to `gh`.
 - Do not ask the user to choose `gh` vs `local` when the argument is omitted and branch PR state clearly determines the context.
 - Do not choose `gh` from a no-argument invocation unless the PR belongs to the current branch being finalized, or a heartbeat-derived or active-task-derived PR target has been locked after live PR verification.
 - Do not run `trigger:merge-pr` when GitHub reports the matching PR is already `MERGED`; use the existing merged state and continue finalization from there.
-- If `gh` repair via `fix-pr-conflict` or `fix-pr` cannot restore a mergeable state, stop and report the blockage instead of continuing the finalization flow.
+- If `gh` repair via `fix-pr-conflict` or `fix-pr` cannot clear positive evidence of conflicts or unmergeability, stop and report the blockage instead of continuing the finalization flow. A bounded-indeterminate state without such evidence is not a repair failure.
 - If `local` repair via branch sync or rebase cannot restore a mergeable state, stop and report the blockage instead of continuing the finalization flow.
-- Do not run `merge-pr` in `gh` mode before the matching spec is marked complete and archived, unless an explicit blocker override authorizes landing a mergeable PR while leaving that incomplete spec active and unarchived.
+- Do not run `merge-pr` in `gh` mode before the matching spec is marked complete and archived, unless an explicit blocker override authorizes landing a mergeable or bounded-indeterminate PR while leaving that incomplete spec active and unarchived.
 - Do not require a PR in `local` mode.
 - Do not classify a green PR as terminally blocked only because GitHub still reports `OPEN`/`BLOCKED` shortly after auto-merge was successfully enabled. Use the explicit `auto-merge pending` state unless the auto-merge request disappears, checks fail, or conflicts appear.
 - Do not leave an unattended auto-merge-pending PR without exactly one active heartbeat unless heartbeat creation failed and that automation blocker is reported explicitly. Do not resolve or delete that heartbeat merely because auto-merge was enabled or remains pending. A foreground watch is not a handoff: use it only after persistent heartbeat automation is unavailable and the user explicitly asks the active task to watch until completion.
@@ -317,7 +317,7 @@ Run `fin [context] [target]`.
 - Every PR status or blocker report included a target identity line with PR number, branch, and source; when multiple PRs were mentioned, every PR-specific claim was labeled with the PR number.
 - If the run started from detached `HEAD`, it was converted into a named branch before context detection and landing.
 - The chosen or detected context was locked once and respected throughout the flow.
-- Current branch or PR was checked for mergeability against `main` or its base branch before spec archival, unless the matching PR was already merged; any detected conflicts were handled with `trigger:fix-pr-conflict`, `trigger:fix-pr`, `trigger:sync-branch`, or an equivalent local repair flow.
+- Current branch or PR was checked for mergeability against `main` or its base branch before spec archival, unless the matching PR was already merged; any detected conflicts were handled with `trigger:fix-pr-conflict`, `trigger:fix-pr`, `trigger:sync-branch`, or an equivalent local repair flow, and any bounded-indeterminate GitHub state recorded the exact head identity and absence of positive conflict evidence.
 - Matching active spec, if any, is marked complete and moved to
   `$DOCS_ROOT/specs/.archive/`; folder specs were moved as whole folders only
   when the parent spec was complete, and milestone or sidecar completions inside
