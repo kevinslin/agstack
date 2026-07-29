@@ -76,7 +76,6 @@ Example:
 - [dev.shortcuts](active/dev.shortcuts/SKILL.md): Resolve explicit `trigger:<name>` workflows, including `trigger:close` for closing a tracked task before archiving its Codex thread.
 - [dev.worktrees](active/dev.worktrees/SKILL.md): Create and inspect Git worktrees, remove already-clean targets conservatively, and transactionally clean one proven-landed worktree and local branch with exact commit identity, dry-run-first execution, resumable journaling, and strict postconditions.
 - [fin](active/fin/SKILL.md): Finalize a completed task through a selected `gh` or `local` landing flow, using a mandatory origin-main gate and a deduplicated heartbeat that resumes deferred cleanup only after live verification of a pending auto-merge.
-- [linear](active/linear/SKILL.md): Manage Linear issues, projects, comments, and team workflows with the `linear-cli` terminal client. Use when the user invokes `linear`, asks to work in Linear from the terminal, or wants issue/project reads or updates performed through `linear-cli` rather than a plugin or SDK.
 - [spec-simulate](active/spec-simulate/SKILL.md): Simulate implementing a spec against the real source code, then grade the spec as correct, comprehensive, and simple. Use only when explicitly invoked as `$spec-simulate` or when the user asks to simulate implementation from a spec.
 - [sudocode](active/sudocode/SKILL.md): Write consistent sudocode from real code. Use whenever sudocode needs to be written, including flow docs, specs, architecture docs, or code-to-sudocode transformations.
 
