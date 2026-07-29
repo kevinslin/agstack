@@ -1,6 +1,6 @@
 ---
 name: aggit
-description: Manage Git preflight, branch and worktree creation, and completed-work cleanup. Use when explicitly invoked.
+description: Manage Git preflight, branches, worktrees, pushes, and completed-work cleanup. Use whenever creating a pr or when explicitly invoked.
 dependencies: []
 ---
 
@@ -35,3 +35,7 @@ that route completely before acting.
 - Preserve dirty or ambiguous state. Never stash, reset, clean, force-remove,
   force-delete, or rewrite history unless a later explicit user request
   authorizes that exact action.
+
+## Git Rules
+- When creating a pull request, always create it ready for review. Never create
+  a draft pull request unless the user explicitly asks for draft mode.
