@@ -54,7 +54,7 @@ CREATION_BOOTSTRAP_SCENARIO_VERSION = 3
 LIFECYCLE_SCENARIO_NAME = "lifecycle-create-directive-close-hooks"
 LIFECYCLE_SCENARIO_VERSION = 13
 DASHBOARD_SCENARIO_NAME = "dashboard-html"
-DASHBOARD_SCENARIO_VERSION = 14
+DASHBOARD_SCENARIO_VERSION = 15
 RENAME_SCENARIO_NAME = "current-task-rename"
 RENAME_SCENARIO_VERSION = 2
 AUDIT_SCENARIO_NAME = "archived-session-audit"
@@ -309,6 +309,34 @@ def dashboard_http_patch(
     return status, headers, response_body
 
 
+def dashboard_http_post_attachment(
+    parsed_url: Any,
+    path: str,
+    *,
+    filename: str,
+    content: bytes,
+) -> tuple[int, dict[str, str], bytes]:
+    connection = http.client.HTTPConnection(
+        parsed_url.hostname, parsed_url.port, timeout=5
+    )
+    connection.request(
+        "POST",
+        path,
+        body=content,
+        headers={
+            "Content-Type": "text/markdown; charset=utf-8",
+            "Origin": f"http://{parsed_url.netloc}",
+            "X-AgTask-Filename": quote(filename, safe=""),
+        },
+    )
+    response = connection.getresponse()
+    response_body = response.read()
+    headers = {key.lower(): value for key, value in response.getheaders()}
+    status = response.status
+    connection.close()
+    return status, headers, response_body
+
+
 def verify_dashboard(
     cli: Path,
     database: Path,
@@ -381,6 +409,30 @@ def verify_dashboard(
     require(
         bulk_fixture["status"] == "active",
         "dashboard bulk fixture did not start active",
+    )
+    upload_fixture_id = str(uuid.uuid4())
+    upload_fixture_session_id = f"dashboard-upload-{upload_fixture_id[:8]}"
+    upload_fixture = run_cli(
+        cli,
+        "register",
+        "--id",
+        upload_fixture_id,
+        "--session-id",
+        upload_fixture_session_id,
+        "--kind",
+        "main",
+        "--project",
+        PROJECT,
+        "--title",
+        f"agtask/integ-dashboard-upload-{upload_fixture_id[:8]}",
+        "--initial-prompt",
+        "Verify the dashboard managed attachment contract.",
+        "--status",
+        "active",
+    )
+    require(
+        upload_fixture["status"] == "active",
+        "dashboard upload fixture did not start active",
     )
     snapshot = run_cli(
         cli,
@@ -514,6 +566,7 @@ def verify_dashboard(
     detail_snapshot: dict[str, Any] | None = None
     status_update_snapshot: dict[str, Any] | None = None
     status_transition_snapshot: dict[str, str] | None = None
+    managed_attachment_snapshot: dict[str, Any] | None = None
     try:
         for name, path, media_type in (
             ("html", root, "text/html; charset=utf-8"),
@@ -544,6 +597,7 @@ def verify_dashboard(
                             b'id="add-filter"',
                             b'id="status-modal"',
                             b'id="status-options"',
+                            b'id="attachment-picker"',
                         )
                     ),
                     "dashboard filter controls missing",
@@ -582,7 +636,10 @@ def verify_dashboard(
                     and b"selection-toggle" in body
                     and b'key==="j"' in body
                     and b'key==="x"' in body
+                    and b'key==="a"' in body
                     and b'"api/tasks/status"' in body
+                    and b'/attachments`' in body
+                    and b'"X-AgTask-Filename"' in body
                     and b"file-badge" in body
                     and b"/status" in body,
                     "dashboard client interactions or task-row links are missing",
@@ -657,6 +714,104 @@ def verify_dashboard(
                 "nosniff": headers["x-content-type-options"],
                 "content_length": len(body),
             }
+
+        upload_path = (
+            root
+            + "api/tasks/~"
+            + quote(upload_fixture_session_id, safe="")
+            + "/attachments"
+        )
+        upload_status, upload_headers, upload_body = dashboard_http_post_attachment(
+            parsed,
+            upload_path,
+            filename="dashboard managed.md",
+            content=b"# Managed dashboard attachment\n",
+        )
+        require(upload_status == 201, "dashboard attachment upload did not succeed")
+        require(
+            upload_headers.get("content-type") == "application/json; charset=utf-8",
+            "dashboard attachment upload media type mismatch",
+        )
+        upload_result = json.loads(upload_body)
+        require(
+            upload_result["attached"] is True
+            and upload_result["attachment"]["name"] == "dashboard managed.md",
+            "dashboard attachment upload result mismatch",
+        )
+        managed_path = Path(upload_result["attachment"]["path"])
+        managed_root = database.parent / "attachments"
+        require(
+            managed_path.is_relative_to(managed_root)
+            and managed_path.is_file()
+            and managed_path.stat().st_mode & 0o777 == 0o600,
+            "dashboard managed attachment path or mode mismatch",
+        )
+        require(
+            all(
+                directory.stat().st_mode & 0o777 == 0o700
+                for directory in (managed_root, managed_path.parent.parent, managed_path.parent)
+            ),
+            "dashboard managed attachment directory mode mismatch",
+        )
+        require(
+            managed_path.read_text()
+            == "---\nstatus: active\n"
+            f"source: codex://threads/{quote(upload_fixture_session_id, safe='')}\n"
+            "---\n# Managed dashboard attachment\n",
+            "dashboard managed attachment frontmatter mismatch",
+        )
+        connection = sqlite3.connect(database)
+        try:
+            stored_paths = [
+                row[0]
+                for row in connection.execute(
+                    "SELECT path FROM attachment WHERE thread_id=? ORDER BY id",
+                    (upload_fixture_id,),
+                )
+            ]
+        finally:
+            connection.close()
+        require(
+            stored_paths == [str(managed_path)],
+            "dashboard managed attachment ledger evidence mismatch",
+        )
+        before_rejection = set(managed_root.rglob("*"))
+        rejected_status, _rejected_headers, _rejected_body = (
+            dashboard_http_post_attachment(
+                parsed,
+                upload_path,
+                filename="../escape.md",
+                content=b"must not persist\n",
+            )
+        )
+        require(rejected_status == 400, "dashboard unsafe attachment was not rejected")
+        connection = sqlite3.connect(database)
+        try:
+            attachment_count = connection.execute(
+                "SELECT count(*) FROM attachment WHERE thread_id=?",
+                (upload_fixture_id,),
+            ).fetchone()[0]
+        finally:
+            connection.close()
+        require(
+            attachment_count == 1 and set(managed_root.rglob("*")) == before_rejection,
+            "dashboard rejected attachment left a row or managed path",
+        )
+        managed_attachment_snapshot = {
+            "status": upload_status,
+            "name": upload_result["attachment"]["name"],
+            "file_mode": "0600",
+            "directory_mode": "0700",
+            "unsafe_name_rejected": True,
+        }
+        responses["attachment_upload"] = {
+            "status": upload_status,
+            "content_type": upload_headers["content-type"],
+            "cache_control": upload_headers["cache-control"],
+            "referrer_policy": upload_headers["referrer-policy"],
+            "nosniff": upload_headers["x-content-type-options"],
+            "content_length": len(upload_body),
+        }
 
         status_path = (
             root
@@ -881,6 +1036,11 @@ def verify_dashboard(
         and bulk_fixture_after["closed"] == bulk_fixture_after["updated"],
         "dashboard bulk fixture did not retain the expected transition",
     )
+    upload_fixture_after = query_thread(database, upload_fixture_id)
+    require(
+        upload_fixture_after is not None and upload_fixture_after["status"] == "active",
+        "dashboard upload fixture changed lifecycle status",
+    )
     return {
         "scenario": DASHBOARD_SCENARIO_NAME,
         "scenario_version": DASHBOARD_SCENARIO_VERSION,
@@ -891,6 +1051,7 @@ def verify_dashboard(
         "status_filter_snapshot": done_filter_snapshot,
         "detail_snapshot": detail_snapshot,
         "attachment": attachment_result["attachment"],
+        "managed_attachment": managed_attachment_snapshot,
         "status_update": {
             "result": status_update_snapshot,
             "stale_conflict": True,

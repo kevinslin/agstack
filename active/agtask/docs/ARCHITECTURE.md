@@ -68,6 +68,9 @@ The attach route resolves the invoking session and delegates filesystem and
 ledger mutation to the CLI. The CLI preserves the selected text file while
 managing its top-level `status` and `source` frontmatter, stores the resolved
 absolute path, and derives editor URLs only at JSON/dashboard boundaries.
+The dashboard's `a` shortcut is a separate browser boundary: it copies a
+selected Markdown or text file into private managed storage beside the ledger,
+updates the copy's frontmatter, and leaves the browser-selected source alone.
 
 Main kind is current-thread designation: a resolver-generated logical ID is
 bound to the invoking session as an active root dispatcher with null parent
@@ -183,6 +186,9 @@ selected set. Pressing `s` opens a modal picker for Todo, Active, Blocked, Done,
 and Drop for every selected row, or for the active or hovered row when there is
 no selection. The request sends each rendered expected status and the requested
 status, then reloads the snapshot rather than moving rows optimistically.
+Pressing `a` for the active or hovered row clicks a hidden native file input,
+uploads its selected file to that row's token-scoped attachment route, and
+reloads the snapshot after the managed attachment commits.
 
 In the default mode, the command validates one snapshot before binding
 `127.0.0.1` on an ephemeral port. A fresh 256-bit token scopes the dashboard
@@ -200,6 +206,15 @@ writes the ordinary `status:<old>->done` event and terminal timestamps directly.
 It does not enter the CLI close workflow, create a merge claim or finalization
 event, or return configured close-hook prompts.
 
+The per-task attachment POST route requires the same exact host, token, and
+origin. It accepts only `text/markdown` or `text/plain`, a percent-encoded safe
+`.md`, `.markdown`, or `.txt` basename, and at most 1 MiB of UTF-8 content.
+Content is written atomically at mode `0600` beneath mode-`0700`
+`attachments/<task-digest>/<opaque-id>/` directories adjacent to the ledger.
+The attachment row, task timestamp, and `attachment:added` rollout share one
+immediate transaction; failures remove the managed copy and roll back the
+ledger mutation.
+
 `dashboard --json` bypasses both server and browser and emits the same grouped
 snapshot once. `--no-open` retains the server but skips browser launch. Browser
 task data arrives only as JSON and is inserted into the DOM with text nodes.
@@ -213,8 +228,8 @@ the matching point-detail API and renders the description, newest-first
 timeline, and created and updated properties. Its session-ID property is also
 an encoded Codex deep link. There are no external assets or background polling.
 All dashboard reads remain read-only. The single-row and bulk status endpoints
-are the only mutation surfaces, and they permit Todo, Active, Blocked, Done, and
-Drop. CLI close remains the hook-bearing, token-fenced finalization workflow;
+permit Todo, Active, Blocked, Done, and Drop; the attachment endpoint only adds
+one managed file to one task. CLI close remains the hook-bearing, token-fenced finalization workflow;
 merge claims and reopen remain workflow-owned.
 
 ### Layered configuration and prompt hooks

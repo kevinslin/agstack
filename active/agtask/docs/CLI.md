@@ -415,6 +415,15 @@ completed. The request includes the row's expected status, so a concurrent hook
 or workflow change returns a conflict instead of being overwritten; refresh and
 retry. Merging remains unavailable because close or release owns that state.
 
+Press `a` for the active or hovered row to launch a native file picker. The
+picker accepts `.md`, `.markdown`, and `.txt` UTF-8 files up to 1 MiB. The
+token-scoped loopback upload copies the file under a private `attachments/`
+directory beside the ledger, injects the selected task's current `status` and
+encoded Codex `source`, registers the managed absolute path, and refreshes the
+view. Managed directories use mode `0700` and files use `0600`; the browser's
+source file is not changed. Typing controls, the filter menu, and the status
+modal suppress dashboard shortcuts.
+
 In the browser, each task row opens a token-scoped detail page. The page shows
 the task description, rollout items ordered newest first, and properties for
 created time, updated time, and session ID. The session ID is a Codex task deep
@@ -445,8 +454,10 @@ python3 "$AGTASK" dashboard \
 Repeated values are ORed within a filter dimension; different dimensions are
 combined. The JSON snapshot contains active filters, global facets, counts, and
 status-grouped thread rows. Dashboard reads never mutate the ledger. The
-browser's token-scoped status endpoint is the only dashboard write surface.
-Its direct Done action is intentionally separate from `close`; the CLI close
+browser exposes only token-scoped status and per-task attachment write
+surfaces; both require the exact numeric-loopback host and origin. Uploads also
+require an allowed media type, safe encoded basename, and bounded content
+length. Direct Done remains intentionally separate from `close`; the CLI close
 workflow retains merge claims, finalization evidence, and configured hook
 prompts.
 

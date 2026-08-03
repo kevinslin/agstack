@@ -222,7 +222,7 @@ initial prompt remains the task description.
 
 ## dashboard-html
 
-Scenario version: 14
+Scenario version: 15
 
 After the live child task is finalized:
 
@@ -257,8 +257,16 @@ After the live child task is finalized:
    `vscode://file` URLs. Require `j`/`k` active-row navigation, `x` selection,
    visible row checkboxes and selected state, and the `s` status picker acting
    on the selected set or the active/hovered row when no selection exists.
+   Require a hidden native Markdown/text file input and `a` attachment shortcut
+   acting on the active/hovered row while remaining suppressed during typing,
+   filter-menu, and status-modal interaction. Require its token-scoped per-task
+   POST route and client refresh/success/error notices.
    Require its Todo/Active/Blocked/Done/Drop choices, its single-row
    expected-status guarded PATCH route, and its token-scoped bulk PATCH route.
+   Require the upload contract to enforce exact loopback host and origin,
+   Markdown/plain-text media type, safe basename and extension, 1 MiB bound,
+   UTF-8 content, private managed directories/files, and file-plus-ledger
+   cleanup on failure.
    Require no task values in executable assets and dashboard API parity with the
    CLI JSON snapshot.
 7. PATCH the dedicated fixture from active to blocked with the exact loopback
@@ -281,7 +289,8 @@ After the live child task is finalized:
    attachment projection.
 9. Interrupt the server cleanly, require exit status zero, and prove the schema
    version plus the known main/child thread and rollout rows are unchanged while
-   the dedicated fixtures contain only the expected status mutations.
+   the status fixtures contain only the expected transitions and the upload
+   fixture contains only its expected managed attachment mutation.
 
 The structured proof must retain only redacted origin, route, header, response,
 shutdown, snapshot, status-transition, and unaffected-lifecycle evidence. It

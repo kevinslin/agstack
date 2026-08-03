@@ -223,6 +223,11 @@ the task complete directly in the ledger without running `OnPreClose`,
 shortcut does not replace the CLI `close` workflow, which retains its merge
 claim, finalization evidence, and configured hook behavior. Drop marks work
 intentionally abandoned and terminal.
+Press `a` on the active or hovered row to open the browser's native file
+picker. Markdown and plain-text files up to 1 MiB are copied into private
+agtask-managed storage beside the ledger, receive the same `status` and
+`source` frontmatter as CLI attachments, and appear after the current view
+refreshes. The source file selected in the browser is never modified.
 Click a task row outside its title to open the local detail page. Clicking the
 title, or focusing it and pressing Enter or Space, opens the task directly in
 Codex. The detail view shows the task description, a newest-first rollout
@@ -243,9 +248,11 @@ python3 "$AGTASK" dashboard \
 
 The server binds only `127.0.0.1` on an ephemeral port, requires the unguessable
 token path plus exact loopback host and mutation origin, and serves no external
-assets. Reads never write the ledger; the token-scoped single-row and bulk
-status endpoints are the only dashboard mutations. Treat the printed URL as temporary local access to
-dashboard data and status controls.
+assets. Reads never write the ledger; only the token-scoped single-row and bulk
+status endpoints and per-task attachment upload endpoint mutate dashboard
+state. Uploads additionally validate media type, filename, size, and UTF-8
+content before creating private managed files. Treat the printed URL as
+temporary local access to dashboard data and controls.
 
 ## Test
 

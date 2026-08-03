@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import datetime as dt
 import http.client
+import importlib.machinery
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -12,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import uuid
 from urllib.parse import quote, urljoin, urlsplit
 
@@ -494,6 +497,7 @@ class DashboardIntegrationTest(unittest.TestCase):
         self.assertIn(b'id="add-filter"', body)
         self.assertIn(b'id="status-modal"', body)
         self.assertIn(b'id="status-options"', body)
+        self.assertIn(b'id="attachment-picker"', body)
         self.assertIn(b'aria-controls="filter-menu"', body)
         self.assertNotIn(b"Publish notes", body)
 
@@ -510,6 +514,8 @@ class DashboardIntegrationTest(unittest.TestCase):
         self.assertIn(b"menuKeydown", body)
         self.assertIn(b"STATUS_OPTIONS", body)
         self.assertIn(b"/status", body)
+        self.assertIn(b"/attachments", body)
+        self.assertIn(b'key==="a"', body)
         self.assertNotIn(b"Publish notes", body)
 
         status, headers, body = self.request(
@@ -689,6 +695,157 @@ class DashboardIntegrationTest(unittest.TestCase):
         )
         self.assertEqual(status, 404)
         self.assertEqual(json.loads(body), {"error": "task not found"})
+
+    def test_attachment_upload_copies_private_utf8_file_and_rejects_unsafe_requests(self) -> None:
+        self.register(
+            "upload-task",
+            project="alpha",
+            title="Upload a note",
+            parent_session_id=None,
+        )
+        _process, url = self.start_server()
+        parsed = urlsplit(url)
+        upload_path = parsed.path + "api/tasks/~upload-task/attachments"
+        headers = {
+            "Content-Type": "text/markdown; charset=utf-8",
+            "Origin": f"http://{parsed.netloc}",
+            "X-AgTask-Filename": quote("picked note.md", safe=""),
+        }
+
+        status, response_headers, body = self.request(
+            url,
+            path=upload_path,
+            method="POST",
+            body="# Picked note\n",
+            headers=headers,
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(
+            response_headers["content-type"], "application/json; charset=utf-8"
+        )
+        result = json.loads(body)
+        self.assertTrue(result["attached"])
+        self.assertTrue(result["file_changed"])
+        self.assertEqual(result["attachment"]["name"], "picked note.md")
+        managed_path = Path(result["attachment"]["path"])
+        self.assertEqual(managed_path.name, "picked note.md")
+        self.assertTrue(
+            managed_path.is_relative_to(self.db_path.resolve().parent / "attachments")
+        )
+        self.assertEqual(managed_path.stat().st_mode & 0o777, 0o600)
+        for directory in (
+            self.db_path.parent / "attachments",
+            managed_path.parent.parent,
+            managed_path.parent,
+        ):
+            self.assertEqual(directory.stat().st_mode & 0o777, 0o700)
+        self.assertEqual(
+            managed_path.read_text(),
+            "---\nstatus: active\nsource: codex://threads/upload-task\n---\n# Picked note\n",
+        )
+
+        connection = sqlite3.connect(self.db_path)
+        try:
+            self.assertEqual(
+                connection.execute(
+                    "SELECT path FROM attachment WHERE thread_id=?",
+                    (fixture_creation_id("upload-task"),),
+                ).fetchone()[0],
+                str(managed_path),
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM rollout WHERE thread_id=? AND message='attachment:added'",
+                    (fixture_creation_id("upload-task"),),
+                ).fetchone()[0],
+                1,
+            )
+        finally:
+            connection.close()
+
+        cases = [
+            ({key: value for key, value in headers.items() if key != "Origin"}, b"safe", 403),
+            ({**headers, "Content-Type": "application/octet-stream"}, b"safe", 415),
+            ({**headers, "X-AgTask-Filename": quote("../escape.md", safe="")}, b"safe", 400),
+            ({**headers, "X-AgTask-Filename": quote("note.pdf", safe="")}, b"safe", 400),
+            (headers, b"\xff", 400),
+            ({**headers, "Content-Length": str(1_048_576 + 1)}, b"x", 413),
+            (headers, b"---\nstatus: one\nstatus: two\n---\n", 400),
+        ]
+        existing_directories = set((self.db_path.parent / "attachments").rglob("*"))
+        for request_headers, request_body, expected_status in cases:
+            with self.subTest(expected_status=expected_status, headers=request_headers):
+                status, _headers, _body = self.request(
+                    url,
+                    path=upload_path,
+                    method="POST",
+                    body=request_body,
+                    headers=request_headers,
+                )
+                self.assertEqual(status, expected_status)
+        self.assertEqual(
+            set((self.db_path.parent / "attachments").rglob("*")),
+            existing_directories,
+            "rejected uploads must not leave managed files or directories",
+        )
+        connection = sqlite3.connect(self.db_path)
+        try:
+            self.assertEqual(connection.execute("SELECT count(*) FROM attachment").fetchone()[0], 1)
+        finally:
+            connection.close()
+
+        status, _headers, _body = self.request(
+            url,
+            path=parsed.path + "api/tasks/~missing/attachments",
+            method="POST",
+            body=b"safe",
+            headers=headers,
+        )
+        self.assertEqual(status, 404)
+
+    def test_managed_attachment_rolls_back_file_when_ledger_write_fails(self) -> None:
+        self.register(
+            "rollback-upload",
+            project="alpha",
+            title="Rollback upload",
+            parent_session_id=None,
+        )
+        module_name = f"agtask_cli_test_{uuid.uuid4().hex}"
+        loader = importlib.machinery.SourceFileLoader(module_name, str(CLI))
+        spec = importlib.util.spec_from_loader(module_name, loader)
+        assert spec is not None
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        try:
+            loader.exec_module(module)
+            with mock.patch.dict(os.environ, self.env), mock.patch.object(
+                module,
+                "append_rollout",
+                side_effect=sqlite3.IntegrityError("forced rollout failure"),
+            ):
+                with self.assertRaises(sqlite3.IntegrityError):
+                    module.dashboard_add_managed_attachment(
+                        "rollback-upload", "rollback.md", b"rollback\n"
+                    )
+        finally:
+            sys.modules.pop(module_name, None)
+
+        connection = sqlite3.connect(self.db_path)
+        try:
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM attachment WHERE thread_id=?",
+                    (fixture_creation_id("rollback-upload"),),
+                ).fetchone()[0],
+                0,
+            )
+        finally:
+            connection.close()
+        attachment_root = self.db_path.parent / "attachments"
+        self.assertFalse(
+            any(path.is_file() for path in attachment_root.rglob("*")),
+            "a rolled-back ledger write must not leave the copied file",
+        )
 
     def test_served_client_filter_interactions_and_query_synchronization(self) -> None:
         node = shutil.which("node")

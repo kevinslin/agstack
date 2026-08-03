@@ -38,6 +38,9 @@ MERGE_RETRY_MIN_MS = 750
 MERGE_RETRY_JITTER_MS = 750
 DASHBOARD_SORT_FIELDS = ("created", "updated", "closed")
 DASHBOARD_DIRECTIONS = ("asc", "desc")
+MANAGED_ATTACHMENT_MEDIA_TYPES = frozenset({"text/markdown", "text/plain"})
+MANAGED_ATTACHMENT_SUFFIXES = frozenset({".md", ".markdown", ".txt"})
+MAX_MANAGED_ATTACHMENT_BYTES = 1_048_576
 THINKING_LEVELS = (
     "none",
     "minimal",
@@ -272,6 +275,7 @@ DASHBOARD_HTML = """<!doctype html>
 <div id="filter-menu-list" class="filter-menu-list" role="menu"></div></div></div></div>
 </section><section id="filter-bar" class="filter-bar" aria-label="Active filters"><div id="active-filters" class="active-filters"></div><button id="add-filter" class="add-filter" type="button" aria-label="Add another filter" aria-haspopup="dialog" aria-controls="filter-menu" aria-expanded="false">+</button></section>
 <div id="notice" class="notice" role="status" aria-live="polite"></div><div id="groups" class="groups" aria-busy="true"></div></main>
+<input id="attachment-picker" type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden>
 <div id="status-modal" class="status-modal" role="dialog" aria-modal="true" aria-labelledby="status-heading" hidden>
 <section class="status-dialog"><header class="status-header"><div><p id="status-heading">Change status</p><strong id="status-task-title"></strong></div><button id="status-close" class="icon-button" type="button" aria-label="Close status picker">×</button></header>
 <label class="visually-hidden" for="status-search">Find a status</label><input id="status-search" class="status-search" type="search" autocomplete="off" placeholder="Change status…" aria-controls="status-options">
@@ -316,7 +320,7 @@ DASHBOARD_JS = r"""(() => {
     "filter-menu-title", "filter-menu-back", "filter-menu-close", "filter-menu-search",
     "filter-menu-list", "filter-bar", "active-filters", "add-filter", "notice",
     "groups", "summary", "status-modal", "status-task-title", "status-close",
-    "status-search", "status-options", "status-error"
+    "status-search", "status-options", "status-error", "attachment-picker"
   ];
   const el = Object.fromEntries(ids.map(id => [id.replace(/-([a-z])/g,(_match,letter)=>letter.toUpperCase()), document.getElementById(id)]));
   let lastSnapshot = null;
@@ -333,6 +337,8 @@ DASHBOARD_JS = r"""(() => {
   let statusInvoker = null;
   let statusSaving = false;
   let statusModalGeneration = 0;
+  let attachmentTask = null;
+  let attachmentSaving = false;
 
   const STATUS_LABELS = {todo:"Todo",active:"Active",blocked:"Blocked",merging:"Merging",done:"Done",drop:"Drop"};
   const STATUS_OPTIONS = [
@@ -699,6 +705,37 @@ DASHBOARD_JS = r"""(() => {
     else index=direction==="next"?Math.min(index+1,renderedRows.length-1):Math.max(index-1,0);
     setActiveTask(renderedRows[index].task,true);
   }
+  function attachmentMediaType(file) {
+    const suffix=file.name.toLocaleLowerCase();
+    if(suffix.endsWith(".md")||suffix.endsWith(".markdown"))return "text/markdown";
+    if(suffix.endsWith(".txt"))return "text/plain";
+    return file.type==="text/markdown"||file.type==="text/plain"?file.type:"";
+  }
+  function chooseAttachment(task) {
+    if(attachmentSaving)return;
+    attachmentTask=task;
+    el.attachmentPicker.value="";
+    el.attachmentPicker.click();
+  }
+  async function uploadAttachment() {
+    const task=attachmentTask; const file=el.attachmentPicker.files&&el.attachmentPicker.files[0];
+    attachmentTask=null;
+    if(!task||!file)return;
+    const mediaType=attachmentMediaType(file);
+    if(!mediaType){el.notice.textContent="Choose a Markdown or plain-text file.";el.notice.className="notice error";return;}
+    attachmentSaving=true;
+    try {
+      const response=await fetch(`api/tasks/~${encodeURIComponent(task.session_id)}/attachments`,{
+        method:"POST",cache:"no-store",headers:{"Content-Type":mediaType,"X-AgTask-Filename":encodeURIComponent(file.name)},body:file
+      });
+      const payload=await response.json();
+      if(!response.ok)throw new Error(payload.error||`Attachment failed (${response.status})`);
+      const refreshed=await load(currentState);
+      if(refreshed){el.notice.textContent=`Attached ${file.name} to ${task.title}.`;el.notice.className="notice";}
+    } catch (error) {
+      el.notice.textContent=error.message; el.notice.className="notice error";
+    } finally { attachmentSaving=false; el.attachmentPicker.value=""; }
+  }
   function taskSelectionCell(thread) {
     const node=document.createElement("td"); node.className="selection-cell";
     const toggle=document.createElement("button"); toggle.type="button"; toggle.className="selection-toggle";
@@ -812,6 +849,7 @@ DASHBOARD_JS = r"""(() => {
   el.statusSearch.addEventListener("input",renderStatusOptions);
   el.statusModal.addEventListener("keydown",statusKeydown);
   el.statusModal.addEventListener("pointerdown",event=>{if(event.target===el.statusModal)closeStatusModal();});
+  el.attachmentPicker.addEventListener("change",uploadAttachment);
   document.addEventListener("keydown",event=>{
     const key=event.key.toLocaleLowerCase();
     if(event.metaKey||event.ctrlKey||event.altKey||event.defaultPrevented)return;
@@ -819,6 +857,7 @@ DASHBOARD_JS = r"""(() => {
     if(key==="j"||key==="k"){event.preventDefault();moveActiveTask(key==="j"?"next":"previous");return;}
     const target=activeTask||hoveredTask;
     if(key==="x"&&target){event.preventDefault();toggleTaskSelection(target);return;}
+    if(key==="a"&&target){event.preventDefault();chooseAttachment(target);return;}
     if(key==="s"){
       const tasks=selectedTasks.size?[...selectedTasks.values()]:(target?[target]:[]);
       if(tasks.length){event.preventDefault();openStatusModal(tasks);}
@@ -3671,6 +3710,126 @@ def dashboard_status_session_id(path: str, prefix: str) -> Optional[str]:
     return dashboard_task_session_id(path[: -len(suffix)], prefix)
 
 
+def dashboard_attachment_session_id(path: str, prefix: str) -> Optional[str]:
+    suffix = "/attachments"
+    if not path.endswith(suffix):
+        return None
+    return dashboard_task_session_id(path[: -len(suffix)], prefix)
+
+
+def dashboard_attachment_filename(value: str) -> str:
+    if not value or re.search(r"%(?![0-9A-Fa-f]{2})", value):
+        raise TaskError("invalid attachment filename")
+    try:
+        filename = unquote(value, encoding="utf-8", errors="strict")
+    except (UnicodeDecodeError, ValueError) as error:
+        raise TaskError("invalid attachment filename") from error
+    if (
+        not filename
+        or filename in {".", ".."}
+        or "/" in filename
+        or "\\" in filename
+        or Path(filename).name != filename
+        or any(ord(character) < 32 or ord(character) == 127 for character in filename)
+        or len(filename.encode("utf-8")) > 240
+        or Path(filename).suffix.lower() not in MANAGED_ATTACHMENT_SUFFIXES
+    ):
+        raise TaskError("invalid attachment filename")
+    return filename
+
+
+def prepare_private_directory(path: Path) -> None:
+    try:
+        path.mkdir(mode=0o700)
+    except FileExistsError:
+        pass
+    metadata = path.lstat()
+    if not stat.S_ISDIR(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
+        raise TaskError(f"managed attachment path is not a private directory: {path}")
+    path.chmod(0o700)
+
+
+def dashboard_add_managed_attachment(
+    session_id: str, filename: str, content: bytes
+) -> Optional[dict[str, Any]]:
+    try:
+        original_text = content.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise TaskError("attachment file is not UTF-8 text") from error
+
+    connection = open_database(initialize=False)
+    attachment_path: Optional[Path] = None
+    attachment_directory: Optional[Path] = None
+    task_directory: Optional[Path] = None
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        row = connection.execute(
+            "SELECT * FROM thread WHERE session_id=?", (session_id,)
+        ).fetchone()
+        if row is None:
+            connection.rollback()
+            return None
+        updated = update_task_frontmatter(
+            original_text,
+            status=row["status"],
+            source=task_source_url(row["session_id"]),
+        ).encode("utf-8")
+
+        root = database_path().resolve().parent / "attachments"
+        prepare_private_directory(root)
+        task_directory = root / hashlib.sha256(row["id"].encode("utf-8")).hexdigest()
+        prepare_private_directory(task_directory)
+        new_attachment_directory = task_directory / uuid.uuid4().hex
+        new_attachment_directory.mkdir(mode=0o700)
+        attachment_directory = new_attachment_directory
+        attachment_directory.chmod(0o700)
+        attachment_path = attachment_directory / filename
+        if attachment_path.parent != attachment_directory:
+            raise TaskError("invalid managed attachment path")
+        atomic_write_file(attachment_path, updated, 0o600)
+
+        timestamp = utc_now()
+        connection.execute(
+            "INSERT INTO attachment(created,thread_id,path) VALUES (?,?,?)",
+            (timestamp, row["id"], str(attachment_path)),
+        )
+        connection.execute(
+            "UPDATE thread SET updated=? WHERE id=?", (timestamp, row["id"])
+        )
+        append_rollout(
+            connection,
+            thread_id=row["id"],
+            turn_id=fresh_event_id(),
+            role="meta",
+            message="attachment:added",
+            created=timestamp,
+        )
+        result = thread_dict(connection, row["id"])
+        result["attachment"] = next(
+            item for item in result["files"] if item["path"] == str(attachment_path)
+        )
+        result["attached"] = True
+        result["file_changed"] = updated != content
+        connection.commit()
+        return result
+    except Exception:
+        connection.rollback()
+        if attachment_path is not None:
+            try:
+                attachment_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        for directory in (attachment_directory, task_directory):
+            if directory is not None:
+                try:
+                    directory.rmdir()
+                except OSError:
+                    pass
+        raise
+    finally:
+        connection.close()
+
+
 class DashboardHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
     block_on_close = False
@@ -3969,6 +4128,90 @@ def dashboard_handler(token: str, expected_host: str) -> type[BaseHTTPRequestHan
             ).encode("utf-8")
             self.send_payload(200, "application/json; charset=utf-8", body)
 
+        def handle_attachment_upload(self) -> None:
+            if not self.valid_host():
+                self.send_json_error(404, "not found")
+                return
+            parsed = urlsplit(self.path)
+            try:
+                session_id = dashboard_attachment_session_id(
+                    parsed.path, task_api_prefix
+                )
+            except TaskError:
+                self.send_json_error(404, "not found")
+                return
+            if session_id is None:
+                self.unsupported()
+                return
+            if parsed.query:
+                self.send_json_error(400, "attachment query is not supported")
+                return
+            if not self.valid_origin():
+                self.send_json_error(403, "invalid origin")
+                return
+            content_types = self.headers.get_all("Content-Type", failobj=[])
+            if len(content_types) != 1:
+                self.send_json_error(415, "invalid attachment media type")
+                return
+            media_parts = [part.strip().lower() for part in content_types[0].split(";")]
+            if (
+                media_parts[0] not in MANAGED_ATTACHMENT_MEDIA_TYPES
+                or len(media_parts) > 2
+                or any(part != "charset=utf-8" for part in media_parts[1:])
+            ):
+                self.send_json_error(415, "invalid attachment media type")
+                return
+            filename_values = self.headers.get_all("X-AgTask-Filename", failobj=[])
+            if len(filename_values) != 1:
+                self.send_json_error(400, "invalid attachment filename")
+                return
+            try:
+                filename = dashboard_attachment_filename(filename_values[0])
+            except TaskError as error:
+                self.send_json_error(400, str(error))
+                return
+            if self.headers.get_all("Transfer-Encoding", failobj=[]):
+                self.send_json_error(400, "transfer encoding is not supported")
+                return
+            content_lengths = self.headers.get_all("Content-Length", failobj=[])
+            try:
+                if len(content_lengths) != 1:
+                    raise ValueError
+                content_length = int(content_lengths[0])
+                if not 0 <= content_length <= MAX_MANAGED_ATTACHMENT_BYTES:
+                    raise ValueError
+            except ValueError:
+                self.send_json_error(413, "invalid attachment size")
+                return
+            content = self.rfile.read(content_length)
+            if len(content) != content_length:
+                self.send_json_error(400, "incomplete attachment body")
+                return
+            try:
+                result = dashboard_add_managed_attachment(
+                    session_id, filename, content
+                )
+            except TaskError as error:
+                if str(error).startswith("attachment file") or str(error).startswith(
+                    "file "
+                ):
+                    self.send_json_error(400, str(error))
+                    return
+                print(f"agtask: dashboard attachment unavailable: {error}", file=sys.stderr)
+                self.send_json_error(503, "attachment unavailable")
+                return
+            except (sqlite3.Error, OSError, ValueError) as error:
+                print(f"agtask: dashboard attachment unavailable: {error}", file=sys.stderr)
+                self.send_json_error(503, "attachment unavailable")
+                return
+            if result is None:
+                self.send_json_error(404, "task not found")
+                return
+            body = json.dumps(
+                result, separators=(",", ":"), ensure_ascii=False
+            ).encode("utf-8")
+            self.send_payload(201, "application/json; charset=utf-8", body)
+
         def do_GET(self) -> None:
             self.handle_read()
 
@@ -3977,6 +4220,9 @@ def dashboard_handler(token: str, expected_host: str) -> type[BaseHTTPRequestHan
 
         def do_PATCH(self) -> None:
             self.handle_status_update()
+
+        def do_POST(self) -> None:
+            self.handle_attachment_upload()
 
         def unsupported(self) -> None:
             if not self.valid_host():
@@ -3989,7 +4235,6 @@ def dashboard_handler(token: str, expected_host: str) -> type[BaseHTTPRequestHan
                 return self.unsupported
             raise AttributeError(name)
 
-        do_POST = unsupported
         do_PUT = unsupported
         do_DELETE = unsupported
         do_OPTIONS = unsupported

@@ -166,6 +166,17 @@ advances `thread.updated` and appends `attachment:added`; an existing
 relationship is a ledger no-op even when frontmatter repair changes the file.
 Later task status transitions do not rewrite attached files.
 
+The dashboard attachment endpoint uses the same table and frontmatter
+contract, but browsers do not expose a trustworthy absolute source path. It
+therefore accepts only a safe Markdown or text basename plus bounded UTF-8
+content and writes a new copy under
+`<ledger-directory>/attachments/<task-digest>/<opaque-id>/<basename>`. Managed
+directories are `0700` and the file is `0600`. The copy is written before the
+attachment row inside an immediate transaction; any later write or commit
+failure removes the copy and rolls back the row, timestamp, and rollout. The
+selected source file remains unchanged, and repeated basenames receive distinct
+opaque directories rather than overwriting an earlier attachment.
+
 ## `views`
 
 `views` persists named dashboard filters independently of task rows.

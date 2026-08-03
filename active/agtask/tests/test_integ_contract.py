@@ -262,7 +262,7 @@ class IntegrationRunnerContractTest(unittest.TestCase):
         self.assertIn("## archived-session-audit", scenarios)
         self.assertIn("ADD_SCENARIO_VERSION = 1", lifecycle)
         self.assertIn("CREATION_BOOTSTRAP_SCENARIO_VERSION = 3", lifecycle)
-        self.assertIn("DASHBOARD_SCENARIO_VERSION = 14", lifecycle)
+        self.assertIn("DASHBOARD_SCENARIO_VERSION = 15", lifecycle)
         self.assertIn("RENAME_SCENARIO_VERSION = 2", lifecycle)
         self.assertIn("AUDIT_SCENARIO_VERSION = 2", lifecycle)
 

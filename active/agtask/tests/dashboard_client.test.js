@@ -17,6 +17,8 @@ class FakeElement {
     this.value = "";
     this.title = "";
     this.type = "";
+    this.files = [];
+    this.clickCount = 0;
   }
 
   set textContent(value) {
@@ -64,6 +66,7 @@ class FakeElement {
   }
 
   click() {
+    this.clickCount += 1;
     this.dispatchEvent({type:"click"});
   }
 
@@ -186,7 +189,7 @@ async function main() {
     "filter-menu-title", "filter-menu-back", "filter-menu-close", "filter-menu-search",
     "filter-menu-list", "filter-bar", "active-filters", "add-filter", "notice",
     "groups", "summary", "status-modal", "status-task-title", "status-close",
-    "status-search", "status-options", "status-error"
+    "status-search", "status-options", "status-error", "attachment-picker"
   ];
   const document = new FakeDocument(ids);
   document.getElementById("filter-menu").hidden = true;
@@ -208,6 +211,7 @@ async function main() {
   const requests = [];
   const statusUpdates = [];
   const bulkStatusUpdates = [];
+  const attachmentUploads = [];
   const dashboardSnapshot = clone(input.snapshot);
   let statusFailure = null;
   let deferNextStatus = false;
@@ -217,6 +221,23 @@ async function main() {
   global.history = history;
   global.fetch = async (requestUrl, options={}) => {
     requests.push(requestUrl);
+    if(options.method === "POST"){
+      const match = requestUrl.match(/^api\/tasks\/~([^/]+)\/attachments$/);
+      assert.ok(match,"attachments use the token-scoped task route");
+      const sessionId = decodeURIComponent(match[1]);
+      const task = dashboardSnapshot.groups.flatMap(group => group.threads).find(
+        thread => thread.session_id === sessionId
+      );
+      assert.ok(task,"attachment upload targets a rendered task");
+      assert.deepEqual(Object.keys(options.headers),["Content-Type","X-AgTask-Filename"]);
+      const filename = decodeURIComponent(options.headers["X-AgTask-Filename"]);
+      assert.equal(options.headers["Content-Type"],"text/markdown");
+      assert.equal(options.body.name,filename,"the selected File is the upload body");
+      const attachment={created:"2026-01-09T00:00:00.000Z",path:`/managed/${filename}`,name:filename,url:`vscode://file/managed/${encodeURIComponent(filename)}`};
+      task.files=[...(task.files||[]),attachment];
+      attachmentUploads.push({sessionId,filename});
+      return {ok:true,status:201,json:async()=>({attached:true,attachment})};
+    }
     if(options.method === "PATCH"){
       if(requestUrl === "api/tasks/status"){
         const payload = JSON.parse(options.body);
@@ -433,6 +454,12 @@ async function main() {
     type:"keydown",key:"s",target:document.getElementById("search")
   });
   assert.equal(statusModal.hidden,true,"typing in a dashboard control does not open the picker");
+  const attachmentPicker = document.getElementById("attachment-picker");
+  const pickerClicksBeforeTyping = attachmentPicker.clickCount;
+  document.dispatchEvent({
+    type:"keydown",key:"a",target:document.getElementById("search")
+  });
+  assert.equal(attachmentPicker.clickCount,pickerClicksBeforeTyping,"A does not open a file picker while typing");
   document.getElementById("search").value = "";
 
   refreshedTaskRow.dispatchEvent({type:"mouseleave"});
@@ -458,11 +485,17 @@ async function main() {
     true,
     "done tasks cannot bypass the reopen workflow"
   );
+  const pickerClicksBeforeModal = attachmentPicker.clickCount;
+  document.dispatchEvent({type:"keydown",key:"a",target:doneTaskRow});
+  assert.equal(attachmentPicker.clickCount,pickerClicksBeforeModal,"A does not open a file picker over the status modal");
   statusModal.dispatchEvent({type:"keydown",key:"Escape"});
 
   assert.equal(menu.hidden,true,"menu starts closed");
   trigger.click();
   assert.equal(menu.hidden,false,"toolbar trigger opens the filter menu");
+  const pickerClicksBeforeMenu = attachmentPicker.clickCount;
+  document.dispatchEvent({type:"keydown",key:"a",target:firstTaskRow});
+  assert.equal(attachmentPicker.clickCount,pickerClicksBeforeMenu,"A does not open a file picker over the filter menu");
   assert.equal(trigger.getAttribute("aria-expanded"),"true");
   assert.equal(document.activeElement,document.getElementById("filter-menu-search"));
   assert.deepEqual(["Project","Parent task","Status"].map(label=>Boolean(menuButton(document,label))),[true,true,true]);
@@ -638,6 +671,29 @@ async function main() {
   );
   assert.equal(statusButton(document,"Active").disabled,true);
   statusModal.dispatchEvent({type:"keydown",key:"Escape"});
+
+  const attachableTaskRow = allNodes(document.getElementById("groups")).find(
+    node => node.tagName === "TR" && node.getAttribute("data-task-id")
+  );
+  attachableTaskRow.dispatchEvent({type:"mouseenter"});
+  document.dispatchEvent({type:"keydown",key:"A",target:attachableTaskRow});
+  assert.equal(attachmentPicker.clickCount,pickerClicksBeforeMenu+1,"A opens the native picker for the active or hovered row");
+  attachmentPicker.files=[{name:"picked note.md",type:"text/markdown"}];
+  attachmentPicker.dispatchEvent({type:"change",target:attachmentPicker});
+  await settle();
+  await settle();
+  assert.deepEqual(
+    attachmentUploads.at(-1),
+    {sessionId:attachableTaskRow.getAttribute("data-session-id"),filename:"picked note.md"},
+    "the selected file uploads to the active task"
+  );
+  assert.match(document.getElementById("notice").textContent,/Attached picked note\.md/);
+  assert.ok(
+    allNodes(document.getElementById("groups")).some(
+      node => node.tagName === "A" && node.className === "file-badge" && /picked note\.md/.test(node.title)
+    ),
+    "a successful upload refreshes the dashboard attachment projection"
+  );
 
   assert.ok(requests.length >= 5,"interactions issued fresh dashboard requests");
   process.stdout.write("dashboard client interactions passed\n");

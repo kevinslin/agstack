@@ -1,6 +1,8 @@
 # Task attachments
 
-This flow links a local text file to the invoking tracked task.
+These flows link a UTF-8 text file to a tracked task. The CLI updates an
+existing file in place; the dashboard copies browser-selected content into
+agtask-managed storage.
 
 ```mermaid
 sequenceDiagram
@@ -31,3 +33,33 @@ task later changes status.
 Dashboard JSON derives each attachment's basename and `vscode://file` URL.
 List and detail pages render those URLs as `file` badges without changing the
 row-click behavior for the rest of the task row.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Browser
+    participant Server as tokenized loopback server
+    participant Managed as managed attachment storage
+    participant DB as SQLite ledger
+
+    User->>Browser: press a on active or hovered task
+    Browser->>User: native Markdown or text file picker
+    User->>Browser: choose one file
+    Browser->>Server: POST task attachment with basename and bytes
+    Server->>Server: validate host, token, origin, media type, name, size, UTF-8
+    Server->>DB: BEGIN IMMEDIATE; resolve task
+    Server->>Managed: atomic 0600 copy with status + source
+    Server->>DB: insert attachment, update timestamp, append event
+    Server->>DB: commit
+    Server-->>Browser: attachment projection
+    Browser->>Server: refresh dashboard snapshot
+    Browser-->>User: success notice and file badge
+```
+
+The upload route accepts `.md`, `.markdown`, and `.txt` basenames and at most
+1 MiB. Its exact loopback host and origin checks supplement the opaque token
+path. Managed paths are rooted beside the ledger beneath private `0700`
+directories, with a distinct opaque directory per upload so a repeated name
+cannot overwrite an earlier file. A failed ledger write rolls back the row and
+removes the copied file. Invalid or failed uploads leave neither an attachment
+row nor a managed file.
