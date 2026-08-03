@@ -212,10 +212,12 @@ one chip are ORed, while separate field chips and title search are ANDed. Sort
 by created, updated, or closed time, or refresh the current snapshot from the
 toolbar.
 Hover a task and press `s` to open the status picker. Choosing Todo, Active,
-Blocked, or Drop applies the same atomic ledger transition as the `status`
-command and then refreshes the current view. Drop marks work intentionally
-abandoned and terminal; Merging and Done remain owned by the close and reopen
-workflows.
+Blocked, Done, or Drop applies an atomic ledger transition and then refreshes
+the current view. Done marks the task complete directly in the ledger without
+running `OnPreClose`, `OnPostClose`, or any other close workflow hook. This UI
+shortcut does not replace the CLI `close` workflow, which retains its merge
+claim, finalization evidence, and configured hook behavior. Drop marks work
+intentionally abandoned and terminal.
 Click a task row outside its title to open the local detail page. Clicking the
 title, or focusing it and pressing Enter or Space, opens the task directly in
 Codex. The detail view shows the task description, a newest-first rollout

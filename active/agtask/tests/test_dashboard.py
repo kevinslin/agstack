@@ -726,8 +726,18 @@ class DashboardIntegrationTest(unittest.TestCase):
         )
         self.assertIn("dashboard client interactions passed", result.stdout)
 
-    def test_status_api_updates_ledger_with_cli_transition_semantics(self) -> None:
+    def test_status_api_updates_ledger_without_dispatching_close_hooks(self) -> None:
         self.seed_dashboard()
+        (self.home / ".agtask.json").write_text(
+            json.dumps(
+                {
+                    "hooks": {
+                        "OnPreClose": {"prompt": "dashboard must not dispatch pre-close"},
+                        "OnPostClose": {"prompt": "dashboard must not dispatch post-close"},
+                    }
+                }
+            )
+        )
         _process, url = self.start_server()
         parsed = urlsplit(url)
         status_path = parsed.path + "api/tasks/~alpha-active/status"
@@ -837,6 +847,16 @@ class DashboardIntegrationTest(unittest.TestCase):
                 "close", "--id", "root-todo", "--prepare", "--json"
             ).stdout
         )
+        self.assertEqual(
+            prepared["hook_prompts"],
+            [
+                {
+                    "event": "OnPreClose",
+                    "prompt": "dashboard must not dispatch pre-close",
+                    "source": str((self.home / ".agtask.json").resolve()),
+                }
+            ],
+        )
         status, _headers, body = self.request(
             url,
             path=parsed.path + "api/tasks/~root-todo/status",
@@ -860,13 +880,43 @@ class DashboardIntegrationTest(unittest.TestCase):
 
         status, _headers, body = self.request(
             url,
-            path=status_path,
+            path=parsed.path + "api/tasks/~root-todo/status",
             method="PATCH",
-            body='{"expected_status":"blocked","status":"done"}',
+            body='{"expected_status":"todo","status":"done"}',
             headers={"Content-Type": "application/json", "Origin": origin},
         )
-        self.assertEqual(status, 400)
-        self.assertEqual(json.loads(body), {"error": "invalid task status: done"})
+        self.assertEqual(status, 200)
+        completed = json.loads(body)
+        self.assertEqual(set(completed), {"changed", "task"})
+        self.assertTrue(completed["changed"])
+        self.assertEqual(completed["task"]["status"], "done")
+        self.assertEqual(completed["task"]["closed"], completed["task"]["updated"])
+        self.assertNotIn("hook_prompts", completed)
+        with sqlite3.connect(self.db_path) as connection:
+            root_id = fixture_creation_id("root-todo")
+            self.assertEqual(
+                connection.execute(
+                    "SELECT message FROM rollout WHERE thread_id=? "
+                    "AND message LIKE 'status:%' ORDER BY id DESC LIMIT 1",
+                    (root_id,),
+                ).fetchone()[0],
+                "status:todo->done",
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM rollout WHERE thread_id=? "
+                    "AND message='finalization:completed'",
+                    (root_id,),
+                ).fetchone()[0],
+                0,
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM project_merge_claim WHERE owner_thread_id=?",
+                    (root_id,),
+                ).fetchone()[0],
+                0,
+            )
 
         status, _headers, body = self.request(
             url,

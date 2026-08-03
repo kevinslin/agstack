@@ -328,8 +328,8 @@ async function main() {
   );
   assert.equal(document.activeElement,document.getElementById("status-search"));
   assert.deepEqual(
-    ["Todo","Active","Blocked","Drop"].map(label=>Boolean(statusButton(document,label))),
-    [true,true,true,true],
+    ["Todo","Active","Blocked","Done","Drop"].map(label=>Boolean(statusButton(document,label))),
+    [true,true,true,true,true],
     "the picker exposes the ledger's user-settable statuses"
   );
   statusButton(document,"Blocked").click();
@@ -515,6 +515,24 @@ async function main() {
   plus.click();
   menu.dispatchEvent({type:"keydown",key:"Tab"});
   assert.equal(menu.hidden,true,"Tab dismisses the menu without trapping focus");
+
+  const completableTaskRow = allNodes(document.getElementById("groups")).find(
+    node => node.tagName === "TR" && ["todo","active","blocked"].includes(node.getAttribute("data-status"))
+  );
+  completableTaskRow.dispatchEvent({type:"mouseenter"});
+  document.dispatchEvent({type:"keydown",key:"s",target:completableTaskRow});
+  statusButton(document,"Done").click();
+  await settle();
+  await settle();
+  assert.equal(statusUpdates.at(-1).status,"done","Done is sent through the dashboard status endpoint");
+  assert.ok(
+    allNodes(document.getElementById("groups")).some(
+      node => node.tagName === "TR" &&
+        node.getAttribute("data-session-id") === completableTaskRow.getAttribute("data-session-id") &&
+        node.getAttribute("data-status") === "done"
+    ),
+    "the dashboard renders the directly completed task in the Done group"
+  );
 
   const droppableTaskRow = allNodes(document.getElementById("groups")).find(
     node => node.tagName === "TR" && ["todo","active","blocked"].includes(node.getAttribute("data-status"))

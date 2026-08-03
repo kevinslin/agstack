@@ -400,11 +400,13 @@ browser, and runs until interrupted. With `--json`, it returns one snapshot and
 does not start a server.
 
 Hover a task row and press `s` to open its status picker. Todo, Active, Blocked,
-and Drop use the same atomic transition contract as the `status` command. Drop
-ends the task without marking it successfully completed. The request includes
-the row's expected status, so a concurrent hook or workflow change returns a
-conflict instead of being overwritten; refresh and retry. Merging and Done
-remain unavailable because close, release, and reopen own those transitions.
+Done, and Drop use an atomic dashboard transition. Done marks the task complete
+directly in the ledger without dispatching `OnPreClose`, `OnPostClose`, or any
+other close hook; it records only `status:<old>->done` and the shared
+`closed`/`updated` timestamp. Drop ends the task without marking it successfully
+completed. The request includes the row's expected status, so a concurrent hook
+or workflow change returns a conflict instead of being overwritten; refresh and
+retry. Merging remains unavailable because close or release owns that state.
 
 In the browser, each task row opens a token-scoped detail page. The page shows
 the task description, rollout items ordered newest first, and properties for
@@ -437,6 +439,9 @@ Repeated values are ORed within a filter dimension; different dimensions are
 combined. The JSON snapshot contains active filters, global facets, counts, and
 status-grouped thread rows. Dashboard reads never mutate the ledger. The
 browser's token-scoped status endpoint is the only dashboard write surface.
+Its direct Done action is intentionally separate from `close`; the CLI close
+workflow retains merge claims, finalization evidence, and configured hook
+prompts.
 
 ## `status`
 

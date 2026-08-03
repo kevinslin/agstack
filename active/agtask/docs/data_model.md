@@ -242,13 +242,17 @@ dashboard projections remain read-only and leave the persisted rows unchanged.
 The token-scoped browser server also accepts one status mutation for a task
 resolved by `session_id`. Its JSON body carries both the rendered
 `expected_status` and requested `status`. Under `BEGIN IMMEDIATE`, the server
-requires the current value to equal the expected value and then reuses the
-manual status transition contract. `todo`, `active`, `blocked`, and `drop` are
-valid targets. A real change advances `updated` and appends one
+requires the current value to equal the expected value and then applies the
+dashboard status transition contract. `todo`, `active`, `blocked`, `done`, and
+`drop` are valid targets. A real change advances `updated` and appends one
 `status:<old>-><new>` meta rollout with the same timestamp; `drop` sets
-`closed`, while nonterminal targets clear it. A same-state request is a no-op.
-Stale, `merging`, and terminal rows fail without writes, preserving
-merge-claim, close, and reopen ownership.
+`closed`, as does `done`, while nonterminal targets clear it. A same-state
+request is a no-op. Dashboard selection of `done` is a direct ledger mutation:
+it creates no merge claim or finalization event and returns no close-hook
+prompts. Stale, `merging`, and terminal rows fail without writes, preserving
+merge-claim and reopen ownership. The CLI `status` and `close` contracts are
+unchanged; in particular, CLI completion remains owned by token-fenced close
+and its configured hooks.
 
 The snapshot derives project, parent, and lifecycle-status facets before any
 filter is applied, so facet counts always describe the complete ledger. Exact
@@ -543,6 +547,9 @@ Status and timestamp rules are:
 - Explicit Drop sets `status = 'drop'`, gives `updated`, `closed`, and
   `status:<prior>->drop` one timestamp, and does not create merge or
   finalization evidence.
+- Dashboard Done sets `status = 'done'`, gives `updated`, `closed`, and
+  `status:<prior>->done` one timestamp, and does not create merge or
+  finalization evidence or return close-hook prompts.
 - Repeated close is a no-op. `reopen` changes `done` or `drop` to `active`,
   clears `closed`, advances `updated`, and records
   `status:<terminal>->active`. A later close is a distinct lifecycle with new

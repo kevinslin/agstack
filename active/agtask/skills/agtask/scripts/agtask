@@ -31,6 +31,7 @@ BUSY_TIMEOUT_MS = 1000
 SUMMARY_LIMIT = 240
 DASHBOARD_STATUSES = ("todo", "active", "blocked", "merging", "done", "drop")
 MANUAL_STATUSES = ("todo", "active", "blocked", "drop")
+DASHBOARD_MUTATION_STATUSES = ("todo", "active", "blocked", "done", "drop")
 TERMINAL_STATUSES = frozenset({"done", "drop"})
 MERGE_OWNER_LEASE_SECONDS = 300
 MERGE_RETRY_MIN_MS = 750
@@ -274,7 +275,7 @@ DASHBOARD_HTML = """<!doctype html>
 <div id="status-modal" class="status-modal" role="dialog" aria-modal="true" aria-labelledby="status-heading" hidden>
 <section class="status-dialog"><header class="status-header"><div><p id="status-heading">Change status</p><strong id="status-task-title"></strong></div><button id="status-close" class="icon-button" type="button" aria-label="Close status picker">×</button></header>
 <label class="visually-hidden" for="status-search">Find a status</label><input id="status-search" class="status-search" type="search" autocomplete="off" placeholder="Change status…" aria-controls="status-options">
-<div id="status-options" class="status-options" role="listbox" aria-label="Available statuses"></div><p class="status-guidance">Merging and Done are managed by task close workflows. Drop ends work without completing it.</p><p id="status-error" class="status-error" role="status" aria-live="polite"></p></section></div></body></html>
+<div id="status-options" class="status-options" role="listbox" aria-label="Available statuses"></div><p class="status-guidance">Done updates the ledger directly without running close hooks. Drop ends work without completing it.</p><p id="status-error" class="status-error" role="status" aria-live="polite"></p></section></div></body></html>
 """
 
 TASK_DETAIL_HTML = """<!doctype html>
@@ -335,7 +336,8 @@ DASHBOARD_JS = r"""(() => {
     {value:"todo",label:"Todo",symbol:"○",shortcut:"1"},
     {value:"active",label:"Active",symbol:"◐",shortcut:"2"},
     {value:"blocked",label:"Blocked",symbol:"!",shortcut:"3"},
-    {value:"drop",label:"Drop",symbol:"×",shortcut:"4"}
+    {value:"done",label:"Done",symbol:"✓",shortcut:"4"},
+    {value:"drop",label:"Drop",symbol:"×",shortcut:"5"}
   ];
   const FILTER_DEFS = [
     {
@@ -2279,6 +2281,26 @@ def transition_manual_status(
     return transition_thread(connection, thread_id=thread_id, target=target)
 
 
+def transition_dashboard_status(
+    connection: sqlite3.Connection, *, thread_id: str, target: str
+) -> bool:
+    if target not in DASHBOARD_MUTATION_STATUSES:
+        raise TaskError(f"invalid task status: {target}")
+    row = connection.execute(
+        "SELECT status FROM thread WHERE id=?", (thread_id,)
+    ).fetchone()
+    if row is None:
+        raise TaskError(f"thread is not tracked: {thread_id}")
+    if row["status"] == target:
+        return False
+    if row["status"] in TERMINAL_STATUSES:
+        label = "dropped" if row["status"] == "drop" else row["status"]
+        raise StatusConflict(f"{label} threads must be reopened explicitly")
+    if row["status"] == "merging":
+        raise StatusConflict("merging threads must be closed or released explicitly")
+    return transition_thread(connection, thread_id=thread_id, target=target)
+
+
 def rename_thread(
     connection: sqlite3.Connection,
     *,
@@ -3522,7 +3544,7 @@ def dashboard_update_task_status(
                 f"task status changed from {expected_status} to {row['status']}; "
                 "refresh and try again"
             )
-        changed = transition_manual_status(
+        changed = transition_dashboard_status(
             connection, thread_id=row["id"], target=target
         )
         task = connection.execute(
@@ -3781,7 +3803,10 @@ def dashboard_handler(token: str, expected_host: str) -> type[BaseHTTPRequestHan
                     400, f"invalid expected task status: {expected_status}"
                 )
                 return
-            if not isinstance(target, str) or target not in MANUAL_STATUSES:
+            if (
+                not isinstance(target, str)
+                or target not in DASHBOARD_MUTATION_STATUSES
+            ):
                 self.send_json_error(400, f"invalid task status: {target}")
                 return
             try:

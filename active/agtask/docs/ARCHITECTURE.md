@@ -178,7 +178,7 @@ uses one registry-driven dropdown for field and value selection. Values within
 a chip are ORed by the existing API contract; field chips and title search are
 ANDed. The toolbar trigger and filter-bar plus button open the same menu, and
 chip removal immediately requests a new snapshot. Hovering a row and pressing
-`s` opens a modal picker for the three manual states. Selection sends both the
+`s` opens a modal picker for Todo, Active, Blocked, Done, and Drop. Selection sends both the
 rendered expected status and requested status, then reloads the snapshot rather
 than moving rows optimistically.
 
@@ -191,8 +191,12 @@ remain in memory. Host, token, route, method, media type, no-store, referrer,
 nosniff, and CSP checks form the HTTP boundary, and access logging is disabled
 so tokens and filters do not reach stderr. Status mutation additionally
 requires the exact loopback origin and JSON media type. Its immediate
-transaction compares the expected status before reusing the CLI's manual
-transition helper; stale, terminal, and merging states fail without writes.
+transaction compares the expected status before applying manual transition
+rules plus the dashboard-only Done target; stale, terminal, and
+merging states fail without writes. Dashboard Done writes the ordinary
+`status:<old>->done` event and terminal timestamps directly. It does not enter
+the CLI close workflow, create a merge claim or finalization event, or return
+configured close-hook prompts.
 
 `dashboard --json` bypasses both server and browser and emits the same grouped
 snapshot once. `--no-open` retains the server but skips browser launch. Browser
@@ -207,8 +211,9 @@ the matching point-detail API and renders the description, newest-first
 timeline, and created and updated properties. Its session-ID property is also
 an encoded Codex deep link. There are no external assets or background polling.
 All dashboard reads remain read-only. The status endpoint is the only mutation
-surface, and it permits Todo, Active, Blocked, and Drop; merge claims,
-finalization, and reopen remain workflow-owned.
+surface, and it permits Todo, Active, Blocked, Done, and Drop. CLI close remains
+the hook-bearing, token-fenced finalization workflow; merge claims and reopen
+remain workflow-owned.
 
 ### Layered configuration and prompt hooks
 
@@ -525,9 +530,9 @@ stateDiagram-v2
     merging --> active: cancel or stale takeover restores prior state
     merging --> blocked: cancel or stale takeover restores prior state
     merging --> done: close --merge-token
-    todo --> done: confirmed audit of archived Codex thread
-    active --> done: confirmed audit of archived Codex thread
-    blocked --> done: confirmed audit of archived Codex thread
+    todo --> done: confirmed archive audit or dashboard completion
+    active --> done: confirmed archive audit or dashboard completion
+    blocked --> done: confirmed archive audit or dashboard completion
     done --> active: reopen
     todo --> drop: explicit status
     active --> drop: explicit status
@@ -539,7 +544,9 @@ Every actual transition and successful tokenized close is recorded in the same
 transaction as current-state mutation. A normal tracked close reaches `done`
 only from `merging` with the live fencing token returned by `close --prepare`;
 archive reconciliation is the narrow exception and requires an unchanged
-confirmed audit plan for a `todo`, `active`, or `blocked` row. Repeating the
+confirmed audit plan for a `todo`, `active`, or `blocked` row. Dashboard direct
+completion is the other exception: it records the terminal status and timestamp
+without entering close orchestration or dispatching its hooks. Repeating the
 current state is a no-op.
 
 ### Compaction and restoration

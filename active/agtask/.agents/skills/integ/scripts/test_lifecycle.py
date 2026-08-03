@@ -54,7 +54,7 @@ CREATION_BOOTSTRAP_SCENARIO_VERSION = 3
 LIFECYCLE_SCENARIO_NAME = "lifecycle-create-directive-close-hooks"
 LIFECYCLE_SCENARIO_VERSION = 13
 DASHBOARD_SCENARIO_NAME = "dashboard-html"
-DASHBOARD_SCENARIO_VERSION = 12
+DASHBOARD_SCENARIO_VERSION = 13
 RENAME_SCENARIO_NAME = "current-task-rename"
 RENAME_SCENARIO_VERSION = 2
 AUDIT_SCENARIO_NAME = "archived-session-audit"
@@ -552,6 +552,7 @@ def verify_dashboard(
                     and b"FILTER_DEFS" in body
                     and b"menuKeydown" in body
                     and b"STATUS_OPTIONS" in body
+                    and b'value:"done"' in body
                     and b'value:"drop"' in body
                     and b"expected_status" in body
                     and b"file-badge" in body
@@ -714,28 +715,40 @@ def verify_dashboard(
             == 1,
             "dashboard stale status update changed the fixture",
         )
-        drop_status, _drop_headers, drop_body = dashboard_http_patch(
+        done_status, _done_headers, done_body = dashboard_http_patch(
             parsed,
             status_path,
-            {"expected_status": "blocked", "status": "drop"},
+            {"expected_status": "blocked", "status": "done"},
         )
-        drop_snapshot = json.loads(drop_body)
+        done_snapshot = json.loads(done_body)
         require(
-            drop_status == 200
-            and drop_snapshot["changed"] is True
-            and drop_snapshot["task"]["status"] == "drop"
-            and drop_snapshot["task"]["closed"] == drop_snapshot["task"]["updated"],
-            "dashboard Drop completion transition mismatch",
+            done_status == 200
+            and set(done_snapshot) == {"changed", "task"}
+            and done_snapshot["changed"] is True
+            and done_snapshot["task"]["status"] == "done"
+            and done_snapshot["task"]["closed"] == done_snapshot["task"]["updated"],
+            "dashboard Done completion transition mismatch",
         )
-        drop_rollouts = [
+        done_rollouts = [
             row
             for row in query_rollouts(database, status_fixture_id)
             if row["message"].startswith("status:")
         ]
         require(
-            [row["message"] for row in drop_rollouts]
-            == ["status:active->blocked", "status:blocked->drop"],
-            "dashboard Drop transition evidence mismatch",
+            [row["message"] for row in done_rollouts]
+            == ["status:active->blocked", "status:blocked->done"],
+            "dashboard Done transition evidence mismatch",
+        )
+        require(
+            not any(
+                row["message"] == "finalization:completed"
+                for row in query_rollouts(database, status_fixture_id)
+            ),
+            "dashboard Done dispatched close finalization evidence",
+        )
+        require(
+            query_merge_claim(database, PROJECT) is None,
+            "dashboard Done created a project merge claim",
         )
         responses["status_update"] = {
             "status": status,
@@ -762,7 +775,7 @@ def verify_dashboard(
     status_fixture_after = query_thread(database, status_fixture_id)
     require(
         status_fixture_after is not None
-        and status_fixture_after["status"] == "drop"
+        and status_fixture_after["status"] == "done"
         and status_fixture_after["closed"] == status_fixture_after["updated"],
         "dashboard status fixture did not retain the expected transition",
     )

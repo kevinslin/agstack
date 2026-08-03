@@ -222,7 +222,7 @@ initial prompt remains the task description.
 
 ## dashboard-html
 
-Scenario version: 12
+Scenario version: 13
 
 After the live child task is finalized:
 
@@ -240,7 +240,7 @@ After the live child task is finalized:
    done group, proving status-filter behavior independently of default grouping.
 4. Register a dedicated active dashboard-status fixture in the proof ledger.
    Keep it separate from the finalized live child and lifecycle main task. Move
-   it through `blocked` to the terminal `drop` status, require the shared
+   it through `blocked` to the terminal `done` status, require the shared
    `closed`/`updated` timestamp, and retain both transition events.
 5. Start the installed `dashboard --no-open` server with the same filters. Read
    its flushed URL without retaining its token, require numeric loopback plus an
@@ -255,7 +255,7 @@ After the live child task is finalized:
    deep links with keyboard activation. Require attached tasks to render
    `file` badges in both list and detail views, linked through encoded
    `vscode://file` URLs. Require the hover-plus-`s` status picker,
-   its Todo/Active/Blocked/Drop choices, and its expected-status guarded PATCH route.
+   its Todo/Active/Blocked/Done/Drop choices, and its expected-status guarded PATCH route.
    Require no task values in executable assets and dashboard API parity with the
    CLI JSON snapshot.
 7. PATCH the dedicated fixture from active to blocked with the exact loopback
@@ -263,8 +263,10 @@ After the live child task is finalized:
    Require the canonical nine-field task projection, one
    `status:active->blocked` meta rollout sharing the updated timestamp, and a
    stale expected-status retry that returns conflict without another write.
-   Then PATCH blocked to Drop and require `closed = updated` plus ordered
-   `status:blocked->drop` evidence.
+   Then PATCH blocked to Done and require `closed = updated` plus ordered
+   `status:blocked->done` evidence. Require the response to contain no hook
+   prompt, merge-claim, or finalization payload and the ledger to contain no
+   merge claim or `finalization:completed` event for the fixture.
 8. Require the task-detail view to expose title, description, Timeline, Created,
    Updated, Session ID, and Files structure, with Session ID rendered as an encoded
    `codex://threads/<session-id>` deep link. Require its API to return the exact
