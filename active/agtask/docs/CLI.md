@@ -399,9 +399,16 @@ HTTP server on `127.0.0.1`, prints a capability URL, opens it in the default
 browser, and runs until interrupted. With `--json`, it returns one snapshot and
 does not start a server.
 
-Hover a task row and press `s` to open its status picker. Todo, Active, Blocked,
-Done, and Drop use an atomic dashboard transition. Done marks the task complete
-directly in the ledger without dispatching `OnPreClose`, `OnPostClose`, or any
+Press `j` and `k` to move the active row down and up, clamping at the first and
+last visible task. Press `x` to toggle the active row's selection; the checkbox
+and selected-row background show the current set. Press `s` to open the status
+picker for every selected row, or for the active or hovered row when nothing is
+selected. Todo, Active, Blocked, Done, and Drop use an atomic dashboard
+transition. A multi-row update validates every row's rendered expected status
+under one write transaction, so a missing, stale, or workflow-locked row rolls
+back the entire selection and leaves the picker and selection intact. Done
+marks the task complete directly in the ledger without dispatching
+`OnPreClose`, `OnPostClose`, or any
 other close hook; it records only `status:<old>->done` and the shared
 `closed`/`updated` timestamp. Drop ends the task without marking it successfully
 completed. The request includes the row's expected status, so a concurrent hook

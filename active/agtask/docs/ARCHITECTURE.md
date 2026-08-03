@@ -177,10 +177,12 @@ The browser represents each active filter dimension as one segmented chip and
 uses one registry-driven dropdown for field and value selection. Values within
 a chip are ORed by the existing API contract; field chips and title search are
 ANDed. The toolbar trigger and filter-bar plus button open the same menu, and
-chip removal immediately requests a new snapshot. Hovering a row and pressing
-`s` opens a modal picker for Todo, Active, Blocked, Done, and Drop. Selection sends both the
-rendered expected status and requested status, then reloads the snapshot rather
-than moving rows optimistically.
+chip removal immediately requests a new snapshot. `j` and `k` move an active
+row through the rendered task order, while `x` and the row checkbox toggle a
+selected set. Pressing `s` opens a modal picker for Todo, Active, Blocked, Done,
+and Drop for every selected row, or for the active or hovered row when there is
+no selection. The request sends each rendered expected status and the requested
+status, then reloads the snapshot rather than moving rows optimistically.
 
 In the default mode, the command validates one snapshot before binding
 `127.0.0.1` on an ephemeral port. A fresh 256-bit token scopes the dashboard
@@ -189,14 +191,14 @@ the browser launch; the server remains in the foreground until interrupt. Each
 API request opens a new validated ledger connection, while all static assets
 remain in memory. Host, token, route, method, media type, no-store, referrer,
 nosniff, and CSP checks form the HTTP boundary, and access logging is disabled
-so tokens and filters do not reach stderr. Status mutation additionally
-requires the exact loopback origin and JSON media type. Its immediate
-transaction compares the expected status before applying manual transition
-rules plus the dashboard-only Done target; stale, terminal, and
-merging states fail without writes. Dashboard Done writes the ordinary
-`status:<old>->done` event and terminal timestamps directly. It does not enter
-the CLI close workflow, create a merge claim or finalization event, or return
-configured close-hook prompts.
+so tokens and filters do not reach stderr. Single-row and bulk status mutation
+additionally require the exact loopback origin and JSON media type. An immediate
+transaction compares every expected status before applying manual transition
+rules plus the dashboard-only Done target; stale, missing, terminal, and
+merging rows fail and roll back the complete selected set. Dashboard Done
+writes the ordinary `status:<old>->done` event and terminal timestamps directly.
+It does not enter the CLI close workflow, create a merge claim or finalization
+event, or return configured close-hook prompts.
 
 `dashboard --json` bypasses both server and browser and emits the same grouped
 snapshot once. `--no-open` retains the server but skips browser launch. Browser
@@ -210,10 +212,10 @@ browser path normalization for legal `.` and `..` IDs. The detail page fetches
 the matching point-detail API and renders the description, newest-first
 timeline, and created and updated properties. Its session-ID property is also
 an encoded Codex deep link. There are no external assets or background polling.
-All dashboard reads remain read-only. The status endpoint is the only mutation
-surface, and it permits Todo, Active, Blocked, Done, and Drop. CLI close remains
-the hook-bearing, token-fenced finalization workflow; merge claims and reopen
-remain workflow-owned.
+All dashboard reads remain read-only. The single-row and bulk status endpoints
+are the only mutation surfaces, and they permit Todo, Active, Blocked, Done, and
+Drop. CLI close remains the hook-bearing, token-fenced finalization workflow;
+merge claims and reopen remain workflow-owned.
 
 ### Layered configuration and prompt hooks
 

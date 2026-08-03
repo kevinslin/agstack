@@ -301,7 +301,7 @@ button { cursor:pointer; font-weight:650; }button:hover { background:var(--hover
 .filter-launcher { position:relative; }.filter-menu { position:absolute; z-index:20; top:calc(100% + .5rem); right:0; width:min(21rem,calc(100vw - 2rem)); max-height:min(30rem,calc(100vh - 8rem)); overflow:hidden; padding:.4rem; border:1px solid var(--line-strong); border-radius:10px; background:var(--raised); box-shadow:0 18px 50px rgb(0 0 0 / .24); }.filter-menu[hidden] { display:none; }.filter-menu-header { min-height:2.25rem; display:grid; grid-template-columns:2rem 1fr 2rem; align-items:center; gap:.35rem; padding:.15rem .2rem .35rem; }.filter-menu-header strong { text-align:center; font-size:.82rem; }.icon-button { min-height:1.9rem; width:1.9rem; padding:0; border-color:transparent; background:transparent; color:var(--muted); }.filter-menu-search { width:100%; margin-bottom:.35rem; border-color:transparent; background:var(--bg); }.filter-menu-list { max-height:22rem; overflow:auto; display:grid; gap:.15rem; }.filter-menu-item { width:100%; min-height:2.55rem; display:grid; grid-template-columns:1fr auto; align-items:center; gap:.75rem; padding:.55rem .65rem; border-color:transparent; background:transparent; text-align:left; font-weight:550; }.filter-menu-item:hover,.filter-menu-item[aria-current="true"] { background:var(--hover); }.filter-menu-meta { display:flex; align-items:center; gap:.45rem; color:var(--muted); font-size:.75rem; }.filter-menu-check { color:var(--accent); font-weight:800; }.filter-menu-empty { margin:.35rem; padding:1rem .6rem; color:var(--muted); text-align:center; font-size:.8rem; }
 .filter-bar { min-height:3.35rem; display:flex; align-items:center; gap:.45rem; padding:.6rem 1rem; border:1px solid var(--line); border-top:0; border-radius:0 0 10px 10px; background:var(--panel); overflow:hidden; }.active-filters { min-width:0; flex:1 1 auto; display:flex; align-items:center; gap:.45rem; overflow-x:auto; }.filter-empty-label { color:var(--muted); font-size:.8rem; white-space:nowrap; }.filter-chip { flex:0 0 auto; display:flex; min-height:2rem; align-items:stretch; border:1px solid var(--line-strong); border-radius:7px; background:var(--bg); overflow:hidden; white-space:nowrap; }.chip-segment { display:flex; align-items:center; padding:.35rem .55rem; border-right:1px solid var(--line); font-size:.78rem; }.chip-field { font-weight:700; }.chip-operator { color:var(--muted); }.chip-value { max-width:20rem; overflow:hidden; text-overflow:ellipsis; }.chip-remove { min-height:0; width:2rem; padding:0; border:0; border-radius:0; background:transparent; color:var(--muted); font-size:1rem; }.chip-remove:hover { color:var(--text); }.add-filter { flex:0 0 auto; min-height:2rem; width:2rem; padding:0; border-color:transparent; background:transparent; color:var(--muted); font-size:1.2rem; }
 .notice { min-height:2.2rem; padding:.7rem .1rem; color:var(--muted); }.notice.error { color:var(--danger); font-weight:650; }.groups { display:grid; gap:1rem; }.group { background:var(--panel); border:1px solid var(--line); border-radius:10px; overflow:hidden; }.group-header { display:flex; align-items:center; gap:.55rem; padding:.8rem 1rem; border-bottom:1px solid var(--line); }.group-header h2 { margin:0; font-size:.82rem; text-transform:uppercase; letter-spacing:.08em; }.badge { min-width:1.65rem; text-align:center; padding:.15rem .4rem; border-radius:999px; background:var(--bg); color:var(--muted); font-size:.72rem; }
-.table-wrap { overflow-x:auto; }table { width:100%; border-collapse:collapse; font-size:.82rem; }th { color:var(--muted); font-size:.7rem; text-transform:uppercase; letter-spacing:.055em; text-align:left; font-weight:650; }th,td { padding:.72rem 1rem; border-bottom:1px solid var(--line); white-space:nowrap; }tr:last-child td { border-bottom:0; }td:first-child { width:42%; white-space:normal; font-weight:600; }.task-row { cursor:pointer; }.task-row:hover { background:var(--hover); }.task-link { color:inherit; text-decoration:none; }.task-link:hover { color:var(--accent); text-decoration:underline; text-underline-offset:.18em; }.task-file-badges,.file-badges { display:inline-flex; flex-wrap:wrap; gap:.35rem; margin-left:.55rem; vertical-align:middle; }.file-badges { margin-left:0; }.file-badge { display:inline-flex; align-items:center; min-height:1.35rem; padding:.08rem .42rem; border:1px solid var(--line-strong); border-radius:999px; color:var(--muted); background:var(--bg); font-size:.68rem; font-weight:700; line-height:1; text-decoration:none; }.file-badge:hover { color:var(--accent); border-color:var(--accent); }.empty { padding:1.2rem 1rem; color:var(--muted); font-size:.82rem; }.empty-state { padding:2.5rem 1rem; border:1px solid var(--line); border-radius:10px; background:var(--panel); text-align:center; }.empty-state h2 { margin:0 0 .45rem; font-size:1rem; }.empty-state p { margin:0 auto 1rem; color:var(--muted); font-size:.85rem; }.empty-state button { background:var(--accent); border-color:var(--accent); color:white; }
+.table-wrap { overflow-x:auto; }table { width:100%; border-collapse:collapse; font-size:.82rem; }th { color:var(--muted); font-size:.7rem; text-transform:uppercase; letter-spacing:.055em; text-align:left; font-weight:650; }th,td { padding:.72rem 1rem; border-bottom:1px solid var(--line); white-space:nowrap; }tr:last-child td { border-bottom:0; }.selection-cell { width:2.75rem; padding-right:0; }.task-title-cell { width:42%; white-space:normal; font-weight:600; }.task-row { cursor:pointer; }.task-row:hover { background:var(--hover); }.task-row[aria-selected="true"] { background:var(--accent-soft); }.task-row[data-active="true"] { box-shadow:inset 3px 0 var(--accent); }.task-row:focus { outline:none; }.task-row:focus-visible { box-shadow:inset 3px 0 var(--accent),inset 0 0 0 2px var(--accent); }.selection-toggle { display:grid; place-items:center; width:1.25rem; min-height:1.25rem; padding:0; border:1px solid var(--line-strong); border-radius:4px; background:transparent; color:transparent; font-size:.78rem; line-height:1; }.selection-toggle:hover { border-color:var(--accent); }.selection-toggle[aria-pressed="true"] { border-color:var(--accent); background:var(--accent); color:white; }.task-link { color:inherit; text-decoration:none; }.task-link:hover { color:var(--accent); text-decoration:underline; text-underline-offset:.18em; }.task-file-badges,.file-badges { display:inline-flex; flex-wrap:wrap; gap:.35rem; margin-left:.55rem; vertical-align:middle; }.file-badges { margin-left:0; }.file-badge { display:inline-flex; align-items:center; min-height:1.35rem; padding:.08rem .42rem; border:1px solid var(--line-strong); border-radius:999px; color:var(--muted); background:var(--bg); font-size:.68rem; font-weight:700; line-height:1; text-decoration:none; }.file-badge:hover { color:var(--accent); border-color:var(--accent); }.empty { padding:1.2rem 1rem; color:var(--muted); font-size:.82rem; }.empty-state { padding:2.5rem 1rem; border:1px solid var(--line); border-radius:10px; background:var(--panel); text-align:center; }.empty-state h2 { margin:0 0 .45rem; font-size:1rem; }.empty-state p { margin:0 auto 1rem; color:var(--muted); font-size:.85rem; }.empty-state button { background:var(--accent); border-color:var(--accent); color:white; }
 .visually-hidden { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }.status-modal { position:fixed; z-index:50; inset:0; display:grid; place-items:start center; padding:clamp(4rem,12vh,8rem) 1rem 1rem; background:rgb(0 0 0 / .48); backdrop-filter:blur(2px); }.status-modal[hidden] { display:none; }.status-dialog { width:min(42rem,100%); overflow:hidden; padding:.75rem; border:1px solid var(--line-strong); border-radius:14px; background:var(--raised); box-shadow:0 24px 80px rgb(0 0 0 / .42); }.status-header { display:flex; align-items:start; justify-content:space-between; gap:1rem; padding:.3rem .35rem .7rem .55rem; }.status-header p { margin:0 0 .25rem; color:var(--muted); font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; }.status-header strong { display:block; max-width:35rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.9rem; }.status-search { width:100%; margin-bottom:.45rem; border-color:transparent; background:var(--bg); }.status-options { display:grid; gap:.2rem; }.status-option { width:100%; min-height:3.2rem; display:grid; grid-template-columns:1.25rem 1fr auto auto; align-items:center; gap:.75rem; padding:.65rem .75rem; border-color:transparent; background:transparent; text-align:left; font-weight:600; }.status-option:hover,.status-option:focus-visible { background:var(--hover); }.status-option[aria-selected="true"] { background:var(--accent-soft); }.status-option:disabled { cursor:not-allowed; opacity:.5; }.status-symbol { font-size:1rem; text-align:center; }.status-symbol.todo,.status-symbol.drop { color:var(--muted); }.status-symbol.active { color:#e4b400; }.status-symbol.blocked { color:var(--danger); }.status-current { color:var(--accent); font-size:.78rem; }.status-shortcut { min-width:1.8rem; padding:.18rem .35rem; border:1px solid var(--line); border-radius:5px; color:var(--muted); font-size:.7rem; text-align:center; }.status-guidance { margin:.55rem .55rem 0; color:var(--muted); font-size:.72rem; }.status-error { min-height:1.2rem; margin:.35rem .55rem 0; color:var(--danger); font-size:.78rem; font-weight:650; }
 .detail-topbar { min-height:4.5rem; display:flex; align-items:center; padding:1rem clamp(1rem,4vw,3.5rem); border-bottom:1px solid var(--line); }.back-link { color:var(--muted); font-size:.85rem; font-weight:650; text-decoration:none; }.back-link:hover { color:var(--text); }.detail-layout { max-width:88rem; margin:0 auto; display:grid; grid-template-columns:minmax(0,1fr) minmax(14rem,20rem); gap:clamp(2rem,6vw,6rem); padding:clamp(2rem,6vw,5rem) clamp(1rem,5vw,5rem); }.detail-content { min-width:0; }.detail-content h1 { margin:0; font-size:clamp(2rem,5vw,3.25rem); }.task-description { margin:2rem 0 0; max-width:52rem; white-space:pre-wrap; font-size:1rem; line-height:1.7; }.timeline-section { margin-top:3.5rem; }.timeline-section h2,.properties h2 { margin:0 0 1.25rem; font-size:1.1rem; }.timeline { margin:0; padding:0; list-style:none; border-top:1px solid var(--line); }.timeline-item { display:grid; grid-template-columns:minmax(9.5rem,12rem) minmax(5rem,7rem) minmax(0,1fr); gap:1rem; padding:1rem 0; border-bottom:1px solid var(--line); line-height:1.5; }.timeline-time,.timeline-role { color:var(--muted); font-size:.78rem; }.timeline-role { font-weight:700; text-transform:capitalize; }.timeline-message { min-width:0; white-space:pre-wrap; overflow-wrap:anywhere; }.properties { align-self:start; padding-left:clamp(1rem,3vw,2rem); border-left:1px solid var(--line); }.properties h2 { color:var(--muted); }.properties dl { margin:0; display:grid; gap:1.5rem; }.properties dl div { display:grid; gap:.4rem; }.properties dt { color:var(--muted); font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; }.properties dd { margin:0; font-size:.86rem; overflow-wrap:anywhere; }.session-link { color:var(--accent); text-decoration:none; }.session-link:hover { text-decoration:underline; text-underline-offset:.18em; }.detail-notice { grid-column:1/-1; margin:0; color:var(--danger); font-weight:650; }.timeline-empty { padding:1.25rem 0; color:var(--muted); }
 @media (max-width:900px) { .toolbar { align-items:stretch; flex-direction:column; }.search { flex:none; max-width:none; }.toolbar-actions { width:100%; margin-left:0; }.filter-launcher { margin-left:auto; } }
@@ -326,7 +326,10 @@ DASHBOARD_JS = r"""(() => {
   let menuField = null;
   let menuInvoker = null;
   let hoveredTask = null;
-  let statusTask = null;
+  let activeTask = null;
+  let selectedTasks = new Map();
+  let renderedRows = [];
+  let statusTasks = [];
   let statusInvoker = null;
   let statusSaving = false;
   let statusModalGeneration = 0;
@@ -557,24 +560,28 @@ DASHBOARD_JS = r"""(() => {
     return Array.from(el.statusOptions.querySelectorAll('[role="option"]')).filter(item=>!item.disabled);
   }
 
-  function statusLockMessage(task) {
-    if(task.status==="done")return "Done tasks must be reopened explicitly.";
-    if(task.status==="drop")return "Dropped tasks must be reopened explicitly.";
-    if(task.status==="merging")return "Merging tasks must be closed or released explicitly.";
+  function statusLockMessage(tasks) {
+    const task=tasks.find(item=>["done","drop","merging"].includes(item.status));
+    if(!task)return "";
+    const prefix=tasks.length>1?`${task.title}: `:"";
+    if(task.status==="done")return `${prefix}Done tasks must be reopened explicitly.`;
+    if(task.status==="drop")return `${prefix}Dropped tasks must be reopened explicitly.`;
+    if(task.status==="merging")return `${prefix}Merging tasks must be closed or released explicitly.`;
     return "";
   }
 
   function renderStatusOptions() {
-    if(el.statusModal.hidden||!statusTask)return;
+    if(el.statusModal.hidden||!statusTasks.length)return;
     const term=el.statusSearch.value.trim().toLocaleLowerCase();
     const options=STATUS_OPTIONS.filter(option=>option.label.toLocaleLowerCase().includes(term));
+    const currentStatus=statusTasks.every(task=>task.status===statusTasks[0].status)?statusTasks[0].status:null;
     const items=options.map(option=>{
       const button=document.createElement("button"); button.type="button"; button.className="status-option";
-      button.setAttribute("role","option"); button.setAttribute("aria-selected",statusTask.status===option.value?"true":"false");
-      button.disabled=statusSaving||Boolean(statusLockMessage(statusTask));
+      button.setAttribute("role","option"); button.setAttribute("aria-selected",currentStatus===option.value?"true":"false");
+      button.disabled=statusSaving||Boolean(statusLockMessage(statusTasks));
       const symbol=document.createElement("span"); symbol.className=`status-symbol ${option.value}`; symbol.textContent=option.symbol; symbol.setAttribute("aria-hidden","true");
       const label=document.createElement("span"); label.textContent=option.label;
-      const current=document.createElement("span"); current.className="status-current"; current.textContent=statusTask.status===option.value?"Current":"";
+      const current=document.createElement("span"); current.className="status-current"; current.textContent=currentStatus===option.value?"Current":"";
       const shortcut=document.createElement("span"); shortcut.className="status-shortcut"; shortcut.textContent=option.shortcut; shortcut.setAttribute("aria-hidden","true");
       button.append(symbol,label,current,shortcut); button.addEventListener("click",()=>updateStatus(option.value)); return button;
     });
@@ -582,11 +589,11 @@ DASHBOARD_JS = r"""(() => {
     el.statusOptions.replaceChildren(...items);
   }
 
-  function openStatusModal(task) {
+  function openStatusModal(tasks) {
     closeFilterMenu(false);
     statusModalGeneration+=1;
-    statusTask=task; statusInvoker=document.activeElement; statusSaving=false;
-    el.statusTaskTitle.textContent=task.title; el.statusSearch.value=""; el.statusError.textContent=statusLockMessage(task);
+    statusTasks=[...tasks]; statusInvoker=document.activeElement; statusSaving=false;
+    el.statusTaskTitle.textContent=tasks.length===1?tasks[0].title:`${tasks.length} tasks selected`; el.statusSearch.value=""; el.statusError.textContent=statusLockMessage(tasks);
     el.statusModal.hidden=false; renderStatusOptions(); el.statusSearch.focus();
   }
 
@@ -594,27 +601,29 @@ DASHBOARD_JS = r"""(() => {
     if(el.statusModal.hidden)return;
     statusModalGeneration+=1;
     el.statusModal.hidden=true; el.statusError.textContent="";
-    const invoker=statusInvoker; statusTask=null; statusInvoker=null; statusSaving=false;
+    const invoker=statusInvoker; statusTasks=[]; statusInvoker=null; statusSaving=false;
     if(restoreFocus&&invoker&&invoker.focus)invoker.focus();
   }
 
   async function updateStatus(status) {
-    if(!statusTask||statusSaving)return;
-    const lockMessage=statusLockMessage(statusTask);
+    if(!statusTasks.length||statusSaving)return;
+    const lockMessage=statusLockMessage(statusTasks);
     if(lockMessage){el.statusError.textContent=lockMessage;return;}
-    const task=statusTask; const generation=statusModalGeneration;
+    const tasks=[...statusTasks]; const generation=statusModalGeneration;
     statusSaving=true; el.statusError.textContent=""; renderStatusOptions();
     try {
-      const response=await fetch(`api/tasks/~${encodeURIComponent(task.session_id)}/status`,{
+      const bulk=tasks.length>1;
+      const response=await fetch(bulk?"api/tasks/status":`api/tasks/~${encodeURIComponent(tasks[0].session_id)}/status`,{
         method:"PATCH",cache:"no-store",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({expected_status:task.status,status})
+        body:JSON.stringify(bulk?{tasks:tasks.map(task=>({session_id:task.session_id,expected_status:task.status})),status}:{expected_status:tasks[0].status,status})
       });
       const payload=await response.json();
       if(!response.ok)throw new Error(payload.error||`Status update failed (${response.status})`);
+      tasks.forEach(task=>selectedTasks.delete(task.session_id));
       const refreshed=await load(currentState);
-      if(generation===statusModalGeneration&&!el.statusModal.hidden&&statusTask&&statusTask.session_id===task.session_id){
+      if(generation===statusModalGeneration&&!el.statusModal.hidden){
         closeStatusModal(false);
-        if(refreshed){el.notice.textContent=`Set ${task.title} to ${STATUS_LABELS[status]||status}.`; el.notice.className="notice";}
+        if(refreshed){el.notice.textContent=tasks.length===1?`Set ${tasks[0].title} to ${STATUS_LABELS[status]||status}.`:`Set ${tasks.length} tasks to ${STATUS_LABELS[status]||status}.`; el.notice.className="notice";}
       }
     } catch (error) {
       if(generation===statusModalGeneration&&!el.statusModal.hidden)el.statusError.textContent=error.message;
@@ -658,8 +667,48 @@ DASHBOARD_JS = r"""(() => {
   function cell(value,className) { const node=document.createElement("td"); if(className)node.className=className; node.textContent=value; return node; }
   function taskPath(sessionId) { return `tasks/~${encodeURIComponent(sessionId)}${location.search}`; }
   function taskSessionPath(sessionId) { return `codex://threads/${encodeURIComponent(sessionId)}`; }
+  function updateSummary() {
+    if(!lastSnapshot)return;
+    const selected=selectedTasks.size?` · ${selectedTasks.size} selected`:"";
+    el.summary.textContent=`${lastSnapshot.visible_count} visible · ${lastSnapshot.total_count} total${selected}`;
+  }
+  function syncTaskRow(row,thread) {
+    const selected=selectedTasks.has(thread.session_id);
+    row.setAttribute("aria-selected",selected?"true":"false");
+    row.setAttribute("data-active",activeTask&&activeTask.session_id===thread.session_id?"true":"false");
+    row.selectionToggle.setAttribute("aria-pressed",selected?"true":"false");
+    row.selectionToggle.textContent=selected?"✓":"";
+  }
+  function setActiveTask(task,focus=false) {
+    activeTask=task;
+    renderedRows.forEach(row=>syncTaskRow(row,row.task));
+    if(!focus)return;
+    const row=renderedRows.find(item=>item.task.session_id===task.session_id);
+    if(row){row.focus();if(row.scrollIntoView)row.scrollIntoView({block:"nearest"});}
+  }
+  function toggleTaskSelection(task) {
+    if(selectedTasks.has(task.session_id))selectedTasks.delete(task.session_id);
+    else selectedTasks.set(task.session_id,task);
+    renderedRows.forEach(row=>syncTaskRow(row,row.task));
+    updateSummary();
+  }
+  function moveActiveTask(direction) {
+    if(!renderedRows.length)return;
+    let index=renderedRows.findIndex(row=>activeTask&&row.task.session_id===activeTask.session_id);
+    if(index<0)index=direction==="next"?0:renderedRows.length-1;
+    else index=direction==="next"?Math.min(index+1,renderedRows.length-1):Math.max(index-1,0);
+    setActiveTask(renderedRows[index].task,true);
+  }
+  function taskSelectionCell(thread) {
+    const node=document.createElement("td"); node.className="selection-cell";
+    const toggle=document.createElement("button"); toggle.type="button"; toggle.className="selection-toggle";
+    toggle.setAttribute("aria-label",`Select ${thread.title}`);
+    toggle.addEventListener("click",event=>{event.stopPropagation();setActiveTask(thread);toggleTaskSelection(thread);});
+    node.append(toggle); return {node,toggle};
+  }
   function taskTitleCell(thread) {
     const node=document.createElement("td"); const link=document.createElement("a");
+    node.className="task-title-cell";
     link.className="task-link"; link.href=taskSessionPath(thread.session_id); link.textContent=thread.title;
     link.title="Open task in Codex";
     link.addEventListener("keydown",event=>{if(event.key===" "){event.preventDefault();location.assign(link.href);}});
@@ -674,13 +723,15 @@ DASHBOARD_JS = r"""(() => {
     }
     return {node,links};
   }
-  function taskRow(thread,links) {
+  function taskRow(thread,links,selectionToggle) {
     const row=document.createElement("tr"); row.className="task-row"; row.setAttribute("data-task-id",thread.id); row.setAttribute("data-session-id",thread.session_id); row.setAttribute("data-status",thread.status);
+    row.tabIndex=-1; row.task=thread; row.selectionToggle=selectionToggle;
     row.addEventListener("click",event=>{if(!links.some(link=>link.contains(event.target)))location.assign(taskPath(thread.session_id));});
-    row.addEventListener("mouseenter",()=>{hoveredTask=thread;});
+    row.addEventListener("mouseenter",()=>{hoveredTask=thread;setActiveTask(thread);});
     row.addEventListener("mouseleave",()=>{if(hoveredTask&&hoveredTask.session_id===thread.session_id)hoveredTask=null;});
-    row.addEventListener("focusin",()=>{hoveredTask=thread;});
+    row.addEventListener("focusin",()=>{setActiveTask(thread);});
     row.addEventListener("focusout",event=>{if(!row.contains(event.relatedTarget)&&hoveredTask&&hoveredTask.session_id===thread.session_id)hoveredTask=null;});
+    renderedRows.push(row); syncTaskRow(row,thread);
     return row;
   }
 
@@ -699,6 +750,11 @@ DASHBOARD_JS = r"""(() => {
 
   function renderGroups(snapshot) {
     hoveredTask=null;
+    renderedRows=[];
+    const visibleTasks=snapshot.groups.flatMap(group=>group.threads);
+    const visibleBySession=new Map(visibleTasks.map(task=>[task.session_id,task]));
+    selectedTasks=new Map([...selectedTasks].flatMap(([sessionId])=>visibleBySession.has(sessionId)?[[sessionId,visibleBySession.get(sessionId)]]:[]));
+    activeTask=activeTask&&visibleBySession.get(activeTask.session_id)||null;
     if(snapshot.total_count===0){
       el.groups.replaceChildren(emptyState("No tracked tasks yet","Create or register a task, then refresh this dashboard.","Refresh",()=>load(currentState)));
       return;
@@ -713,8 +769,8 @@ DASHBOARD_JS = r"""(() => {
       const badge=document.createElement("span");badge.className="badge";badge.textContent=String(group.count);header.append(heading,badge);section.append(header);
       if(!group.threads.length){const empty=document.createElement("p");empty.className="empty";empty.textContent="No tasks in this status.";section.append(empty);return section;}
       const wrapper=document.createElement("div");wrapper.className="table-wrap";const table=document.createElement("table");const thead=document.createElement("thead");const headingRow=document.createElement("tr");
-      [["Title",""],["Project",""],["Parent task","optional-parent"],["Created","optional-time"],["Updated","optional-time"],["Closed","optional-time"]].forEach(([label,className])=>{const th=document.createElement("th");th.scope="col";th.className=className;th.textContent=label;headingRow.append(th);});thead.append(headingRow);table.append(thead);
-      const tbody=document.createElement("tbody");group.threads.forEach(thread=>{const title=taskTitleCell(thread);const row=taskRow(thread,title.links);row.append(title.node,cell(thread.project),cell(thread.parent_session_id||"—","optional-parent"),cell(formatTime(thread.created),"optional-time"),cell(formatTime(thread.updated),"optional-time"),cell(formatTime(thread.closed),"optional-time"));tbody.append(row);});table.append(tbody);wrapper.append(table);section.append(wrapper);return section;
+      [["","selection-cell"],["Title",""],["Project",""],["Parent task","optional-parent"],["Created","optional-time"],["Updated","optional-time"],["Closed","optional-time"]].forEach(([label,className])=>{const th=document.createElement("th");th.scope="col";th.className=className;th.textContent=label;if(!label)th.setAttribute("aria-label","Task selection");headingRow.append(th);});thead.append(headingRow);table.append(thead);
+      const tbody=document.createElement("tbody");group.threads.forEach(thread=>{const selection=taskSelectionCell(thread);const title=taskTitleCell(thread);const row=taskRow(thread,[selection.toggle,...title.links],selection.toggle);row.append(selection.node,title.node,cell(thread.project),cell(thread.parent_session_id||"—","optional-parent"),cell(formatTime(thread.created),"optional-time"),cell(formatTime(thread.updated),"optional-time"),cell(formatTime(thread.closed),"optional-time"));tbody.append(row);});table.append(tbody);wrapper.append(table);section.append(wrapper);return section;
     });
     el.groups.replaceChildren(...sections);
   }
@@ -725,7 +781,7 @@ DASHBOARD_JS = r"""(() => {
     history.replaceState(null,"",acceptedQuery?`?${acceptedQuery}`:location.pathname);
     el.search.value=currentState.search; el.sort.value=currentState.sort; el.direction.value=currentState.direction;
     renderViewTabs(snapshot); renderActiveFilters(); renderGroups(snapshot); if(!el.filterMenu.hidden)renderFilterMenu(); el.groups.setAttribute("aria-busy","false");
-    el.summary.textContent=`${snapshot.visible_count} visible · ${snapshot.total_count} total`;
+    updateSummary();
     el.notice.textContent=`Updated ${new Date().toLocaleTimeString()}`; el.notice.className="notice";
   }
 
@@ -757,9 +813,16 @@ DASHBOARD_JS = r"""(() => {
   el.statusModal.addEventListener("keydown",statusKeydown);
   el.statusModal.addEventListener("pointerdown",event=>{if(event.target===el.statusModal)closeStatusModal();});
   document.addEventListener("keydown",event=>{
-    if(event.key.toLocaleLowerCase()!=="s"||event.metaKey||event.ctrlKey||event.altKey||event.defaultPrevented)return;
-    if(!el.statusModal.hidden||!el.filterMenu.hidden||isTypingTarget(event.target)||!hoveredTask)return;
-    event.preventDefault();openStatusModal(hoveredTask);
+    const key=event.key.toLocaleLowerCase();
+    if(event.metaKey||event.ctrlKey||event.altKey||event.defaultPrevented)return;
+    if(!el.statusModal.hidden||!el.filterMenu.hidden||isTypingTarget(event.target))return;
+    if(key==="j"||key==="k"){event.preventDefault();moveActiveTask(key==="j"?"next":"previous");return;}
+    const target=activeTask||hoveredTask;
+    if(key==="x"&&target){event.preventDefault();toggleTaskSelection(target);return;}
+    if(key==="s"){
+      const tasks=selectedTasks.size?[...selectedTasks.values()]:(target?[target]:[]);
+      if(tasks.length){event.preventDefault();openStatusModal(tasks);}
+    }
   });
   el.refresh.addEventListener("click",()=>load(currentState));
   el.sort.addEventListener("change",()=>{currentState={...currentState,sort:el.sort.value};load(currentState);});
@@ -3527,39 +3590,60 @@ def dashboard_task_detail(session_id: str) -> Optional[dict[str, Any]]:
         connection.close()
 
 
-def dashboard_update_task_status(
-    session_id: str, expected_status: str, target: str
+def dashboard_update_task_statuses(
+    updates: list[tuple[str, str]], target: str
 ) -> Optional[dict[str, Any]]:
     connection = open_database(initialize=False)
     try:
         connection.execute("BEGIN IMMEDIATE")
-        row = connection.execute(
-            "SELECT id,status FROM thread WHERE session_id=?", (session_id,)
-        ).fetchone()
-        if row is None:
-            connection.rollback()
-            return None
-        if row["status"] != expected_status:
-            raise StatusConflict(
-                f"task status changed from {expected_status} to {row['status']}; "
-                "refresh and try again"
+        rows: list[sqlite3.Row] = []
+        for session_id, expected_status in updates:
+            row = connection.execute(
+                "SELECT id,session_id,status FROM thread WHERE session_id=?",
+                (session_id,),
+            ).fetchone()
+            if row is None:
+                connection.rollback()
+                return None
+            if row["status"] != expected_status:
+                raise StatusConflict(
+                    f"task status changed from {expected_status} to {row['status']}; "
+                    "refresh and try again"
+                )
+            rows.append(row)
+        changed = False
+        for row in rows:
+            changed = (
+                transition_dashboard_status(
+                    connection, thread_id=row["id"], target=target
+                )
+                or changed
             )
-        changed = transition_dashboard_status(
-            connection, thread_id=row["id"], target=target
-        )
-        task = connection.execute(
-            "SELECT id,session_id,parent_session_id,project,title,created,updated,closed,status "
-            "FROM thread WHERE id=?",
-            (row["id"],),
-        ).fetchone()
-        assert task is not None
+        tasks = []
+        for row in rows:
+            task = connection.execute(
+                "SELECT id,session_id,parent_session_id,project,title,created,updated,closed,status "
+                "FROM thread WHERE id=?",
+                (row["id"],),
+            ).fetchone()
+            assert task is not None
+            tasks.append(dict(task))
         connection.commit()
-        return {"changed": changed, "task": dict(task)}
+        return {"changed": changed, "tasks": tasks}
     except Exception:
         connection.rollback()
         raise
     finally:
         connection.close()
+
+
+def dashboard_update_task_status(
+    session_id: str, expected_status: str, target: str
+) -> Optional[dict[str, Any]]:
+    result = dashboard_update_task_statuses([(session_id, expected_status)], target)
+    if result is None:
+        return None
+    return {"changed": result["changed"], "task": result["tasks"][0]}
 
 
 def dashboard_task_session_id(path: str, prefix: str) -> Optional[str]:
@@ -3731,16 +3815,19 @@ def dashboard_handler(token: str, expected_host: str) -> type[BaseHTTPRequestHan
                 self.send_json_error(404, "not found")
                 return
             parsed = urlsplit(self.path)
-            try:
-                session_id = dashboard_status_session_id(
-                    parsed.path, task_api_prefix
-                )
-            except TaskError:
-                self.send_json_error(404, "not found")
-                return
-            if session_id is None:
-                self.send_json_error(404, "not found")
-                return
+            bulk_update = parsed.path == task_api_prefix + "status"
+            session_id = None
+            if not bulk_update:
+                try:
+                    session_id = dashboard_status_session_id(
+                        parsed.path, task_api_prefix
+                    )
+                except TaskError:
+                    self.send_json_error(404, "not found")
+                    return
+                if session_id is None:
+                    self.send_json_error(404, "not found")
+                    return
             if parsed.query:
                 self.send_json_error(400, "task status query is not supported")
                 return
@@ -3763,7 +3850,8 @@ def dashboard_handler(token: str, expected_host: str) -> type[BaseHTTPRequestHan
                 if len(content_lengths) != 1:
                     raise ValueError
                 content_length = int(content_lengths[0])
-                if content_length < 1 or content_length > 4096:
+                maximum_length = 65536 if bulk_update else 4096
+                if content_length < 1 or content_length > maximum_length:
                     raise ValueError
             except ValueError:
                 self.send_json_error(400, "invalid content length")
@@ -3784,25 +3872,73 @@ def dashboard_handler(token: str, expected_host: str) -> type[BaseHTTPRequestHan
             except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
                 self.send_json_error(400, "invalid JSON body")
                 return
-            if not isinstance(payload, dict) or set(payload) != {
-                "expected_status",
-                "status",
-            }:
-                self.send_json_error(
-                    400,
-                    "status update requires exactly expected_status and status fields",
-                )
-                return
-            expected_status = payload["expected_status"]
+            expected_status = None
+            updates = None
+            if bulk_update:
+                if not isinstance(payload, dict) or set(payload) != {"tasks", "status"}:
+                    self.send_json_error(
+                        400, "bulk status update requires exactly tasks and status fields"
+                    )
+                    return
+                requested_tasks = payload["tasks"]
+                if not isinstance(requested_tasks, list) or not (
+                    1 <= len(requested_tasks) <= 256
+                ):
+                    self.send_json_error(
+                        400, "bulk status update requires between 1 and 256 tasks"
+                    )
+                    return
+                updates = []
+                seen_session_ids: set[str] = set()
+                for item in requested_tasks:
+                    if not isinstance(item, dict) or set(item) != {
+                        "session_id",
+                        "expected_status",
+                    }:
+                        self.send_json_error(
+                            400,
+                            "each bulk task requires exactly session_id and expected_status fields",
+                        )
+                        return
+                    item_session_id = item["session_id"]
+                    item_expected_status = item["expected_status"]
+                    if not isinstance(item_session_id, str) or not item_session_id:
+                        self.send_json_error(400, "invalid task session id")
+                        return
+                    if item_session_id in seen_session_ids:
+                        self.send_json_error(400, "duplicate task session id")
+                        return
+                    if (
+                        not isinstance(item_expected_status, str)
+                        or item_expected_status not in DASHBOARD_STATUSES
+                    ):
+                        self.send_json_error(
+                            400,
+                            f"invalid expected task status: {item_expected_status}",
+                        )
+                        return
+                    seen_session_ids.add(item_session_id)
+                    updates.append((item_session_id, item_expected_status))
+            else:
+                if not isinstance(payload, dict) or set(payload) != {
+                    "expected_status",
+                    "status",
+                }:
+                    self.send_json_error(
+                        400,
+                        "status update requires exactly expected_status and status fields",
+                    )
+                    return
+                expected_status = payload["expected_status"]
+                if (
+                    not isinstance(expected_status, str)
+                    or expected_status not in DASHBOARD_STATUSES
+                ):
+                    self.send_json_error(
+                        400, f"invalid expected task status: {expected_status}"
+                    )
+                    return
             target = payload["status"]
-            if (
-                not isinstance(expected_status, str)
-                or expected_status not in DASHBOARD_STATUSES
-            ):
-                self.send_json_error(
-                    400, f"invalid expected task status: {expected_status}"
-                )
-                return
             if (
                 not isinstance(target, str)
                 or target not in DASHBOARD_MUTATION_STATUSES
@@ -3810,9 +3946,14 @@ def dashboard_handler(token: str, expected_host: str) -> type[BaseHTTPRequestHan
                 self.send_json_error(400, f"invalid task status: {target}")
                 return
             try:
-                result = dashboard_update_task_status(
-                    session_id, expected_status, target
-                )
+                if bulk_update:
+                    assert updates is not None
+                    result = dashboard_update_task_statuses(updates, target)
+                else:
+                    assert session_id is not None and expected_status is not None
+                    result = dashboard_update_task_status(
+                        session_id, expected_status, target
+                    )
             except StatusConflict as error:
                 self.send_json_error(409, str(error))
                 return

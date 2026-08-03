@@ -161,6 +161,10 @@ function statusButton(document, label) {
   );
 }
 
+function titleLink(row) {
+  return row.children[1].children[0];
+}
+
 function allNodes(root) {
   return [root,...root.children.flatMap(allNodes)];
 }
@@ -203,6 +207,7 @@ async function main() {
   };
   const requests = [];
   const statusUpdates = [];
+  const bulkStatusUpdates = [];
   const dashboardSnapshot = clone(input.snapshot);
   let statusFailure = null;
   let deferNextStatus = false;
@@ -213,6 +218,31 @@ async function main() {
   global.fetch = async (requestUrl, options={}) => {
     requests.push(requestUrl);
     if(options.method === "PATCH"){
+      if(requestUrl === "api/tasks/status"){
+        const payload = JSON.parse(options.body);
+        assert.deepEqual(Object.keys(payload),["tasks","status"]);
+        assert.ok(payload.tasks.length > 1,"bulk status updates contain multiple tasks");
+        const tasks = payload.tasks.map(item => {
+          assert.deepEqual(Object.keys(item),["session_id","expected_status"]);
+          const task = dashboardSnapshot.groups.flatMap(group => group.threads).find(
+            thread => thread.session_id === item.session_id
+          );
+          assert.ok(task,"bulk status update targets rendered tasks");
+          assert.equal(item.expected_status,task.status,"bulk updates guard every rendered row");
+          return task;
+        });
+        if(statusFailure){
+          const message = statusFailure;
+          statusFailure = null;
+          return {ok:false,status:409,json:async()=>({error:message})};
+        }
+        tasks.forEach(task => {
+          task.status = payload.status;
+          statusUpdates.push({sessionId:task.session_id,status:payload.status});
+        });
+        bulkStatusUpdates.push({sessionIds:tasks.map(task=>task.session_id),status:payload.status});
+        return {ok:true,status:200,json:async()=>({changed:true,tasks:clone(tasks)})};
+      }
       const match = requestUrl.match(/^api\/tasks\/~([^/]+)\/status$/);
       assert.ok(match,"status update uses the token-scoped task status route");
       const sessionId = decodeURIComponent(match[1]);
@@ -286,7 +316,7 @@ async function main() {
   );
   assert.ok(firstTaskRow,"dashboard renders task rows");
   assert.equal(firstTaskRow.getAttribute("role"),null,"task row keeps native table semantics");
-  const firstTaskLink = firstTaskRow.children[0].children[0];
+  const firstTaskLink = titleLink(firstTaskRow);
   assert.equal(firstTaskLink.tagName,"A","task title is a real link");
   assert.equal(
     firstTaskLink.href,
@@ -308,7 +338,7 @@ async function main() {
     beforeFileClick,
     "clicking a file badge does not open the task detail page"
   );
-  firstTaskRow.dispatchEvent({type:"click",target:firstTaskRow.children[1]});
+  firstTaskRow.dispatchEvent({type:"click",target:firstTaskRow.children[2]});
   assert.equal(
     location.assigned.at(-1),
     `tasks/~${encodeURIComponent(firstTaskRow.getAttribute("data-session-id"))}`,
@@ -380,7 +410,7 @@ async function main() {
   );
   otherTaskRow.dispatchEvent({type:"mouseenter"});
   document.dispatchEvent({type:"keydown",key:"s",target:otherTaskRow});
-  const otherTaskTitle = otherTaskRow.children[0].children[0].textContent;
+  const otherTaskTitle = titleLink(otherTaskRow).textContent;
   assert.equal(document.getElementById("status-task-title").textContent,otherTaskTitle);
   resolveDeferredStatus();
   await settle();
@@ -406,9 +436,9 @@ async function main() {
   document.getElementById("search").value = "";
 
   refreshedTaskRow.dispatchEvent({type:"mouseleave"});
-  refreshedTaskRow.dispatchEvent({type:"focusin",target:refreshedTaskRow.children[0].children[0]});
+  refreshedTaskRow.dispatchEvent({type:"focusin",target:titleLink(refreshedTaskRow)});
   document.dispatchEvent({
-    type:"keydown",key:"s",target:refreshedTaskRow.children[0].children[0]
+    type:"keydown",key:"s",target:titleLink(refreshedTaskRow)
   });
   assert.equal(statusModal.hidden,false,"a focused task link can use the same shortcut");
   statusModal.dispatchEvent({type:"keydown",key:"Escape"});
@@ -515,6 +545,58 @@ async function main() {
   plus.click();
   menu.dispatchEvent({type:"keydown",key:"Tab"});
   assert.equal(menu.hidden,true,"Tab dismisses the menu without trapping focus");
+
+  document.dispatchEvent({type:"keydown",key:"j",target:document.getElementById("groups")});
+  const navigatedRows = allNodes(document.getElementById("groups")).filter(
+    node => node.tagName === "TR" && node.getAttribute("data-task-id")
+  );
+  document.dispatchEvent({type:"keydown",key:"k",target:navigatedRows[0]});
+  const activeIndex = navigatedRows.findIndex(row=>row.getAttribute("data-active") === "true");
+  assert.equal(activeIndex,0,"J starts navigation at the first task row and K clamps there");
+  document.dispatchEvent({type:"keydown",key:"j",target:navigatedRows[activeIndex]});
+  const nextIndex = 1;
+  assert.equal(navigatedRows[nextIndex].getAttribute("data-active"),"true","J moves to the next task row");
+  document.dispatchEvent({type:"keydown",key:"k",target:navigatedRows[nextIndex]});
+  assert.equal(navigatedRows[activeIndex].getAttribute("data-active"),"true","K moves to the previous task row");
+
+  document.dispatchEvent({type:"keydown",key:"x",target:navigatedRows[activeIndex]});
+  assert.equal(navigatedRows[activeIndex].getAttribute("aria-selected"),"true","X selects the active task row");
+  assert.equal(navigatedRows[activeIndex].children[0].children[0].getAttribute("aria-pressed"),"true","the row checkbox reflects keyboard selection");
+  document.dispatchEvent({type:"keydown",key:"j",target:navigatedRows[activeIndex]});
+  document.dispatchEvent({type:"keydown",key:"x",target:navigatedRows[nextIndex]});
+  assert.match(document.getElementById("summary").textContent,/2 selected/);
+  document.dispatchEvent({type:"keydown",key:"s",target:navigatedRows[nextIndex]});
+  assert.equal(document.getElementById("status-task-title").textContent,"2 tasks selected","S opens one picker for the selected rows");
+  const beforeBulkUpdates=statusUpdates.length;
+  statusButton(document,"Blocked").click();
+  await settle();
+  await settle();
+  assert.deepEqual(
+    bulkStatusUpdates.at(-1),
+    {sessionIds:[navigatedRows[activeIndex],navigatedRows[nextIndex]].map(row=>row.getAttribute("data-session-id")),status:"blocked"},
+    "choosing a status applies one bulk mutation to every selected row"
+  );
+  assert.equal(statusUpdates.length,beforeBulkUpdates+2);
+  assert.doesNotMatch(document.getElementById("summary").textContent,/selected/,"selection clears after the complete bulk mutation succeeds");
+
+  const bulkFailureRows=allNodes(document.getElementById("groups")).filter(
+    node => node.tagName === "TR" && node.getAttribute("data-status") === "blocked"
+  ).slice(0,2);
+  bulkFailureRows[0].dispatchEvent({type:"mouseenter"});
+  document.dispatchEvent({type:"keydown",key:"x",target:bulkFailureRows[0]});
+  document.dispatchEvent({type:"keydown",key:"j",target:bulkFailureRows[0]});
+  document.dispatchEvent({type:"keydown",key:"x",target:bulkFailureRows[1]});
+  statusFailure="task status changed; refresh and try again";
+  document.dispatchEvent({type:"keydown",key:"s",target:bulkFailureRows[1]});
+  statusButton(document,"Todo").click();
+  await settle();
+  assert.equal(statusModal.hidden,false,"a bulk conflict keeps the picker open");
+  assert.match(document.getElementById("status-error").textContent,/refresh and try again/);
+  assert.match(document.getElementById("summary").textContent,/2 selected/,"a bulk conflict preserves the selected rows");
+  statusModal.dispatchEvent({type:"keydown",key:"Escape"});
+  document.dispatchEvent({type:"keydown",key:"x",target:bulkFailureRows[1]});
+  document.dispatchEvent({type:"keydown",key:"k",target:bulkFailureRows[1]});
+  document.dispatchEvent({type:"keydown",key:"x",target:bulkFailureRows[0]});
 
   const completableTaskRow = allNodes(document.getElementById("groups")).find(
     node => node.tagName === "TR" && ["todo","active","blocked"].includes(node.getAttribute("data-status"))

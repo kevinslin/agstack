@@ -222,7 +222,7 @@ initial prompt remains the task description.
 
 ## dashboard-html
 
-Scenario version: 13
+Scenario version: 14
 
 After the live child task is finalized:
 
@@ -254,8 +254,11 @@ After the live child task is finalized:
    semantics, while title links remain encoded `codex://threads/<session-id>`
    deep links with keyboard activation. Require attached tasks to render
    `file` badges in both list and detail views, linked through encoded
-   `vscode://file` URLs. Require the hover-plus-`s` status picker,
-   its Todo/Active/Blocked/Done/Drop choices, and its expected-status guarded PATCH route.
+   `vscode://file` URLs. Require `j`/`k` active-row navigation, `x` selection,
+   visible row checkboxes and selected state, and the `s` status picker acting
+   on the selected set or the active/hovered row when no selection exists.
+   Require its Todo/Active/Blocked/Done/Drop choices, its single-row
+   expected-status guarded PATCH route, and its token-scoped bulk PATCH route.
    Require no task values in executable assets and dashboard API parity with the
    CLI JSON snapshot.
 7. PATCH the dedicated fixture from active to blocked with the exact loopback
@@ -263,10 +266,13 @@ After the live child task is finalized:
    Require the canonical nine-field task projection, one
    `status:active->blocked` meta rollout sharing the updated timestamp, and a
    stale expected-status retry that returns conflict without another write.
-   Then PATCH blocked to Done and require `closed = updated` plus ordered
-   `status:blocked->done` evidence. Require the response to contain no hook
-   prompt, merge-claim, or finalization payload and the ledger to contain no
-   merge claim or `finalization:completed` event for the fixture.
+   Register a second active status fixture. Send a two-row bulk PATCH with one
+   stale expected status and require conflict with neither row changed, then
+   retry with both current expected statuses and require both rows to reach
+   Done in one successful response. Require `closed = updated` plus ordered
+   `status:blocked->done` and `status:active->done` evidence. Require the response
+   to contain no hook prompt, merge-claim, or finalization payload and the ledger
+   to contain no merge claim or `finalization:completed` event for the fixture.
 8. Require the task-detail view to expose title, description, Timeline, Created,
    Updated, Session ID, and Files structure, with Session ID rendered as an encoded
    `codex://threads/<session-id>` deep link. Require its API to return the exact
@@ -275,7 +281,7 @@ After the live child task is finalized:
    attachment projection.
 9. Interrupt the server cleanly, require exit status zero, and prove the schema
    version plus the known main/child thread and rollout rows are unchanged while
-   the dedicated fixture contains only the expected status mutation.
+   the dedicated fixtures contain only the expected status mutations.
 
 The structured proof must retain only redacted origin, route, header, response,
 shutdown, snapshot, status-transition, and unaffected-lifecycle evidence. It

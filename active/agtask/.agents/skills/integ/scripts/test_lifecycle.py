@@ -54,7 +54,7 @@ CREATION_BOOTSTRAP_SCENARIO_VERSION = 3
 LIFECYCLE_SCENARIO_NAME = "lifecycle-create-directive-close-hooks"
 LIFECYCLE_SCENARIO_VERSION = 13
 DASHBOARD_SCENARIO_NAME = "dashboard-html"
-DASHBOARD_SCENARIO_VERSION = 13
+DASHBOARD_SCENARIO_VERSION = 14
 RENAME_SCENARIO_NAME = "current-task-rename"
 RENAME_SCENARIO_VERSION = 2
 AUDIT_SCENARIO_NAME = "archived-session-audit"
@@ -358,6 +358,30 @@ def verify_dashboard(
         status_fixture["status"] == "active",
         "dashboard status fixture did not start active",
     )
+    bulk_fixture_id = str(uuid.uuid4())
+    bulk_fixture_session_id = f"dashboard-bulk-{bulk_fixture_id[:8]}"
+    bulk_fixture = run_cli(
+        cli,
+        "register",
+        "--id",
+        bulk_fixture_id,
+        "--session-id",
+        bulk_fixture_session_id,
+        "--kind",
+        "main",
+        "--project",
+        PROJECT,
+        "--title",
+        f"agtask/integ-dashboard-bulk-{bulk_fixture_id[:8]}",
+        "--initial-prompt",
+        "Verify the dashboard bulk mutation contract.",
+        "--status",
+        "active",
+    )
+    require(
+        bulk_fixture["status"] == "active",
+        "dashboard bulk fixture did not start active",
+    )
     snapshot = run_cli(
         cli,
         "dashboard",
@@ -435,7 +459,7 @@ def verify_dashboard(
         == ["todo", "active", "blocked", "merging", "done", "drop"],
         "dashboard status facets are not canonical",
     )
-    done_snapshot = run_cli(
+    done_filter_snapshot = run_cli(
         cli,
         "dashboard",
         "--project",
@@ -448,8 +472,8 @@ def verify_dashboard(
         title,
     )
     require(
-        [group["status"] for group in done_snapshot["groups"]] == ["done"]
-        and done_snapshot["groups"][0]["threads"] == [projection],
+        [group["status"] for group in done_filter_snapshot["groups"]] == ["done"]
+        and done_filter_snapshot["groups"][0]["threads"] == [projection],
         "dashboard status filter mismatch",
     )
 
@@ -555,6 +579,10 @@ def verify_dashboard(
                     and b'value:"done"' in body
                     and b'value:"drop"' in body
                     and b"expected_status" in body
+                    and b"selection-toggle" in body
+                    and b'key==="j"' in body
+                    and b'key==="x"' in body
+                    and b'"api/tasks/status"' in body
                     and b"file-badge" in body
                     and b"/status" in body,
                     "dashboard client interactions or task-row links are missing",
@@ -715,19 +743,67 @@ def verify_dashboard(
             == 1,
             "dashboard stale status update changed the fixture",
         )
-        done_status, _done_headers, done_body = dashboard_http_patch(
+        bulk_path = root + "api/tasks/status"
+        bulk_conflict_status, _bulk_conflict_headers, bulk_conflict_body = (
+            dashboard_http_patch(
+                parsed,
+                bulk_path,
+                {
+                    "tasks": [
+                        {
+                            "session_id": status_fixture_session_id,
+                            "expected_status": "blocked",
+                        },
+                        {
+                            "session_id": bulk_fixture_session_id,
+                            "expected_status": "blocked",
+                        },
+                    ],
+                    "status": "done",
+                },
+            )
+        )
+        require(
+            bulk_conflict_status == 409
+            and "refresh and try again"
+            in json.loads(bulk_conflict_body).get("error", ""),
+            "dashboard bulk stale status was not rejected",
+        )
+        require(
+            query_thread(database, status_fixture_id)["status"] == "blocked"
+            and query_thread(database, bulk_fixture_id)["status"] == "active",
+            "dashboard bulk conflict partially changed its fixtures",
+        )
+        done_status, done_headers, done_body = dashboard_http_patch(
             parsed,
-            status_path,
-            {"expected_status": "blocked", "status": "done"},
+            bulk_path,
+            {
+                "tasks": [
+                    {
+                        "session_id": status_fixture_session_id,
+                        "expected_status": "blocked",
+                    },
+                    {
+                        "session_id": bulk_fixture_session_id,
+                        "expected_status": "active",
+                    },
+                ],
+                "status": "done",
+            },
         )
         done_snapshot = json.loads(done_body)
         require(
             done_status == 200
-            and set(done_snapshot) == {"changed", "task"}
+            and set(done_snapshot) == {"changed", "tasks"}
             and done_snapshot["changed"] is True
-            and done_snapshot["task"]["status"] == "done"
-            and done_snapshot["task"]["closed"] == done_snapshot["task"]["updated"],
-            "dashboard Done completion transition mismatch",
+            and [task["session_id"] for task in done_snapshot["tasks"]]
+            == [status_fixture_session_id, bulk_fixture_session_id]
+            and all(
+                task["status"] == "done"
+                and task["closed"] == task["updated"]
+                for task in done_snapshot["tasks"]
+            ),
+            "dashboard bulk Done completion transition mismatch",
         )
         done_rollouts = [
             row
@@ -739,10 +815,20 @@ def verify_dashboard(
             == ["status:active->blocked", "status:blocked->done"],
             "dashboard Done transition evidence mismatch",
         )
+        bulk_rollouts = [
+            row
+            for row in query_rollouts(database, bulk_fixture_id)
+            if row["message"].startswith("status:")
+        ]
+        require(
+            [row["message"] for row in bulk_rollouts] == ["status:active->done"],
+            "dashboard bulk fixture transition evidence mismatch",
+        )
         require(
             not any(
                 row["message"] == "finalization:completed"
-                for row in query_rollouts(database, status_fixture_id)
+                for fixture_id in (status_fixture_id, bulk_fixture_id)
+                for row in query_rollouts(database, fixture_id)
             ),
             "dashboard Done dispatched close finalization evidence",
         )
@@ -757,6 +843,15 @@ def verify_dashboard(
             "referrer_policy": headers["referrer-policy"],
             "nosniff": headers["x-content-type-options"],
             "content_length": len(body),
+        }
+        responses["bulk_status_update"] = {
+            "status": done_status,
+            "content_type": done_headers["content-type"],
+            "cache_control": done_headers["cache-control"],
+            "referrer_policy": done_headers["referrer-policy"],
+            "nosniff": done_headers["x-content-type-options"],
+            "content_length": len(done_body),
+            "stale_conflict": True,
         }
     finally:
         selector.close()
@@ -779,6 +874,13 @@ def verify_dashboard(
         and status_fixture_after["closed"] == status_fixture_after["updated"],
         "dashboard status fixture did not retain the expected transition",
     )
+    bulk_fixture_after = query_thread(database, bulk_fixture_id)
+    require(
+        bulk_fixture_after is not None
+        and bulk_fixture_after["status"] == "done"
+        and bulk_fixture_after["closed"] == bulk_fixture_after["updated"],
+        "dashboard bulk fixture did not retain the expected transition",
+    )
     return {
         "scenario": DASHBOARD_SCENARIO_NAME,
         "scenario_version": DASHBOARD_SCENARIO_VERSION,
@@ -786,22 +888,22 @@ def verify_dashboard(
         "route": {"opaque_token": True, "token_retained": False},
         "responses": responses,
         "snapshot": snapshot,
-        "status_filter_snapshot": done_snapshot,
+        "status_filter_snapshot": done_filter_snapshot,
         "detail_snapshot": detail_snapshot,
         "attachment": attachment_result["attachment"],
         "status_update": {
             "result": status_update_snapshot,
             "stale_conflict": True,
-            "transition_rollout_count": len(drop_rollouts),
+            "transition_rollout_count": len(done_rollouts),
             "transition": status_transition_snapshot,
-            "drop_result": drop_snapshot,
+            "done_result": done_snapshot,
             "transitions": [
                 {
                     "created": row["created"],
                     "role": row["role"],
                     "message": row["message"],
                 }
-                for row in drop_rollouts
+                for row in done_rollouts
             ],
         },
         "clean_shutdown": True,

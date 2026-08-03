@@ -726,6 +726,119 @@ class DashboardIntegrationTest(unittest.TestCase):
         )
         self.assertIn("dashboard client interactions passed", result.stdout)
 
+    def test_bulk_status_api_is_atomic_and_expected_status_guarded(self) -> None:
+        self.seed_dashboard()
+        _process, url = self.start_server()
+        parsed = urlsplit(url)
+        status_path = parsed.path + "api/tasks/status"
+        headers = {
+            "Content-Type": "application/json",
+            "Origin": f"http://{parsed.netloc}",
+        }
+
+        status, _response_headers, body = self.request(
+            url,
+            path=status_path,
+            method="PATCH",
+            body=json.dumps(
+                {
+                    "tasks": [
+                        {"session_id": "root-todo", "expected_status": "todo"},
+                        {
+                            "session_id": "alpha-active",
+                            "expected_status": "blocked",
+                        },
+                    ],
+                    "status": "done",
+                }
+            ),
+            headers=headers,
+        )
+        self.assertEqual(status, 409)
+        self.assertEqual(
+            json.loads(body),
+            {
+                "error": (
+                    "task status changed from blocked to active; "
+                    "refresh and try again"
+                )
+            },
+        )
+        with sqlite3.connect(self.db_path) as connection:
+            self.assertEqual(
+                connection.execute(
+                    "SELECT session_id,status,closed FROM thread "
+                    "WHERE session_id IN ('root-todo','alpha-active') "
+                    "ORDER BY session_id"
+                ).fetchall(),
+                [("alpha-active", "active", None), ("root-todo", "todo", None)],
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM rollout WHERE thread_id IN (?,?) "
+                    "AND message LIKE 'status:%'",
+                    (
+                        fixture_creation_id("root-todo"),
+                        fixture_creation_id("alpha-active"),
+                    ),
+                ).fetchone()[0],
+                0,
+            )
+
+        status, response_headers, body = self.request(
+            url,
+            path=status_path,
+            method="PATCH",
+            body=json.dumps(
+                {
+                    "tasks": [
+                        {"session_id": "root-todo", "expected_status": "todo"},
+                        {
+                            "session_id": "alpha-active",
+                            "expected_status": "active",
+                        },
+                    ],
+                    "status": "done",
+                }
+            ),
+            headers=headers,
+        )
+        self.assertEqual(status, 200, body.decode("utf-8", errors="replace"))
+        self.assertEqual(
+            response_headers["content-type"], "application/json; charset=utf-8"
+        )
+        result = json.loads(body)
+        self.assertEqual(set(result), {"changed", "tasks"})
+        self.assertTrue(result["changed"])
+        self.assertEqual(
+            [task["session_id"] for task in result["tasks"]],
+            ["root-todo", "alpha-active"],
+        )
+        self.assertEqual([task["status"] for task in result["tasks"]], ["done", "done"])
+        self.assertTrue(
+            all(task["closed"] == task["updated"] for task in result["tasks"])
+        )
+        with sqlite3.connect(self.db_path) as connection:
+            self.assertEqual(
+                connection.execute(
+                    "SELECT session_id,status,closed IS updated FROM thread "
+                    "WHERE session_id IN ('root-todo','alpha-active') "
+                    "ORDER BY session_id"
+                ).fetchall(),
+                [("alpha-active", "done", 1), ("root-todo", "done", 1)],
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM rollout WHERE thread_id IN (?,?) "
+                    "AND message IN ('status:todo->done','status:active->done')",
+                    (
+                        fixture_creation_id("root-todo"),
+                        fixture_creation_id("alpha-active"),
+                    ),
+                ).fetchone()[0],
+                2,
+            )
+
     def test_status_api_updates_ledger_without_dispatching_close_hooks(self) -> None:
         self.seed_dashboard()
         (self.home / ".agtask.json").write_text(

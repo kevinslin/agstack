@@ -211,10 +211,15 @@ button to add another field and the chip remove button to clear one. Values in
 one chip are ORed, while separate field chips and title search are ANDed. Sort
 by created, updated, or closed time, or refresh the current snapshot from the
 toolbar.
-Hover a task and press `s` to open the status picker. Choosing Todo, Active,
-Blocked, Done, or Drop applies an atomic ledger transition and then refreshes
-the current view. Done marks the task complete directly in the ledger without
-running `OnPreClose`, `OnPostClose`, or any other close workflow hook. This UI
+Press `j` or `k` to move the active row, and press `x` to toggle that row in the
+selected set. Row checkboxes provide the same selection control. Press `s` to
+open the status picker for all selected rows, or for the active or hovered row
+when there is no selection. Choosing Todo, Active, Blocked, Done, or Drop
+applies an atomic ledger transition and then refreshes the current view. Bulk
+changes validate and transition the full selected set in one transaction; any
+conflict rolls back every row and retains the selection for retry. Done marks
+the task complete directly in the ledger without running `OnPreClose`,
+`OnPostClose`, or any other close workflow hook. This UI
 shortcut does not replace the CLI `close` workflow, which retains its merge
 claim, finalization evidence, and configured hook behavior. Drop marks work
 intentionally abandoned and terminal.
@@ -238,8 +243,8 @@ python3 "$AGTASK" dashboard \
 
 The server binds only `127.0.0.1` on an ephemeral port, requires the unguessable
 token path plus exact loopback host and mutation origin, and serves no external
-assets. Reads never write the ledger; the token-scoped status endpoint is the
-only dashboard mutation. Treat the printed URL as temporary local access to
+assets. Reads never write the ledger; the token-scoped single-row and bulk
+status endpoints are the only dashboard mutations. Treat the printed URL as temporary local access to
 dashboard data and status controls.
 
 ## Test

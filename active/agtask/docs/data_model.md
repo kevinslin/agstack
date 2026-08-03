@@ -550,6 +550,11 @@ Status and timestamp rules are:
 - Dashboard Done sets `status = 'done'`, gives `updated`, `closed`, and
   `status:<prior>->done` one timestamp, and does not create merge or
   finalization evidence or return close-hook prompts.
+- A dashboard bulk status request validates every selected `session_id` and
+  rendered expected status under one `BEGIN IMMEDIATE` transaction before
+  transitioning any row. Missing, stale, terminal, or merging rows abort and
+  roll back the complete request; a successful request commits every selected
+  row and its status rollout together.
 - Repeated close is a no-op. `reopen` changes `done` or `drop` to `active`,
   clears `closed`, advances `updated`, and records
   `status:<terminal>->active`. A later close is a distinct lifecycle with new
