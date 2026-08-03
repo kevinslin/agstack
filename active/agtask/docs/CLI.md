@@ -448,7 +448,7 @@ python3 "$AGTASK" dashboard \
 | `--status <status>` | Filter by `todo`, `active`, `blocked`, `merging`, `done`, or `drop`. Repeat to select multiple statuses. |
 | `--sort <field>` | Sort by `created`, `updated`, or `closed`. Default: `updated`. |
 | `--direction <direction>` | `asc` or `desc`. Default: `desc`. |
-| `--search <text>` | Case-insensitive title search. Default: empty. |
+| `--search <text>` | Case-insensitive substring search across title, logical task ID, Codex session ID, and parent session ID. Default: empty. |
 | `--no-open` | Start the server and print its URL without opening a browser. Cannot be combined with `--json`. |
 
 Repeated values are ORed within a filter dimension; different dimensions are

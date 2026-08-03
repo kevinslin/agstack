@@ -356,7 +356,7 @@ class DashboardIntegrationTest(unittest.TestCase):
             [fixture_creation_id("beta-done"), fixture_creation_id("done-early")],
         )
 
-    def test_filters_or_within_dimensions_and_searches_titles_only_with_casefold(self) -> None:
+    def test_filters_or_within_dimensions_and_searches_titles_and_ids_with_casefold(self) -> None:
         self.seed_dashboard()
         self.register(
             "unicode-active",
@@ -393,6 +393,38 @@ class DashboardIntegrationTest(unittest.TestCase):
             self.run_cli("dashboard", "--json", "--search", "STRASSE").stdout
         )
         self.assertEqual(unicode_match["visible_count"], 1)
+        logical_id_match = json.loads(
+            self.run_cli(
+                "dashboard",
+                "--json",
+                "--search",
+                fixture_creation_id("root-todo").upper(),
+            ).stdout
+        )
+        self.assertEqual(logical_id_match["visible_count"], 1)
+        self.assertEqual(
+            logical_id_match["groups"][0]["threads"][0]["session_id"], "root-todo"
+        )
+        codex_sha_match = json.loads(
+            self.run_cli("dashboard", "--json", "--search", "ALPHA-ACT").stdout
+        )
+        self.assertEqual(codex_sha_match["visible_count"], 1)
+        self.assertEqual(
+            codex_sha_match["groups"][1]["threads"][0]["session_id"],
+            "alpha-active",
+        )
+        parent_sha_match = json.loads(
+            self.run_cli("dashboard", "--json", "--search", "PARENT-BE").stdout
+        )
+        self.assertEqual(parent_sha_match["visible_count"], 2)
+        self.assertEqual(
+            {
+                thread["session_id"]
+                for group in parent_sha_match["groups"]
+                for thread in group["threads"]
+            },
+            {"beta-blocked", "beta-done"},
+        )
         description_only = json.loads(
             self.run_cli("dashboard", "--json", "--search", "fixture").stdout
         )
@@ -491,6 +523,8 @@ class DashboardIntegrationTest(unittest.TestCase):
         self.assertEqual(headers["x-content-type-options"], "nosniff")
         self.assertIn("default-src 'none'", headers["content-security-policy"])
         self.assertIn(b"agtask dashboard", body)
+        self.assertIn(b"Task search", body)
+        self.assertIn(b"Search titles or SHAs", body)
         self.assertIn(b'id="filter-trigger"', body)
         self.assertIn(b'id="filter-menu"', body)
         self.assertIn(b'id="active-filters"', body)
@@ -513,6 +547,10 @@ class DashboardIntegrationTest(unittest.TestCase):
         self.assertIn(b"FILTER_DEFS", body)
         self.assertIn(b"menuKeydown", body)
         self.assertIn(b"STATUS_OPTIONS", body)
+        self.assertIn(b"taskIdentityCell", body)
+        self.assertIn(b"navigator.clipboard.writeText", body)
+        self.assertIn(b'"Task ID"', body)
+        self.assertIn(b'"Codex SHA"', body)
         self.assertIn(b"/status", body)
         self.assertIn(b"/attachments", body)
         self.assertIn(b'key==="a"', body)

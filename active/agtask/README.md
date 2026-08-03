@@ -208,7 +208,10 @@ it in the default browser, and serves a local HTML dashboard until you press
 the right-side **Add filter** menu to choose a project, parent task, or status.
 Active fields appear as compact chips in the filter bar; use the adjacent plus
 button to add another field and the chip remove button to clear one. Values in
-one chip are ORed, while separate field chips and title search are ANDed. Sort
+one chip are ORed, while separate field chips and task search are ANDed. Search
+matches titles, logical task IDs, Codex session IDs, and parent session IDs.
+Task ID, Codex SHA, and parent-task values show their first eight characters;
+activate one to copy its complete value. Sort
 by created, updated, or closed time, or refresh the current snapshot from the
 toolbar.
 Press `j` or `k` to move the active row, and press `x` to toggle that row in the

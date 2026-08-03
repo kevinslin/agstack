@@ -222,7 +222,7 @@ initial prompt remains the task description.
 
 ## dashboard-html
 
-Scenario version: 15
+Scenario version: 16
 
 After the live child task is finalized:
 
@@ -231,7 +231,8 @@ After the live child task is finalized:
    text file, require its frontmatter status to match the finalized task, and
    retain its resolved path plus `vscode://file` projection.
 2. Run `dashboard --json` through the installed CLI, narrowed by the exact
-   project, parent session ID, and proof-specific child title. Require all six canonical status
+   project, parent session ID, and proof-specific child title. Repeat with a
+   partial, case-insensitive Codex session ID. Require all six canonical status
    groups, the finalized child only in `done`, its logical ID, session ID,
    parent session ID, remaining dashboard projection fields, selected
    filter/search/sort state, and global facets containing
@@ -257,7 +258,9 @@ After the live child task is finalized:
    `vscode://file` URLs. Require `j`/`k` active-row navigation, `x` selection,
    visible row checkboxes and selected state, and the `s` status picker acting
    on the selected set or the active/hovered row when no selection exists.
-   Require a hidden native Markdown/text file input and `a` attachment shortcut
+   Require Task ID and Codex SHA columns plus compact copy controls that retain
+   the complete logical, Codex-session, and parent-session identities. Require
+   a hidden native Markdown/text file input and `a` attachment shortcut
    acting on the active/hovered row while remaining suppressed during typing,
    filter-menu, and status-modal interaction. Require its token-scoped per-task
    POST route and client refresh/success/error notices.

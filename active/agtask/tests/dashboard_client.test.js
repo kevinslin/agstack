@@ -139,7 +139,9 @@ function snapshotFor(base, requestUrl) {
     ((!parents.length && !root) || parents.includes(thread.parent_session_id) || (root && thread.parent_session_id === null)) &&
     (!statuses.length || statuses.includes(thread.status)) &&
     !excludedStatuses.has(thread.status) &&
-    (!search || thread.title.toLocaleLowerCase().includes(search))
+    (!search || [thread.title,thread.id,thread.session_id,thread.parent_session_id || ""].some(
+      value => value.toLocaleLowerCase().includes(search)
+    ))
   );
   const groupOrder = statuses.length ? ["todo","active","blocked","merging","done","drop"].filter(status => statuses.includes(status)) : ["todo","active","blocked","merging","done","drop"].filter(status => !excludedStatuses.has(status));
   snapshot.filters = {projects,parent_session_ids:parents,include_root:root,statuses};
@@ -165,7 +167,7 @@ function statusButton(document, label) {
 }
 
 function titleLink(row) {
-  return row.children[1].children[0];
+  return row.children.find(cell => cell.className === "task-title-cell").children[0];
 }
 
 function allNodes(root) {
@@ -212,6 +214,7 @@ async function main() {
   const statusUpdates = [];
   const bulkStatusUpdates = [];
   const attachmentUploads = [];
+  const clipboardWrites = [];
   const dashboardSnapshot = clone(input.snapshot);
   let statusFailure = null;
   let deferNextStatus = false;
@@ -219,6 +222,10 @@ async function main() {
   global.document = document;
   global.location = location;
   global.history = history;
+  Object.defineProperty(global,"navigator",{
+    configurable:true,
+    value:{clipboard:{writeText:async value=>{clipboardWrites.push(value);}}}
+  });
   global.fetch = async (requestUrl, options={}) => {
     requests.push(requestUrl);
     if(options.method === "POST"){
@@ -344,6 +351,46 @@ async function main() {
     `codex://threads/${encodeURIComponent(firstTaskRow.getAttribute("data-session-id"))}`,
     "task title links to the Codex session"
   );
+  const identityTaskRow = allNodes(document.getElementById("groups")).find(
+    node => node.tagName === "TR" && node.task && node.task.parent_session_id !== null
+  );
+  const taskIdCopy = identityTaskRow.children[1].children[0];
+  const codexShaCopy = identityTaskRow.children[2].children[0];
+  const parentIdCopy = identityTaskRow.children[5].children[0];
+  assert.equal(taskIdCopy.tagName,"BUTTON","the logical task ID is a keyboard-accessible copy control");
+  assert.equal(taskIdCopy.textContent,identityTaskRow.getAttribute("data-task-id").slice(0,8));
+  assert.equal(codexShaCopy.textContent,identityTaskRow.getAttribute("data-session-id").slice(0,8));
+  assert.equal(parentIdCopy.textContent,identityTaskRow.task.parent_session_id.slice(0,8));
+  assert.match(taskIdCopy.getAttribute("aria-label"),new RegExp(identityTaskRow.getAttribute("data-task-id")));
+  const beforeIdentityClick = location.assigned.length;
+  taskIdCopy.click();
+  codexShaCopy.click();
+  parentIdCopy.click();
+  await settle();
+  assert.deepEqual(
+    clipboardWrites.slice(-3),
+    [identityTaskRow.task.id,identityTaskRow.task.session_id,identityTaskRow.task.parent_session_id],
+    "identity controls copy each complete value rather than its compact label"
+  );
+  identityTaskRow.dispatchEvent({type:"click",target:codexShaCopy});
+  assert.equal(location.assigned.length,beforeIdentityClick,"copying an identity does not navigate the task row");
+  assert.match(document.getElementById("notice").textContent,/Copied full Parent task ID/);
+  const rootTaskRow = allNodes(document.getElementById("groups")).find(
+    node => node.tagName === "TR" && node.task && node.task.parent_session_id === null
+  );
+  assert.equal(rootTaskRow.children[5].textContent,"—","root tasks retain an em dash parent value");
+  assert.equal(rootTaskRow.children[5].children.length,0,"a null parent does not expose a copy control");
+
+  const taskSearch = document.getElementById("search");
+  taskSearch.value = identityTaskRow.task.session_id.slice(0,8).toUpperCase();
+  taskSearch.dispatchEvent({type:"input"});
+  await new Promise(resolve => setTimeout(resolve,220));
+  await settle();
+  assert.equal(document.getElementById("summary").textContent,"1 visible · 4 total","task search matches a case-insensitive partial Codex SHA");
+  taskSearch.value = "";
+  taskSearch.dispatchEvent({type:"input"});
+  await new Promise(resolve => setTimeout(resolve,220));
+  await settle();
   const fileBadge = allNodes(document.getElementById("groups")).find(
     node => node.tagName === "A" && node.className === "file-badge"
   );
@@ -359,7 +406,7 @@ async function main() {
     beforeFileClick,
     "clicking a file badge does not open the task detail page"
   );
-  firstTaskRow.dispatchEvent({type:"click",target:firstTaskRow.children[2]});
+  firstTaskRow.dispatchEvent({type:"click",target:firstTaskRow.children[4]});
   assert.equal(
     location.assigned.at(-1),
     `tasks/~${encodeURIComponent(firstTaskRow.getAttribute("data-session-id"))}`,

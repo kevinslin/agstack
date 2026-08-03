@@ -169,7 +169,8 @@ re-running the same audit is a no-op.
 selects logical `id`, `session_id`, `parent_session_id`, `project`, `title`,
 `created`, `updated`, `closed`, and `status`, plus attached file projections,
 then derives unfiltered facets, applies exact
-multi-value filters and case-folded title search, sorts deterministically
+multi-value filters and case-folded substring search across titles and all
+three identity fields, sorts deterministically
 inside fixed lifecycle groups, and closes the connection. A separate point
 session-ID lookup supplies the task-detail page with logical `id`, `session_id`,
 `parent_session_id`, `title`, `description`,
@@ -178,7 +179,7 @@ and `message` for rollouts in reverse chronological `(created, id)` order.
 
 The browser represents each active filter dimension as one segmented chip and
 uses one registry-driven dropdown for field and value selection. Values within
-a chip are ORed by the existing API contract; field chips and title search are
+a chip are ORed by the existing API contract; field chips and task search are
 ANDed. The toolbar trigger and filter-bar plus button open the same menu, and
 chip removal immediately requests a new snapshot. `j` and `k` move an active
 row through the rendered task order, while `x` and the row checkbox toggle a
@@ -189,6 +190,11 @@ status, then reloads the snapshot rather than moving rows optimistically.
 Pressing `a` for the active or hovered row clicks a hidden native file input,
 uploads its selected file to that row's token-scoped attachment route, and
 reloads the snapshot after the managed attachment commits.
+
+The Task ID, Codex SHA, and parent-task cells render eight-character
+abbreviations as buttons. Activating one copies the complete underlying logical
+ID, Codex session ID, or parent session ID without opening the row. Root tasks
+retain an em dash in the parent column.
 
 In the default mode, the command validates one snapshot before binding
 `127.0.0.1` on an ephemeral port. A fresh 256-bit token scopes the dashboard

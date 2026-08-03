@@ -54,7 +54,7 @@ CREATION_BOOTSTRAP_SCENARIO_VERSION = 3
 LIFECYCLE_SCENARIO_NAME = "lifecycle-create-directive-close-hooks"
 LIFECYCLE_SCENARIO_VERSION = 13
 DASHBOARD_SCENARIO_NAME = "dashboard-html"
-DASHBOARD_SCENARIO_VERSION = 15
+DASHBOARD_SCENARIO_VERSION = 16
 RENAME_SCENARIO_NAME = "current-task-rename"
 RENAME_SCENARIO_VERSION = 2
 AUDIT_SCENARIO_NAME = "archived-session-audit"
@@ -494,6 +494,21 @@ def verify_dashboard(
         "dashboard filter state mismatch",
     )
     require(snapshot["search"] == title, "dashboard search state mismatch")
+    identity_search = session_id[:8].upper()
+    identity_search_snapshot = run_cli(
+        cli,
+        "dashboard",
+        "--project",
+        PROJECT,
+        "--search",
+        identity_search,
+    )
+    require(
+        identity_search_snapshot["visible_count"] == 1
+        and identity_search_snapshot["groups"][4]["threads"] == [projection]
+        and identity_search_snapshot["search"] == identity_search,
+        "dashboard partial Codex session ID search mismatch",
+    )
     require(
         snapshot["sort"] == {"field": "updated", "direction": "desc"},
         "dashboard default sort mismatch",
@@ -589,7 +604,7 @@ def verify_dashboard(
                     all(
                         marker in body
                         for marker in (
-                            b"Title search",
+                            b"Task search",
                             b"Refresh",
                             b'id="filter-trigger"',
                             b'id="filter-menu"',
@@ -641,6 +656,10 @@ def verify_dashboard(
                     and b'/attachments`' in body
                     and b'"X-AgTask-Filename"' in body
                     and b"file-badge" in body
+                    and b"taskIdentityCell" in body
+                    and b"navigator.clipboard.writeText" in body
+                    and b'"Task ID"' in body
+                    and b'"Codex SHA"' in body
                     and b"/status" in body,
                     "dashboard client interactions or task-row links are missing",
                 )

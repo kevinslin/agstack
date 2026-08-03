@@ -268,9 +268,13 @@ and its configured hooks.
 The snapshot derives project, parent, and lifecycle-status facets before any
 filter is applied, so facet counts always describe the complete ledger. Exact
 values within project, parent, and status dimensions are ORed; the dimensions
-and title search are ANDed. Root-parent selection matches null
-`parent_session_id`. Title search is a literal Python `casefold()` substring and
-does not reuse FTS, match descriptions, or interpret query syntax.
+and task search are ANDed. Root-parent selection matches null
+`parent_session_id`. Task search is a literal Python `casefold()` substring
+across `title`, logical `id`, `session_id`, and non-null `parent_session_id`; it
+does not reuse FTS, match descriptions, or interpret query syntax. The browser
+renders the first eight characters of each available identity and copies the
+complete value when its button is activated; this abbreviation is presentation
+only and does not alter the snapshot or persistence contract.
 
 The HTML client renders one chip per active dimension. A chip may display
 multiple ORed values, while multiple chips are the browser representation of
