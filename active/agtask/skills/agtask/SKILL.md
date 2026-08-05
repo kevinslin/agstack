@@ -16,13 +16,13 @@ exactly one workflow below and read that reference completely before acting.
   [`./references/add.md`](./references/add.md).
 - **Attach a file:** For `$agtask attach <file>`, follow
   [`./references/attach.md`](./references/attach.md).
-- **Create a clean local child (default):** For a task prompt, `new`, model or
+- **Create a clean child (default):** For a task prompt, `new`, model or
   reasoning settings, or `nopin`, follow
   [`./references/create.md`](./references/create.md).
 - **Advanced creation or designation:** Read
   [`./references/create-advanced.md`](./references/create-advanced.md) when
-  the request uses `kind=main`, forks history, uses a worktree or remote
-  project, or needs recovery after a partial result.
+  the request uses `kind=main`, forks history, uses a worktree, or needs
+  recovery after a partial result.
 - **Audit archived tasks:** For `$agtask audit`, follow
   [`./references/audit.md`](./references/audit.md).
 - **Rename the current task:** For `$agtask rename <new-title>`, follow
