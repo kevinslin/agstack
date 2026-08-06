@@ -7,7 +7,7 @@ last_refreshed_by: 019fd474-e957-75e3-8610-647bebd4a0bb
 # Feature Spec: Mem Audit Trace Format
 
 **Date:** 2026-08-06
-**Status:** Planning
+**Status:** Completed
 **Owner:** Public `mem` skill maintainers
 
 ## Problem and Decision
@@ -26,7 +26,8 @@ operator documentation.
 
 **Does not change:** Base routing precedence, managed knowledge placement,
 schema semantics, source files, or existing behavior while audit is disabled.
-This document specifies the feature; it does not implement it.
+The shipped implementation lives in `scripts/audit_trace.py`,
+`scripts/load_config.py`, and `scripts/context.py`.
 
 ## Contract
 
@@ -125,17 +126,19 @@ Each nonempty line is one independent UTF-8 JSON object:
   ],
   "selection": {"tier": "explicit", "bases": ["claw"], "reasons": ["explicit base name"]},
   "hierarchy": [
-    {"path": "/Users/kevinlin/code/openclaw/.mem/main/pkg/clawgateway", "schema": "pkg", "decision": "searched",
+    {"path": "/absolute/project/.mem/main/pkg/clawgateway", "schema": "pkg", "decision": "searched",
      "reason": "The gateway query matches the package knowledge hierarchy."}
   ],
   "fallback": {"used": false, "paths": [], "reason": "Managed knowledge already contained a matching document."},
   "status": "matched",
-  "matched_paths": ["/Users/kevinlin/code/openclaw/.mem/main/pkg/clawgateway/ref/authentication.md"]
+  "matched_paths": ["/absolute/project/.mem/main/pkg/clawgateway/ref/authentication.md"],
+  "source_scopes": []
 }
 ```
 
 `started_at`, `finished_at`, `duration_ms`, `lookup_id`, `occurrence_count`,
-`query`, `commands`, `operations`, `attempts`, and `hierarchy` are required.
+`query`, `commands`, `operations`, `attempts`, `hierarchy`, and `source_scopes`
+are required.
 Every lookup, executed command, and operation has timezone-aware ISO 8601
 start/end timestamps with millisecond precision plus a nonnegative elapsed
 `duration_ms` measured from a monotonic clock. Top-level `started_at` is the

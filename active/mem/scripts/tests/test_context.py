@@ -128,6 +128,19 @@ class ContextLookupTests(unittest.TestCase):
         self.assertEqual(json.loads(result.stdout)["status"], "matched")
         self.assertFalse(self.trace_root.exists())
 
+    def test_empty_query_is_rejected_without_searching(self) -> None:
+        self.write_config(enabled=True)
+        (self.base / "would-match.md").write_text("anything\n", encoding="utf-8")
+
+        result = self.run_lookup("   ", "--target", "docs")
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("query must not be empty", result.stderr)
+        record = self.records()[0]
+        self.assertEqual(record["status"], "error")
+        self.assertEqual([op["name"] for op in record["operations"]], ["load_config"])
+        self.assertEqual(record["matched_paths"], [])
+
     def test_enabled_lookup_records_actual_command_hierarchy_and_timings(self) -> None:
         self.write_config(enabled=True)
         match = self.base / "authentication.md"
@@ -182,6 +195,27 @@ class ContextLookupTests(unittest.TestCase):
         self.assertEqual(record["fallback"]["paths"], [str(self.source.resolve())])
         self.assertEqual(record["operations"][-1]["name"], "search_source")
         self.assertEqual(record["hierarchy"][-1]["schema"], "source")
+
+    def test_source_search_streams_text_and_skips_large_or_binary_bodies(self) -> None:
+        self.write_config(enabled=True)
+        text_match = self.source / "small.txt"
+        text_match.write_text("needle\nphrase\n", encoding="utf-8")
+        (self.source / "large.dat").write_text(
+            "needle phrase\n" + "x" * (2 * 1024 * 1024),
+            encoding="utf-8",
+        )
+        (self.source / "binary.dat").write_bytes(b"needle phrase\x00payload")
+
+        result = self.run_lookup(
+            "needle phrase",
+            "--target",
+            "docs",
+            "--source",
+            str(self.source),
+        )
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(self.records()[0]["matched_paths"], [str(text_match.resolve())])
 
     def test_ambiguous_lookup_records_status_without_search_stages(self) -> None:
         other = self.root / "other"
@@ -257,6 +291,8 @@ class ContextLookupTests(unittest.TestCase):
             "--target",
             "docs",
             "--source",
+            str(self.source),
+            "--source",
             str(missing),
         )
 
@@ -265,6 +301,11 @@ class ContextLookupTests(unittest.TestCase):
         record = self.records()[0]
         self.assertEqual(record["status"], "error")
         self.assertEqual(record["operations"][-1]["name"], "search_source")
+        self.assertEqual(record["fallback"]["paths"], [str(self.source.resolve())])
+        self.assertEqual(
+            [entry["path"] for entry in record["hierarchy"] if entry["schema"] == "source"],
+            [str(self.source.resolve())],
+        )
 
     def test_missing_or_unsafe_session_fails_before_search(self) -> None:
         self.write_config(enabled=True)

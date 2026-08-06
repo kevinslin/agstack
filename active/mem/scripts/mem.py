@@ -197,7 +197,7 @@ def main() -> None:
     if command == "context":
         from context import main as run_context
 
-        run_context(command_args, command_argv=[*getattr(sys, "orig_argv", [sys.executable, *sys.argv])])
+        run_context(command_args)
         return
     if command == "schema":
         run_schema(prepare_schema_args(command_args))

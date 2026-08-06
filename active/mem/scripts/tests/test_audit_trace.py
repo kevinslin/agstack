@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib
+import fcntl
 import json
 import multiprocessing
 import os
@@ -218,6 +219,25 @@ class AuditTraceWriterTests(unittest.TestCase):
         self.assertEqual(stat.S_IMODE(first_path.parent.stat().st_mode), 0o700)
         self.assertEqual(stat.S_IMODE(first_path.stat().st_mode), 0o600)
 
+    def test_lock_acquisition_times_out_with_an_explicit_error(self) -> None:
+        writer = audit_trace.AuditTraceWriter(self.root, SESSION_ID)
+        writer._ensure_root()
+        lock_dir = self.root / ".locks"
+        writer._ensure_directory(lock_dir)
+        lock_path = lock_dir / f"{SESSION_ID}.lock"
+        fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            with (
+                mock.patch.object(audit_trace, "LOCK_TIMEOUT_SECONDS", 0.02),
+                mock.patch.object(audit_trace, "LOCK_RETRY_SECONDS", 0.005),
+                self.assertRaisesRegex(audit_trace.AuditTraceError, "timed out acquiring"),
+            ):
+                audit_trace.AuditTraceWriter(self.root, SESSION_ID).prepare()
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
+
     def test_write_normalizes_command_and_merges_duplicate_attempts(self) -> None:
         writer = audit_trace.AuditTraceWriter(self.root, SESSION_ID)
         first = make_record(duration_ms=10, status="unmatched")
@@ -264,8 +284,13 @@ class AuditTraceWriterTests(unittest.TestCase):
             process.join(timeout=15)
             self.assertEqual(process.exitcode, 0)
 
-        expected = self.root / "2026" / "08" / "06" / f"{SESSION_ID}.jsonl"
-        records = self.read_records(expected)
+        traces = sorted(
+            self.root.glob(
+                f"[0-9][0-9][0-9][0-9]/[0-9][0-9]/[0-9][0-9]/{SESSION_ID}.jsonl"
+            )
+        )
+        self.assertEqual(len(traces), 1)
+        records = self.read_records(traces[0])
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0]["occurrence_count"], 8)
         self.assertEqual(len(records[0]["attempts"]), 8)

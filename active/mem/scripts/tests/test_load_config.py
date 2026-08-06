@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import site
 import subprocess
 import tempfile
 import textwrap
@@ -315,12 +316,24 @@ class LoadConfigTests(unittest.TestCase):
             """
         )
 
-        result = self.run_loader()
+        env = os.environ.copy()
+        home = self.root / "env-home"
+        env["HOME"] = str(home)
+        env["PYTHONPATH"] = os.pathsep.join(
+            path for path in (site.getusersitepackages(), env.get("PYTHONPATH")) if path
+        )
+        result = subprocess.run(
+            ["python3", str(SCRIPT_PATH), "--config", str(self.config)],
+            text=True,
+            capture_output=True,
+            check=False,
+            env=env,
+        )
 
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertEqual(
             json.loads(result.stdout)["audit"]["trace_root"],
-            str((Path.home() / ".config" / "mem" / "custom-traces").resolve()),
+            str((home / ".config" / "mem" / "custom-traces").resolve()),
         )
 
     def test_invalid_audit_fields_are_rejected(self) -> None:

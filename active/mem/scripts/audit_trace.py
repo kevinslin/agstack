@@ -13,6 +13,7 @@ import re
 import secrets
 import shlex
 import stat
+import time
 import uuid
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -24,6 +25,8 @@ from typing import Any
 TRACE_VERSION = 1
 DIRECTORY_MODE = 0o700
 FILE_MODE = 0o600
+LOCK_TIMEOUT_SECONDS = 10.0
+LOCK_RETRY_SECONDS = 0.05
 _DATE_PART = re.compile(r"^[0-9]{2}$")
 _YEAR_PART = re.compile(r"^[0-9]{4}$")
 _MILLISECOND_TIMESTAMP = re.compile(
@@ -55,9 +58,6 @@ def timestamp_ms(value: datetime) -> str:
     if value.tzinfo is None or value.utcoffset() is None:
         raise AuditTraceError("audit timestamp must be timezone-aware")
     return value.isoformat(timespec="milliseconds")
-
-
-format_timestamp = timestamp_ms
 
 
 def elapsed_ms(start_monotonic: float, finished_monotonic: float) -> int:
@@ -105,9 +105,6 @@ def shell_quote_argv(argv: Sequence[str]) -> str:
     if any("\x00" in token for token in tokens):
         raise AuditTraceError("audit command argv must not contain NUL bytes")
     return shlex.join(tokens)
-
-
-quote_argv = shell_quote_argv
 
 
 def _string_list(value: Sequence[str], field: str) -> list[str]:
@@ -175,9 +172,6 @@ def canonical_lookup_id(
         separators=(",", ":"),
     ).encode("utf-8")
     return f"sha256:{hashlib.sha256(canonical).hexdigest()}"
-
-
-fingerprint_lookup = canonical_lookup_id
 
 
 def _validate_timestamp(value: Any, field: str) -> datetime:
@@ -440,29 +434,46 @@ class AuditTraceWriter:
         flags = os.O_RDWR | os.O_CREAT
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW
+        fd: int | None = None
         try:
             fd = os.open(lock_path, flags, FILE_MODE)
             os.fchmod(fd, FILE_MODE)
             metadata = os.fstat(fd)
             if not stat.S_ISREG(metadata.st_mode):
                 raise AuditTraceError(f"audit lock is not a regular file: {lock_path}")
-            fcntl.flock(fd, fcntl.LOCK_EX)
-        except AuditTraceError:
-            if "fd" in locals():
-                os.close(fd)
-            raise
-        except OSError as exc:
-            if "fd" in locals():
-                os.close(fd)
+            deadline = time.monotonic() + LOCK_TIMEOUT_SECONDS
+            while True:
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError as exc:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise AuditTraceError(
+                            f"timed out acquiring audit lock {lock_path}"
+                        ) from exc
+                    time.sleep(min(LOCK_RETRY_SECONDS, remaining))
+        except (AuditTraceError, OSError) as exc:
+            if fd is not None:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+            if isinstance(exc, AuditTraceError):
+                raise
             raise AuditTraceError(f"could not acquire audit lock {lock_path}: {exc}") from exc
+        if fd is None:  # pragma: no cover - guarded by successful os.open above
+            raise AuditTraceError(f"could not acquire audit lock {lock_path}")
         self._lock_fd = fd
 
     def _assert_safe_trace_file(self, path: Path) -> None:
         resolved = path.resolve(strict=False)
         if not _is_relative_to(resolved, self.trace_root):
             raise AuditTraceError(f"audit trace file resolves outside trace root: {path}")
-        current = path.parent
+        current = resolved.parent
         while current != self.trace_root:
+            if current == current.parent:
+                raise AuditTraceError(f"audit trace file is not inside trace root: {path}")
             try:
                 metadata = current.lstat()
             except OSError as exc:
@@ -513,13 +524,15 @@ class AuditTraceWriter:
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW
+        fd: int | None = None
         try:
             fd = os.open(path, flags, FILE_MODE)
             os.fchmod(fd, FILE_MODE)
             os.fsync(fd)
             os.close(fd)
+            fd = None
         except OSError as exc:
-            if "fd" in locals():
+            if fd is not None:
                 try:
                     os.close(fd)
                 except OSError:

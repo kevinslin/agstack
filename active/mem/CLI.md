@@ -213,6 +213,7 @@ Required fields for every lookup record:
 | `operations` | Array | Ordered stages from the latest attempt. |
 | `attempts` | Array | Complete timing and status history for every occurrence. |
 | `hierarchy` | Array | Grounded path decisions observed during lookup. |
+| `source_scopes` | Array of paths | Ordered explicit source scopes included in the logical lookup. |
 
 Outcome fields:
 

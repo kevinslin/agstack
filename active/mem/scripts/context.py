@@ -13,7 +13,7 @@ from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterator, NoReturn
 
 import yaml
 
@@ -32,9 +32,11 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_DIR = SCRIPT_DIR.parent
 BUNDLED_SCHEMAS = SKILL_DIR / "references" / "schemas"
 SESSION_ENV = "CODEX_THREAD_ID"
+MAX_SEARCH_BYTES = 2 * 1024 * 1024
+BINARY_SNIFF_BYTES = 8192
 
 
-def fail(message: str) -> None:
+def fail(message: str) -> NoReturn:
     print(f"error: {message}", file=sys.stderr)
     raise SystemExit(2)
 
@@ -134,12 +136,36 @@ def resolve_schemas(base: dict[str, Any], query: str) -> list[dict[str, Any]]:
 
 
 def _iter_search_files(scope: Path) -> Iterator[Path]:
-    if scope.is_file():
+    if scope.is_file() and not scope.is_symlink():
         yield scope
         return
-    for path in sorted(scope.rglob("*")):
-        if path.is_file() and not path.is_symlink():
-            yield path
+    pending = [scope]
+    while pending:
+        directory = pending.pop()
+        try:
+            entries = sorted(directory.iterdir(), key=lambda path: path.name)
+        except OSError:
+            continue
+        child_directories: list[Path] = []
+        for path in entries:
+            try:
+                if path.is_symlink():
+                    continue
+                if path.is_file():
+                    yield path
+                elif path.is_dir():
+                    child_directories.append(path)
+            except OSError:
+                continue
+        pending.extend(reversed(child_directories))
+
+
+def _is_probable_binary(path: Path) -> bool:
+    try:
+        with path.open("rb") as handle:
+            return b"\x00" in handle.read(BINARY_SNIFF_BYTES)
+    except OSError:
+        return True
 
 
 def search_scope(scope: Path, query: str) -> list[str]:
@@ -151,14 +177,30 @@ def search_scope(scope: Path, query: str) -> list[str]:
     matches: list[str] = []
     for path in _iter_search_files(resolved_scope):
         path_text = str(path).casefold()
+        path_matches = normalized_query in path_text or (
+            query_words and all(word in path_text for word in query_words)
+        )
+        if path_matches:
+            matches.append(str(path.resolve(strict=False)))
+            continue
         try:
-            body = path.read_text(encoding="utf-8", errors="ignore").casefold()
+            if path.stat().st_size > MAX_SEARCH_BYTES or _is_probable_binary(path):
+                continue
+            found_words: set[str] = set()
+            phrase_match = False
+            with path.open("r", encoding="utf-8", errors="ignore") as handle:
+                for line in handle:
+                    normalized_line = line.casefold()
+                    if normalized_query in normalized_line:
+                        phrase_match = True
+                        break
+                    if query_words:
+                        found_words.update(word for word in query_words if word in normalized_line)
         except OSError:
             continue
-        haystack = f"{path_text}\n{body}"
-        if normalized_query in haystack or (query_words and all(word in haystack for word in query_words)):
+        if phrase_match or (query_words and all(word in found_words for word in query_words)):
             matches.append(str(path.resolve(strict=False)))
-    return matches
+    return sorted(matches)
 
 
 def selection_from_route(result: dict[str, Any], target: str | None) -> dict[str, Any]:
@@ -311,6 +353,8 @@ def lookup(
     try:
         with lock_context:
             try:
+                if not args.query.strip():
+                    raise ValueError("query must not be empty")
                 route_span = recorder.start("route")
                 try:
                     route_result = route(
@@ -366,26 +410,29 @@ def lookup(
                     elif source_scopes:
                         fallback = {
                             "used": True,
-                            "paths": source_scopes,
-                            "reason": "Managed knowledge had no match; searched explicit source scopes.",
+                            "paths": [],
+                            "reason": "Managed knowledge had no match; searching explicit source scopes.",
                         }
-                        for source in source_scopes:
-                            hierarchy.append(
-                                {
-                                    "path": source,
-                                    "schema": "source",
-                                    "decision": "searched",
-                                    "reason": "Explicit source scope searched after managed knowledge had no match.",
-                                }
-                            )
                         source_span = recorder.start("search_source")
                         try:
                             source_matches: list[str] = []
                             for source in source_scopes:
                                 source_matches.extend(search_scope(Path(source), args.query))
+                                fallback["paths"].append(source)
+                                hierarchy.append(
+                                    {
+                                        "path": source,
+                                        "schema": "source",
+                                        "decision": "searched",
+                                        "reason": "Explicit source scope searched after managed knowledge had no match.",
+                                    }
+                                )
                             matched_paths = sorted(dict.fromkeys(source_matches))
                         finally:
                             recorder.finish(source_span)
+                        fallback["reason"] = (
+                            "Managed knowledge had no match; searched explicit source scopes."
+                        )
                         status = "matched" if matched_paths else "unmatched"
                     else:
                         status = "unmatched"

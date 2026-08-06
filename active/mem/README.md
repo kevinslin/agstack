@@ -174,7 +174,7 @@ Audit records include:
 - Per-occurrence history: `attempts` with command timings, operation timings,
   duration, and terminal status.
 - Decisions and outcome: `selection`, `hierarchy`, `fallback`, `status`, and
-  `matched_paths`.
+  `matched_paths`; `source_scopes` records the ordered explicit fallback scopes.
 
 Elapsed durations are nonnegative milliseconds measured with a monotonic clock;
 timestamps are timezone-aware ISO 8601 values with millisecond precision.

@@ -200,7 +200,7 @@ def load_yaml(path: Path) -> Any:
         fail(f"could not read {path}: {exc}")
 
 
-def normalize_config(path: Path, require_roots: bool, home: Path) -> dict[str, Any]:
+def normalize_config(path: Path, require_roots: bool, home: Path) -> tuple[dict[str, Any], bool]:
     data = load_yaml(path)
     if not isinstance(data, dict):
         fail("config must be a YAML mapping")
@@ -269,26 +269,26 @@ def normalize_config(path: Path, require_roots: bool, home: Path) -> dict[str, A
         "version": 1,
         "bases": normalized_bases,
         "audit": default_audit(home),
-        "_audit_declared": "audit" in data,
     }
+    audit_declared = "audit" in data
     if "audit" in data:
         normalized_config["audit"] = normalize_audit(data["audit"], "audit", path.parent, home)
-    return normalized_config
+    return normalized_config, audit_declared
 
 
 def merge_configs(paths: list[Path], require_roots: bool, home: Path) -> dict[str, Any]:
     normalized_configs = [normalize_config(path, require_roots, home) for path in paths]
     merged_bases: list[dict[str, Any]] = []
     seen_names: set[str] = set()
-    for config in normalized_configs:
+    for config, _ in normalized_configs:
         for base in config["bases"]:
             if base["name"] in seen_names:
                 continue
             seen_names.add(base["name"])
             merged_bases.append(base)
     audit = default_audit(home)
-    for config in normalized_configs:
-        if config["_audit_declared"]:
+    for config, audit_declared in normalized_configs:
+        if audit_declared:
             audit = config["audit"]
             break
     return {
