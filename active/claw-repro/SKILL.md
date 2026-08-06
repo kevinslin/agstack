@@ -14,7 +14,7 @@ Complete the work in this order:
 
 1. Reproduce the issue with `$showboat`.
 2. Use `$sw-ctrl` to create a feature spec and write the fix.
-3. Write the feature spec inside OpenClaw `$mem` under the `main` base.
+3. Write the feature spec inside OpenClaw `$mem` under the aggregate `claw` base.
 4. Prove the fixed behavior with `$showboat` using a fresh integration Gateway.
 5. Push changes and babysit pr
 
@@ -42,7 +42,7 @@ Use the helpers rather than changing normal `~/.openclaw` state.
 
 Resolve canonical artifact roots before creating any spec, proof, or Showboat document. Start from the OpenClaw repo root, read `.mem.yaml` when it exists, and honor active workspace or prep instructions that override the memory root.
 
-Use the `main` memory base for issue specs and proof documents unless the user or workspace instructions explicitly select another base. For OpenClaw AGD work this normally means:
+Use the aggregate `claw` memory base for issue specs and proof documents unless the user or workspace instructions explicitly select another base. Its canonical root is `/Users/kevinlin/code/openclaw/.mem/main`; for OpenClaw AGD work this normally means:
 
 ```text
 .mem/main/flow/<issue-or-feature-slug>.md
@@ -50,7 +50,7 @@ Use the `main` memory base for issue specs and proof documents unless the user o
 .mem/main/integ/<issue-or-feature-slug>-fixed.md
 ```
 
-Only use `.mem/integ/proofs/` when the active workspace instructions explicitly choose integration-local proofs. In sparse or temporary worktrees, write or copy final artifacts to the durable canonical OpenClaw memory root, such as `/Users/kevinlin/code/openclaw/.mem`, before handoff.
+Only use `.mem/integ/proofs/` when the active workspace instructions explicitly choose integration-local proofs. In sparse or temporary worktrees, write or copy final artifacts to the durable canonical OpenClaw memory root `/Users/kevinlin/code/openclaw/.mem/main` before handoff.
 
 After writing artifacts, verify the final paths with `ls -l` and check that links or path references inside the flow and proof docs point at the same canonical locations.
 
@@ -91,7 +91,7 @@ Do not use Showboat as a wrapper around existing unit tests. Use it to exercise 
 
 Use `$sw-ctrl` for the managed implementation phase. Keep the immediate blocker local, then delegate independent docs, code, or review work when useful.
 
-The feature spec must be written through `$mem` from the OpenClaw repo root so `.mem.yaml` resolves the local OpenClaw memory base. Target `main` unless the user says otherwise. Prefer a focused spec path under the canonical artifact root resolved above, such as:
+The feature spec must be written through `$mem` from the OpenClaw repo root. Target the aggregate `claw` base unless the user says otherwise. Prefer a focused spec path under the canonical artifact root resolved above, such as:
 
 ```text
 flow/<issue-or-feature-slug>.md

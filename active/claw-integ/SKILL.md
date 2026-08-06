@@ -252,7 +252,7 @@ The proof directory is a durable artifact. Before choosing the proof path, invok
 
 Use these OpenClaw-specific values with `showboat-v2`:
 
-- `<proofs-root>`: the concrete root/path resolved from `$mem claw/main proofs`, otherwise the explicitly approved fallback proof root.
+- `<proofs-root>`: the concrete root/path resolved from the aggregate `$mem` base `claw` and its schema-owned proofs placement, otherwise the explicitly approved fallback proof root.
 - `<proof-slug>`: `demo-{num}-{profile}-{slug}`.
 - `<proof-root>`: `<proofs-root>/<proof-slug>`.
 - `<scenario-slug>`: a short behavior slug; use one scenario file per distinct behavior path.
