@@ -1,9 +1,10 @@
 # Create a tracked task
 
-Use this fast path for the default clean, local child creation. Read
+Use this fast path for default clean, non-worktree child creation on local or
+remote saved projects. Read
 [`./create-advanced.md`](./create-advanced.md) completely instead when the
-request is for `kind=main`, fork mode, a worktree, a remote project, or when
-the fast path reports a partial or conflicting result.
+request is for `kind=main`, fork mode, a worktree, or when the fast path
+reports a partial or conflicting result.
 
 ## Fast path
 
@@ -12,9 +13,11 @@ the fast path reports a partial or conflicting result.
 2. Resolve a self-contained task, a concise 2-5 word kebab-case topic, and the
    title. Preserve the user's scope, constraints, and operationally significant
    literals. Ask before creating when the scope remains materially ambiguous.
-3. Use the active CWD as the target. Call `list_projects` once and select the
-   saved local project whose root exactly equals that CWD. Ask for the target
-   if there is no exact match.
+3. Use the active CWD as the target. Call `list_projects` once and select a
+   saved project whose root exactly equals that CWD, regardless of whether its
+   host is local or remote. When multiple projects match, prefer the one on the
+   invoking task's current host. Ask for the target only when there is no exact
+   match or same-host preference does not resolve an ambiguity.
 4. Run the bundled resolver once:
 
 ```text
@@ -35,6 +38,9 @@ python3 ./scripts/agtask resolve-create \
 
 5. Validate that `kind=child`, `mode=clean`, `worktree=false`,
    `environment.type=local`, and `creation_plan.next_tool.name=create_thread`.
+   Here `environment.type=local` means use the saved project's existing
+   checkout rather than a new worktree; it does not require the saved project
+   itself to be on the local host.
    Otherwise switch to the advanced workflow without calling the returned
    tool. Call `create_thread` once
    with `creation_plan.next_tool.arguments` unchanged. Do not reconstruct,
@@ -51,7 +57,7 @@ Task: [<title>](codex://threads/<threadId>) — created
    and stop. The prompt already contains the version-2 bootstrap trailer, so
    the materialized child's first hook self-registers it and performs deferred
    title and pin actions.
-7. For a real local `threadId`, reconcile the hook idempotently without
+7. For a real `threadId`, reconcile the hook idempotently without
    rereading successful writes:
 
 ```text
@@ -81,18 +87,24 @@ python3 ./scripts/agtask record-turn \
    the race; these writes must converge with it. If either result is ambiguous,
    conflicts, or contains `session_rebound_from`, follow the advanced recovery
    workflow.
-8. Return the deep link, logical task `id`, session or queued ID, parent session
+8. Classify the child host from the creation result's `hostId`, falling back to
+   the selected project's `hostId`. For a remote child with a real `threadId`,
+   set the resolved title from the parent and set `pinned=true` when requested.
+   These idempotent parent actions cover remote hosts without the agtask hook;
+   do not wait for the child. Keep title and pin deferred for a local child.
+9. Return the deep link, logical task `id`, session or queued ID, parent session
    ID, project, mode, worktree, model, verified tracking state, and initial
-   rollout result. Describe ordinary local title and pin actions as deferred
-   to the child.
+   rollout result. Describe local title and pin actions as deferred to the
+   child. Report remote title and pin actions as direct parent fallback
+   results.
 
 ## Resolution rules
 
 - Default to `kind=child`, `mode=clean`, `worktree=false`, inherited model and
   thinking, and pinning enabled.
 - Omit unspecified resolver settings so project and user configuration remain
-  authoritative. If configured defaults resolve to main, fork, worktree, or a
-  remote route, stop the fast path and follow the advanced workflow.
+  authoritative. If configured defaults resolve to main, fork, or worktree,
+  stop the fast path and follow the advanced workflow.
 - An explicit title wins. Otherwise use `<clean-parent-title>/<topic>`, or
   `agtask/<topic>` when no parent title is available. Remove leading emoji and
   one optional leading ASCII hyphen from the parent title before composing the
