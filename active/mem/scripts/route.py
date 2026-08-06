@@ -8,6 +8,7 @@ import fnmatch
 import json
 import re
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -78,7 +79,7 @@ def score_base(
     *,
     query: str,
     cwd: Path,
-    source: str | None,
+    source: str | Sequence[str] | None,
     artifact_kind: str | None,
     target: str | None,
 ) -> tuple[int, list[str]]:
@@ -120,9 +121,13 @@ def score_base(
             score += 70
             reasons.append(f"cwd:{pattern}")
 
-    if source:
+    if isinstance(source, str):
+        sources = [source]
+    else:
+        sources = list(source or [])
+    if sources:
         for pattern in match.get("source_globs", []):
-            if fnmatch.fnmatch(source, pattern):
+            if any(fnmatch.fnmatch(candidate, pattern) for candidate in sources):
                 score += 70
                 reasons.append(f"source:{pattern}")
 
@@ -143,7 +148,7 @@ def route(
     *,
     query: str,
     cwd: Path,
-    source: str | None = None,
+    source: str | Sequence[str] | None = None,
     artifact_kind: str | None = None,
     target: str | None = None,
 ) -> dict[str, Any]:

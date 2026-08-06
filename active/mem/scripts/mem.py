@@ -170,6 +170,7 @@ def usage() -> str:
     return """usage:
   mem.py config show [load_config options]
   mem.py route [route options]
+  mem.py context lookup [context options]
   mem.py schema <list|show|describe|validate|materialize> [schema options]
 
 Managed schema materialization:
@@ -193,6 +194,11 @@ def main() -> None:
         run_python("load_config.py", command_args[1:])
     if command == "route":
         run_python("route.py", command_args)
+    if command == "context":
+        from context import main as run_context
+
+        run_context(command_args, command_argv=[*getattr(sys, "orig_argv", [sys.executable, *sys.argv])])
+        return
     if command == "schema":
         run_schema(prepare_schema_args(command_args))
     fail(f"unknown command: {command}")

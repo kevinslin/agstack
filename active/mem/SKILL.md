@@ -42,6 +42,13 @@ python3 ./scripts/mem.py config show --pretty
 # Explain base selection.
 python3 ./scripts/mem.py route --query "{{request intent}}" --pretty
 
+# Search managed context, then explicit source scopes on a miss.
+python3 ./scripts/mem.py context lookup \
+  --query "{{context query}}" \
+  --target "{{base}}" \
+  --source "{{scoped source path}}" \
+  --pretty
+
 # Inspect schemas.
 python3 ./scripts/mem.py schema list
 python3 ./scripts/mem.py schema show global-core
@@ -79,6 +86,16 @@ Load both when present. The nearest config wins when both define the same base n
 Each base requires `name`, `description`, `root`, and `schemas`. It may also define `path_style`, `skill`, `aliases`, `priority`, and deterministic `match` signals for topics, artifact kinds, source globs, and working-directory globs.
 
 Use `python3 ./scripts/mem.py config show --pretty` instead of hand-parsing configuration.
+
+An optional top-level `audit` mapping enables mandatory conversation-scoped
+lookup traces. `enabled` defaults to `false`; `trace_root` defaults to
+`$HOME/.config/mem/traces`. When enabled, `context lookup` requires the active
+conversation UUID in `CODEX_THREAD_ID` and fails closed if its trace cannot be
+prepared or atomically updated. See `./CLI.md` for the trace contract.
+
+For `context lookup`, each repeatable `--source` scope may influence routing in
+both caller-supplied and normalized form; source search still runs only after
+the selected managed root has no match.
 
 ## Managed Workflow
 
