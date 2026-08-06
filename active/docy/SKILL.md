@@ -32,6 +32,8 @@ All managed docs live under `./references/` and follow this layout:
       history and mirror conventions before writing a subject line
     - developer-docs.md: Developer documentation writing, editing, and review
       guidance, including page patterns and an editorial checklist
+    - concise-instructions.md: Terse operator-facing instructions organized
+      around inputs, invocation, completion evidence, and recovery
     - spec.md: Architecture and design specification writing, examples, and
       review guidance
     - openclaw-docs.md: OpenClaw-specific page taxonomy, heading, docs-index,
@@ -65,6 +67,7 @@ Run the bundled CLI directly or put `scripts/` on `PATH`.
 docy inject core/main
 docy inject ref/commit-messages
 docy inject ref/developer-docs
+docy inject ref/concise-instructions
 docy inject ref/spec
 docy inject ref/openclaw-docs
 docy inject ref/no-back-compat
@@ -76,6 +79,7 @@ docy inject vendor/lerna
 docy install core/main
 docy install ref/commit-messages
 docy install ref/developer-docs
+docy install ref/concise-instructions
 docy install ref/spec
 docy install ref/openclaw-docs
 docy install ref/no-back-compat
@@ -105,6 +109,9 @@ Command behavior:
 - `./references/ref/developer-docs.md`: Developer documentation guidance. Use
   before creating, editing, or reviewing READMEs, quickstarts, guides, API, SDK,
   CLI, testing, troubleshooting, architecture, or internals documentation.
+- `./references/ref/concise-instructions.md`: Concise instruction-document
+  guidance. Load it after `ref/developer-docs` when writing or compressing an
+  operator-facing runbook, setup guide, or command procedure.
 - `./references/ref/spec.md`: Design specification guidance. Use before creating,
   editing, or reviewing architecture and design specifications so scope,
   ownership, interfaces, examples, failure paths, and implementation detail stay

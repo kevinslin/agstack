@@ -2,113 +2,93 @@
 
 ## Use When
 
-- Creating a balanced overview of specified code logic.
-- Explaining how a startup, request, job, command, UI action, or feature flow works.
-- Giving developers enough context to understand the main logic and then dive deeper through code and logs.
-- The user asks for any flow-doc intent, including `flow doc`, `flow docs`, `flowdoc`, `call path doc`, or `execution flow doc`.
+Use for any flow-doc intent, including `flow doc`, `flow docs`, `flowdoc`, `call
+path doc`, or `execution flow doc`. Document the runtime behavior of a startup,
+request, job, command, UI action, or feature without describing code line by
+line.
 
-## Purpose
+## Output and Naming
 
-Flow docs explain how given logic works without becoming a line-by-line code
-commentary. Optimize for a developer who needs the flow shape, major phases,
-important branches, code pointers, log/metric pointers, and related docs.
+Resolve `$mem` before choosing a durable-document destination. Its selected
+schema owns the output path, filename, and required file shape. Otherwise use
+`$DOCS_ROOT/flows/{flow-name}.md`, unless the user specifies another destination.
 
-## Template
+Choose a concise behavior-based kebab-case name, or preserve an existing
+`core.*`, `topic.*`, or `ref.*` convention. For PR-scoped documents, use
+`pr-<number>-<flow-name>` unless the selected schema or repository convention
+requires otherwise.
 
-- `./references/flow-doc/template.md`
-- Use `$dev.diagram mermaid general-flow` for `## Sequence Diagram`.
-- Use `$docy` `ref/execution-trace` for `## Execution Trace`.
-- Use `$sudocode` for compact logic summaries inside execution-trace steps.
-- Render `$sudocode` blocks with `ts` code fences, never `sudocode` fences.
+## Document Contract
 
-## Output Location
+Use `./references/flow-doc/template.md` for new documents. Its canonical
+sections, in order, are `Overview`, `Entry Points`, `Flow`, `Execution Trace`,
+`Debugging and Verification`, `Related docs`, `Manual Notes`, and `Changelog`.
+Add `Notes` only when useful details do not belong at their decision points.
 
-- `$DOCS_ROOT/flows/{flow-name}.md`
+- **Overview:** State the behavior, external trigger, purpose, and where the
+  documented lifecycle stops.
+- **Entry Points:** Name the trigger, required state/context or permissions,
+  and one to three concrete source entry points.
+- **Flow:** Use `$dev.diagram mermaid general-flow` to create a Mermaid `graph
+  TD` diagram. Show the main path and branches that materially change its
+  outcome; omit trivial guards and implementation-only conditions.
+- **Execution Trace:** Load `$docy` `ref/execution-trace`. Use runtime-ordered,
+  numbered `###` phases with precise file/function pointers. Explain state
+  transitions, snapshot/freeze points, ownership boundaries, external calls,
+  material branches at their decision points, terminal effects, and downstream
+  handoffs. Add nested steps only when they improve comprehension. Invoke
+  `$sudocode` only when compact pseudocode clarifies non-obvious logic; render
+  it in a `ts` code fence.
+- **Debugging and Verification:** Provide actionable logs, metrics, commands,
+  failure signatures, or observable outcomes. State `None identified` if no
+  relevant evidence exists.
+- **Related docs:** Link adjacent lifecycle/phase flows and relevant
+  architecture, design, PR, or debugging documentation.
+- **Manual Notes:** Preserve the heading and complete user-owned body exactly
+  when revising an existing document.
+- **Changelog:** Record the local `YYYY-MM-DD HH:MM` timestamp, change
+  description, current session ID, and current Git SHA.
 
-## Flow Naming Contract
-
-- Use concise kebab-case for `{flow-name}`.
-- Prefer the feature or behavior name over the implementation class name.
-- If the repository already uses `core.*`, `topic.*`, or `ref.*` flow names, keep that convention.
-- For PR-scoped flow docs, prefix the title and generated flow name with `pr`. Prefer `# PR <number>: <Feature> Flow` for the H1 and `pr-<number>-<flow-name>` when no repository-specific filename convention exists.
+Keep isolated flow documents isolated: explicitly capture entry assumptions,
+internal snapshot/freeze points, the exit/handoff contract, and links to
+adjacent flow documents rather than merging separate lifecycle phases. Keep
+repo-internal Markdown links portable and repo-relative.
 
 ## PR-Scoped Flow Docs
 
-A flow doc is PR-scoped when the user asks for a PR flow doc, provides a PR URL/number, or asks to document behavior changed by a specific pull request rather than a stable subsystem flow.
-
-- Add `pr: <number-or-url>` to YAML frontmatter. Prefer the PR number when the doc lives in the same repository; use the full URL for cross-repo or ambiguous references.
-- Prefix the H1 title with `PR <number>:`. If the PR number is not available yet, resolve it before finalizing the doc.
-- Keep `created`, `updated`, and `last_updated_session` in frontmatter alongside `pr`.
-- Link the PR again in `## Related docs` when useful for source navigation.
-
-## Authoring Requirements
-
-- Keep the flow question-first and developer-oriented.
-- Keep repo-internal markdown links portable and repo-relative.
-- Do not use absolute local checkout paths under `$DOCS_ROOT`.
-- Include at least one and at most three code pointers in `## Entry Points`.
-- Use precise file/function pointers in execution-trace steps.
-- Use `## Sequence Diagram` before `## Execution Trace`.
-- Use `$dev.diagram mermaid general-flow` to draft or revise the general-flow diagram. The diagram must be a Mermaid `graph TD` general-flow diagram unless revising an existing flow doc whose diagram format the user explicitly asks to preserve.
-- Identify important behavior-changing branches while reading source. Add important branches to the general-flow diagram, including meaningful fallback, retry, permission-denied, validation-failure, timeout, disabled-gate, and terminal-error outcomes when they materially change the flow.
-- Do not force branch detail into the execution trace. The execution trace should follow the happy path end to end, with branch callouts only when needed to explain the next happy-path handoff.
-- Use `$docy` `ref/execution-trace` before writing `## Execution Trace`; keep phases runtime-ordered.
-- Use `$sudocode` inside execution-trace steps when summarizing code logic. Render those blocks as `ts` code fences.
-- Keep each step concise. Put behavior-changing conditions, state writes, side effects, and external boundaries in the sudocode or nearby notes.
-- Fill `## Notes` with quirks, important constraints, important branch details, edge cases, and extra details that do not belong in the happy-path trace.
-- Fill `## Observability` with concrete metrics and logs. If none are found, write `None identified`.
-- Preserve `## Manual Notes` and its content exactly across edits.
+A document is PR-scoped when the request targets a particular pull request or
+behavior changed by one. Resolve its PR number, title the document `# PR
+<number>: <Feature> Flow`, and add `pr: <number-or-url>` beside `created`,
+`updated`, and `last_updated_session` in frontmatter. Prefer the number for a
+same-repository PR and the full URL for ambiguous or cross-repository PRs.
 
 ## Instructions
 
-1. Review existing architecture, flow, design, and debugging docs relevant to the target logic.
-2. Read the source code for the target flow before drafting. Identify the external trigger, happy-path runtime phases, important branch points, state changes, external calls, and terminal effects.
-3. Choose `{flow-name}` and copy `./references/flow-doc/template.md` to `$DOCS_ROOT/flows/{flow-name}.md`. For PR-scoped docs, include the `pr` prefix in the title and generated flow name.
-4. Fill frontmatter:
-   - `created`: current date for new docs.
-   - `updated`: current date.
-   - `last_updated_session`: `{agent}/{session-id}` after resolving the current session id via `$dev.llm-session`.
-   - `pr`: PR number or URL, only for PR-scoped docs.
-5. Fill `## Overview` with 1-3 sentences describing what the flow covers, what questions it answers, and why the doc exists.
-6. Fill `## Entry Points` with how the flow starts and 1-3 code pointers.
-7. Draft `## Sequence Diagram` with `$dev.diagram mermaid general-flow`. Keep it as a Mermaid general-flow diagram, not a full call graph. Show the happy path plus important branches that materially change behavior; omit trivial guards and implementation-only conditionals.
-8. Load `$docy` `ref/execution-trace` and draft `## Execution Trace` as happy-path, runtime-ordered phases.
-9. For each phase:
-   - Use a short phase name.
-   - Add 1-2 sentences describing the phase.
-   - Add only the steps needed to understand the logic.
-   - Include concrete file/function pointers.
-   - Add compact `$sudocode` for behavior-critical code using a `ts` code fence.
-10. Fill `## Notes` with quirks, important branch details, additional detail, and important behavior not covered by the happy-path trace.
-11. Fill `## Observability` with metrics and logs, or `None identified`.
-12. Fill `## Related docs` with related flow docs, architecture docs, specs, design docs, PR docs, and debugging notes.
-13. Keep `## Manual Notes` unchanged.
-14. Add a `## Changelog` entry with the current timestamp in `YYYY-MM-DD HH:MM` format and resolved session id.
-15. Scan markdown links and convert repo-internal absolute local paths to repo-relative targets.
-16. Run validator from this skill root:
-    - `python3 ./scripts/validate_flow_doc.py --kind flow-doc --doc "$DOCS_ROOT/flows/{flow-name}.md"`
-17. Resolve validator errors before handoff.
+1. Resolve the output path according to **Output and Naming**. Review relevant
+   existing flow, architecture, design, and operational documentation.
+2. Read the source. Identify the trigger, entry assumptions, runtime phases,
+   decisions, state changes, snapshot points, ownership boundaries, external
+   calls, failure outcomes, terminal effect, and next-flow handoff.
+3. Copy the template to the resolved output path, adapting its content to any
+   `$mem` schema-required document shape without overriding the schema path.
+4. Set `created`, `updated`, and `last_updated_session`; resolve the active
+   session using `$dev.llm-session`. Add PR metadata only when applicable.
+5. Write each section according to **Document Contract**. Keep explanations
+   proportional to the behavior; do not add nested headings, pseudocode, or
+   `Notes` merely to satisfy a format.
+6. Preserve `Manual Notes`, replace every template placeholder, add complete
+   session/Git provenance to `Changelog`, and check repo-internal link targets.
+7. Run `python3 ./scripts/validate_flow_doc.py --kind flow-doc --doc
+   "<resolved-output-path>"` from this skill root. Resolve every error before
+   handoff.
 
 ## Revision Instructions
 
-1. Read the existing flow doc and preserve useful structure and detail.
-2. Preserve `## Manual Notes` exactly.
-3. Prefer targeted additive edits unless the existing doc is structurally wrong.
-4. Re-read current source for any code paths being changed or corrected.
-5. Update `updated`, `last_updated_session`, and `## Changelog`; changelog entries must use `YYYY-MM-DD HH:MM` timestamps.
-6. Re-run the flow-doc validator before handoff.
-
-## Pre-Handoff Checklist
-
-- [ ] `## Overview` states what the flow covers and why it exists.
-- [ ] `## Entry Points` includes 1-3 code pointers.
-- [ ] `## Sequence Diagram` appears before `## Execution Trace`, uses Mermaid general-flow syntax, and includes important behavior-changing branches when they exist.
-- [ ] `## Execution Trace` is phase-based, runtime-ordered, and focused on the happy path.
-- [ ] Execution-trace steps include concrete file/function pointers.
-- [ ] Sudocode uses exact source identifiers for behavior-critical logic and is rendered in `ts` code fences.
-- [ ] PR-scoped docs have a `PR <number>:` H1 prefix and non-empty `pr:` frontmatter.
-- [ ] `## Notes` captures quirks or explicitly says `None identified`.
-- [ ] `## Observability` includes metrics/logs or `None identified`.
-- [ ] Repo-internal markdown links are repo-relative.
-- [ ] `## Manual Notes` was preserved.
-- [ ] `validate_flow_doc.py --kind flow-doc` passes.
+1. Read the existing document and preserve useful structure, detail, and all
+   `Manual Notes` content. Existing `Sequence Diagram` and `Observability`
+   headings remain valid; do not rename them solely to match the new template.
+2. Re-read source for the changed behavior and make targeted corrections or
+   additions. Preserve a user-requested existing diagram format.
+3. Update `updated`, `last_updated_session`, and `Changelog` with the current
+   local timestamp, active session ID, and Git SHA.
+4. Validate the actual resolved document path and fix all reported errors.

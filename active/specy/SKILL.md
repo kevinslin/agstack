@@ -54,7 +54,7 @@ Document types are listed here. Use the parenthesized doc-type key with the comm
 - State Docs (`state-doc`): Terminal-output mapping with predicates, required state, and derivation paths.
 - Service Design Docs (`service-design-doc`): Staff-level service/system proposals covering architecture, APIs, reliability, and risks.
 - Feature Design Docs (`design-spec`): Implementation-ready feature or migration designs with rollout/rollback planning.
-- Feature Specs (Execution Plans) (`feature-spec`): Milestone-based implementation plans with dependencies, risks, and verification.
+- Feature Specs (Execution Plans) (`feature-spec`): Focused implementation plans covering the selected contract, concrete work, and verification; add phases, dependencies, and risks only when needed.
 - Investigation Specs (`investigation-spec`): Structured debugging plans for competing root-cause hypotheses and evidence capture.
 - Validation Specs (`validation-spec`): Validation coverage docs for automated and manual checks tied to specs.
 - Report Notes (`report-note`): Concise report sidecars for source-backed findings, status, and open questions.
@@ -73,9 +73,9 @@ Docy owns specification prose, decision completeness, ownership and interface
 clarity, example and diagram semantics, and review style. Specy owns doc-type
 selection, source gathering, output paths, template shape, required sections,
 execution details, preservation and lifecycle, and handoff artifacts. For
-feature specs, retain repository touchpoints, tasks, and validation detail
-needed to make each phase executable and verifiable; omit only incidental
-implementation detail.
+feature specs, retain the contract, repository touchpoints, concrete work, and
+proof needed to implement the change. Use named phases only when independently
+useful outcomes or material dependencies require them.
 
 Do not copy Docy style rules into Specy workflows or templates. Keep Specy
 instructions limited to artifact-specific requirements and mechanics.
@@ -103,35 +103,20 @@ When such a section exists:
 3. Keep status, checklist, implementation, review, and changelog edits outside the section.
 4. After editing, verify the `## Manual Notes` heading and preserved marker/body are unchanged. If the diff touches that section, revert that part before handoff unless the user explicitly asked to edit manual notes.
 
-### Flow Docs in Isolated Scope (Core vs Topic vs Reference)
-
-Flow docs in this skill are often intentionally isolated by lifecycle or domain (for example `core.init` vs `topic.orchestration` vs `ref.new-task-kickoff`).
-Do not force all phases into one document. Instead, each isolated flow doc must capture boundary contracts in `## Overview`, `## Entry Points`, `## Notes`, or `## Related docs`:
-
-1. Entry assumptions: what state/context already exists at flow entry.
-2. Snapshot points: where state is copied/frozen inside this flow.
-3. Exit/handoff: what this flow produces for the next flow.
-4. Adjacent flow links: explicit references to related phase docs.
-
 ### Flow Docs
 
-Use `flow-doc` when the goal is to give a developer a balanced understanding
-of specified code logic with pointers for deeper investigation. Flow docs are
-not line-by-line code descriptions. They combine:
-
-1. A general-flow diagram drafted with `$dev.diagram`.
-2. An execution trace shaped by $docy `ref/execution-trace`.
-3. Additional notes, observability pointers, related docs, and code/log pointers.
-
-Use `./references/flow-doc/workflow.md` and
-`./references/flow-doc/template.md` for this doc type.
+Use `flow-doc` to explain a concrete runtime path, its state transitions,
+ownership boundaries, meaningful decisions, and verification signals. Follow
+`./references/flow-doc/workflow.md` for the complete authoring, scoped-boundary,
+revision, and validation contract. Use `./references/flow-doc/template.md` as
+the document scaffold.
 
 ## Shared References
 
-- Whenever you need to write sudocode, use `$sudocode`.
+- Use `$sudocode` only when compact logic clarifies a non-obvious decision,
+  state transition, or ownership boundary.
 - Use `$dev.diagram` to draft or revise flow diagrams.
 - Use `$docy` `ref/execution-trace` before writing flow-doc execution traces.
-- Use `$sudocode` as the source path for this workspace.
 
 ## Flow-Doc Quality Gate (Required)
 

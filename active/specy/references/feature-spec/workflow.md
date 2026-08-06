@@ -2,9 +2,10 @@
 
 ## Use When
 
-- The task requires detailed implementation planning with persistent documentation.
+- The task requires durable, implementation-directed planning.
 - Architecture or design decisions should be documented before coding.
-- Work spans multiple milestones, dependencies, or external integrations.
+- The work has a concrete behavioral contract, integration boundary, or
+  verification requirement worth recording.
 - The user explicitly asks for an execution plan, project plan, or feature spec.
 
 ## Template
@@ -20,31 +21,51 @@
 1. Review related docs under `$DOCS_ROOT/specs/`, archived specs under `$DOCS_ROOT/specs/.archive/`, and `$DOCS_ROOT/flows/` to align naming and known behavior.
 2. Choose the next feature-spec filename with a monotonic two-digit integer prefix: scan `$DOCS_ROOT/specs/` and `$DOCS_ROOT/specs/.archive/` for filenames matching `[0-9][0-9]-*.md`, choose `max(existing prefix)+1`, and start at `01` when none exist. Do not reuse gaps left by archived, deleted, or renamed specs.
 3. Choose a title slug that stays within the `{NN}-{topic}.md` filename format and includes a qualifier when needed to avoid collisions with sibling specs.
-4. Copy `./references/feature-spec/template.md` to the output location.
-5. Fill the required sections from current repository and task evidence. Follow the template triggers for optional sections.
-6. Use `./references/feature-spec/effective-planning.md` for planning quality standards.
-7. Include a concise `## TL;DR` section near the top of the spec, before `## Goal and Scope`. Use bullets that state the target outcome, scope boundaries, key implementation path, major dependencies, and highest-risk proof requirements for a reader with very little time.
-8. Include a concrete `## Context` section. Put project-root-relative markdown links under `### Related`, with a short explanation of what each item is for, so the agent can decide what to read based on need instead of following a blind pre-read checklist.
-9. If the spec changes data/API/CLI/config/migration output, fill `Existing Contract Snapshot` before proposing new types or output fields. If no existing contract exists, state what was checked and why the new surface is needed.
-10. If behavior depends on multiple states or source facts, fill `Target Decision Table` before implementation phases. Use it to separate raw input facts from final observable outputs.
-11. If the spec adds fields, types, statuses, reasons, or config, fill `Minimal Model Check` to record the justification required by Docy's field and interface rules.
-12. Record selected decisions and rationale under `Design Decisions`; use Docy's placement rules for alternatives and decision history.
-13. Include explicit acceptance criteria and a `Validation Plan`. Acceptance criteria answer "what must be true," and validation states how those criteria will be proven. If a dedicated validation spec is created, link it instead of duplicating a large matrix in the feature spec.
-14. If the repository uses beads for tracking, follow `./references/feature-spec/beads.md`.
-15. Present a concise summary plus unresolved questions, unless the user asked to proceed without waiting.
-16. If the user asked to proceed without waiting, answer outstanding questions with best judgment and record assumptions in the spec.
-17. Prefer existing contracts and seams when choosing implementation touchpoints.
-18. When editing an existing spec, preserve `## Manual Notes` unless the user explicitly asks to change it.
-19. Keep in-progress specs under `$DOCS_ROOT/specs/`. When the spec is complete, move it to `$DOCS_ROOT/specs/.archive/` without renaming it.
-20. Resolve the current agent session id via `dev.llm-session` and include it in the `## Changelog` entry before handoff. Use a changelog timestamp with date, hour, and minute in `YYYY-MM-DD HH:MM` format.
+4. Copy `./references/feature-spec/template.md` to the output location and
+   remove optional sections that the task does not require.
+5. Fill `Problem and Decision`, `Scope`, and `Contract` from current task and
+   repository evidence. Record relevant existing behavior, ownership, interfaces,
+   non-goals, authorization, and failure behavior once where it affects the
+   selected contract.
+6. Before adding a field, type, status, reason, config option, or execution path,
+   inspect the existing surface and identify the producer, consumer, and
+   concrete need. Record only decisions necessary to explain the contract;
+   snapshot, decision-table, and minimal-model headings are not required.
+7. Put concrete work, affected files/services, and necessary dependencies under
+   `Implementation`. Use ordered steps by default; add named phases only for
+   independently useful outcomes or material sequencing constraints.
+8. Put observable feature outcomes and their automated or manual proof together
+   under `Verification`. Link a separate validation spec only when its larger
+   matrix adds information the feature spec cannot represent clearly.
+9. Add `Open Decisions` only for real unresolved choices. Record the owner,
+   next action, or task link only when needed to resolve a blocking decision.
+10. Add rollout, recovery, access, observability, or risk detail only when the
+    specific change requires it. Place it beside the affected implementation
+    step or contract instead of creating empty boilerplate sections.
+11. If the repository uses beads for tracking, follow
+    `./references/feature-spec/beads.md`.
+12. When editing an existing spec, preserve `## Manual Notes` unless the user
+    explicitly asks to change it.
+13. Keep in-progress specs under `$DOCS_ROOT/specs/`. When the spec is complete,
+    move it to `$DOCS_ROOT/specs/.archive/` without renaming it.
+14. Resolve the current agent session id via `dev.llm-session` and include it,
+    the current Git SHA, and a `YYYY-MM-DD HH:MM` timestamp in `## Changelog`.
 
 ## Authoring Requirements
 
-- Required sections: `TL;DR`, `Goal and Scope`, `Context`, `Approach and Touchpoints`, `Acceptance Criteria`, `Phases and Dependencies`, `Validation Plan`, `Open Items and Risks`, `Manual Notes`, `Changelog`.
-- Optional subsections should be omitted when empty or generic (for example, `Non-obvious Dependencies or Access`, `Important Implementation Notes`, `Unit tests`, `Separate Validation Spec`, `Simplifications and Assumptions`).
-- `Existing Contract Snapshot`, `Target Decision Table`, and `Minimal Model Check` are optional for simple specs but required when their trigger applies.
-- Create or link a separate flow doc only when ordering, state propagation, cache/snapshot boundaries, or cross-component handoff is central to correctness.
-- Use project-root-relative links in spec bodies. Do not use absolute filesystem paths in feature-spec links or citations.
-- `Acceptance Criteria` is required and feature-level, not per-phase. Use it for observable outcomes and important invariants, not test commands, implementation tasks, or completion/admin items such as "docs updated."
-- `Validation Plan` is required. Use it for the automated and manual checks that prove the acceptance criteria, and link a separate validation spec when a larger matrix would be redundant here.
-- Risks must include concrete mitigations.
+- Required sections: `Problem and Decision`, `Scope`, `Contract`,
+  `Implementation`, `Verification`, `Manual Notes`, and `Changelog`.
+- `Open Decisions`, phases, decision tables, rollout, observability, access,
+  and risks are conditional; omit them when they do not change implementation
+  or verification.
+- Keep normal feature specs approximately 80-150 lines. Exceed that range only
+  when required contracts, independent delivery stages, or safety proof warrant
+  the additional detail.
+- Keep source links beside the decision or implementation step they support.
+  Use project-root-relative links and avoid absolute local filesystem paths.
+- In `Verification`, pair each material observable outcome or invariant with a
+  concrete automated test or operational check.
+- Create or link a separate flow doc only when ordering, state propagation,
+  cache boundaries, or cross-component handoff is central to correctness.
+- Record a concrete mitigation for any material risk that affects the selected
+  contract or rollout.

@@ -6,67 +6,56 @@ last_updated_session: {{agent}}/{{session-id}}
 # pr: {{pr-number-or-url}}
 ---
 
-# [Feature] Flow
+# {{behavior}} Flow
 
 ## Overview
 
-[1-3 sentences describing what this flow covers, what question(s) it answers, and why this flow exists]
+{{What happens, what triggers it, why it matters, and where this flow stops.}}
 
 ## Entry Points
 
-[how this flow starts. could be a user typing something into a form or something else. include at least and at most 3 code pointers as well]
+- Trigger: {{request, event, command, job, or user action}}
+- Source: `path/to/file.ts:functionName`
+- Assumptions: {{state, permissions, or context already present}}
 
-- path/to/file.ts: [route/handler/hook/builder/component entrypoint]
+## Flow
 
-## Sequence Diagram
-
-[Draft with `$dev.diagram mermaid general-flow`. Show the happy path plus important behavior-changing branches. Include meaningful fallback, retry, permission-denied, validation-failure, timeout, disabled-gate, and terminal-error outcomes when they materially change the flow. Omit trivial guards and implementation-only conditionals.]
+```mermaid
+graph TD
+  A["{{Trigger}}"] --> B["{{Decision, state change, or handoff}}"]
+  B --> C["{{Terminal effect or next-flow handoff}}"]
+```
 
 ## Execution Trace
 
-[Focus this section on the happy-path execution from trigger to terminal effect. Mention branches only when needed to explain the next happy-path handoff; put important branch details in the general-flow diagram and Notes.]
+### 1. {{Meaningful runtime phase}}
 
-### 1. [Phase Name]
+`path/to/file.ts:functionName`
 
-[1-2 sentence describing what this phase does]
+{{Describe what executes, what state changes or is frozen, who owns the next
+boundary, and where control goes. Explain material branches at their decision
+point. Add nested steps or a ts pseudocode block only when they clarify useful
+complexity.}}
 
-#### 1.1 [Step in phase]
+### 2. {{Terminal effect or next-flow handoff}}
 
-[short description of what is happening in this step]
+`path/to/file.ts:functionName`
 
-- path/to/file.ts:{{functionName}}
+{{Describe the resulting state, observable effect, and recipient of the handoff.}}
 
-```ts
-[$sudocode describing]
-```
+## Debugging and Verification
 
-#### ...
-
-[add more steps as necessary]
-
-### 2. [add additional phases as necessary]
-
-## Notes
-
-[used to describe any quirks in behavior, important branch details, edge cases, and additional detail that does not belong in the happy-path execution trace]
-
-## Observability
-
-Metrics:
-- [metric name / timing / counter and what it measures]
-
-Logs:
-- [log line/logger path and when it emits]
+- {{Relevant logs, metrics, commands, failure signatures, or observable outcomes}}
+- {{How to verify the expected terminal effect or investigate a material failure}}
 
 ## Related docs
 
-- [Related flow docs]
-- [Architecture docs]
-- [Specs / design docs / PR docs]
+- {{Adjacent flow, architecture, design, or operational reference}}
 
-## Manual Notes 
+## Manual Notes
 
 [keep this for the user to add notes. do not change between edits]
 
 ## Changelog
-- [YYYY-MM-DD HH:MM]: [description of update] ([agent session id])
+
+- {{YYYY-MM-DD HH:MM}}: {{description of update}} ({{agent session id}} - {{git sha}})

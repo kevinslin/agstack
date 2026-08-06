@@ -2,152 +2,54 @@
 
 **Date:** {YYYY-MM-DD}
 **Status:** Planning | In Progress | Completed | Blocked
+**Owner:** [team or component]
 
----
+## Problem and Decision
 
-## TL;DR
+[What is broken or missing, the selected solution, and why it matters.]
 
-- [Target outcome in one sentence]
-- [Scope boundary or non-goal that prevents overreach]
-- [Key implementation path or owner boundary]
-- [Most important dependency, validation proof, or risk]
+## Scope
 
----
+**Changes**
 
-## Goal and Scope
+- [Concrete change]
+- [Concrete change]
 
-### Goal
-[Describe the objective and why it matters]
+**Does not change**
 
-### In Scope
-- [What this spec will change]
+- [Important boundary or non-goal]
 
-### Out of Scope
-- [What this spec intentionally does not change]
+## Contract
 
----
+[Required behavior, ownership, interfaces, security boundaries, and failure
+handling. Include a small before/after example or decision table only when it
+clarifies the implementation contract.]
 
-## Context
+## Implementation
 
-### Background
-[Why this task is needed - user impact, technical debt, or business requirement]
+1. [Concrete change, affected file or service, and why.]
+2. [Concrete change, affected file or service, and why.]
+3. [Concrete change, affected file or service, and why.]
 
-### Current State
-[How the system behaves today, including the key code paths or architectural reality]
+[Use named phases only when work has independently useful stages or material
+dependencies.]
 
-### Related
-- [relative/path/to/context-item.md](docs/or/src/path): [what this context is for and when it is useful]
+## Verification
 
-### Constraints
-- [Technical constraints]
-- [Rollout / product constraints]
-- [Compatibility / operational constraints]
+| Required outcome | How to verify |
+| --- | --- |
+| [Observable behavior or invariant] | [Automated test or operational check] |
+| [Important denial or failure behavior] | [Automated test or operational check] |
 
-### Non-obvious Dependencies or Access (Optional)
-- [Dependency, service, dataset, feature flag, or permission that can block implementation/validation]
+## Open Decisions
 
----
+- [Unresolved question and why its answer changes implementation.]
 
-## Approach and Touchpoints
-
-### Proposed Approach
-[High-level implementation approach and seam choice]
-
-### Integration Points / Touchpoints
-- [File / service / endpoint and why it matters]
-
-### Design Decisions
-- [Decision]: [Resolution and rationale]
-
-### Important Implementation Notes (Optional)
-- [Critical facts, invariants, or temporary compromises]
-
-### Existing Contract Snapshot (Required when changing data/API/CLI/config/migration output)
-
-| Surface | Current owner / source of truth | Current fields, states, or shape | Current consumers |
-| --- | --- | --- | --- |
-| [surface] | [module/schema/command] | [current contract] | [who reads it] |
-
-### Target Decision Table (Required when behavior depends on multiple states or source facts)
-
-| Input facts / state | Target output | Notes |
-| --- | --- | --- |
-| [condition] | [observable result or stored shape] | [why this is the smallest sufficient behavior] |
-
-### Minimal Model Check (Required when adding new fields, types, statuses, reasons, or config)
-- New fields/types/states:
-- Existing fields/types reused:
-- Derived values intentionally not stored:
-- Consumers for each new field/type/state:
-- Simpler alternative considered:
-
----
-
-## Acceptance Criteria
-
-- [ ] [Observable feature outcome or invariant that must be true when the work is complete]
-- [ ] [User-visible behavior, system behavior, or compatibility guarantee the change must satisfy]
-- [ ] [Critical error-handling, data, or rollout invariant that must hold]
-
----
-
-## Phases and Dependencies
-
-[If a task tracker owns mutable status, replace the task checkboxes below with
-plain task-ID or link bullets.]
-
-### Phase 1: [Name]
-- [ ] Step 1
-- [ ] Step 2
-
-[Add more phases as needed]
-
-### Phase Dependencies
-- [List prerequisites and ordering constraints]
-
----
-
-## Validation Plan
-
-Automated validation:
-- [explicit test cases]
-
-Manual validation:
-- [explicit checks]
-
-### Separate Validation Spec (Optional)
-- [Path to validation spec, if this feature needs a dedicated validation document]
-
----
-
-## Open Items and Risks
-
-### Open Items
-[If a task tracker owns mutable status, use plain task-ID or link bullets instead
-of checkboxes.]
-
-- [ ] [Open technical decision, clarification, or research task; for a blocking
-  item, include owner/source, next action, blocking phase, and either status or
-  the authoritative task link]
-
-### Risks and Mitigations
-
-| Risk | Impact | Probability | Mitigation |
-| --- | --- | --- | --- |
-| [risk] | High/Med/Low | High/Med/Low | [mitigation] |
-
-### Simplifications and Assumptions (Optional)
-- [Intentional simplification, deferred work, or assumption made to keep scope tight]
-
----
-
-## Outputs
-
-- PR created from this spec: [PR URL, title, or status]
+[Omit this section when there are no unresolved decisions.]
 
 ## Manual Notes 
 
 [keep this for the user to add notes. do not change between edits]
 
 ## Changelog
-- [YYYY-MM-DD HH:MM]: [description of update] ([agent session id])
+- [YYYY-MM-DD HH:MM]: [description of update] ([agent session id] - [current git sha])

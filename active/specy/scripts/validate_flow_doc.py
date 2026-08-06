@@ -17,13 +17,44 @@ from pathlib import Path
 
 CODE_BLOCK_RE = re.compile(r"```[A-Za-z0-9_-]*\n.*?```", re.S)
 SUDOCODE_FENCE_RE = re.compile(r"```sudocode\b")
-TS_CODE_BLOCK_RE = re.compile(r"```ts\n.*?```", re.S)
 FIRST_H1_RE = re.compile(r"(?m)^#\s+(.+?)\s*$")
 PR_TITLE_RE = re.compile(r"(?i)^PR(?:\s+[#A-Za-z0-9][^:\n]*)?:\s+\S")
 LOCAL_ABSOLUTE_MARKDOWN_LINK_RE = re.compile(
     r"\[[^\]]+\]\(((?:/Users/|/home/)[^)]+)\)"
 )
-ENTRY_POINTER_RE = re.compile(r"(?m)^\s*-\s+`?[^`\n]+?\.[A-Za-z0-9]+:[^`\n]+`?\s*$")
+SOURCE_POINTER_RE = re.compile(
+    r"(?:(?:[\w.@-]+/)+[\w.@-]+|[\w.@-]+\.[A-Za-z0-9]+):"
+    r"(?:[A-Za-z_$][\w.$-]*|\d+(?::\d+)?)"
+)
+MERMAID_GRAPH_RE = re.compile(
+    r"```mermaid[ \t]*\r?\n[ \t]*graph[ \t]+TD\b(?P<body>.*?)\r?\n[ \t]*```",
+    re.I | re.S,
+)
+MERMAID_DIAGRAM_RE = re.compile(
+    r"```mermaid[ \t]*\r?\n(?P<body>.*?)\r?\n[ \t]*```", re.I | re.S
+)
+BRACED_PLACEHOLDER_RE = re.compile(r"\{\{[^{}]+\}\}", re.S)
+TEMPLATE_PLACEHOLDER_RE = re.compile(
+    r"\[(?:Feature|Phase Name|Step in phase|add additional phases as necessary|"
+    r"1-3 sentences\b[^\]]*|how this flow starts\b[^\]]*|"
+    r"route/handler/hook/builder/component entrypoint|"
+    r"Related flow docs|Architecture docs|Specs / design docs / PR docs|"
+    r"metric name\b[^\]]*|log line/logger path\b[^\]]*|"
+    r"YYYY-MM-DD HH:MM|description of update|agent session id|codex session id|"
+    r"\$sudocode describing)\]",
+    re.I,
+)
+CHANGELOG_ENTRY_RE = re.compile(
+    r"^-\s+\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\s+.+?\s+"
+    r"\((?P<session>[^()\n]+?)\s+-\s+(?P<sha>[a-fA-F0-9]{7,40})\)\s*$"
+)
+PLACEHOLDER_SOURCE_POINTER_RE = re.compile(
+    r"\bpath/to/file\.[A-Za-z0-9]+:[A-Za-z_$][\w.$-]*"
+)
+PLACEHOLDER_SESSION_RE = re.compile(
+    r"(?:^|/)(?:session[-_ ]?id|agent[-_ ]?session[-_ ]?id|unknown|todo|tbd)$",
+    re.I,
+)
 
 
 @dataclass
@@ -128,14 +159,16 @@ def _validate_entry_points(text: str, result: ValidationResult) -> None:
     if entry_points is None:
         return
 
-    pointer_count = len(ENTRY_POINTER_RE.findall(entry_points))
+    pointer_count = len(SOURCE_POINTER_RE.findall(entry_points))
     if pointer_count < 1:
         result.errors.append("Entry Points must include at least one code pointer")
     if pointer_count > 3:
         result.errors.append("Entry Points must include at most three code pointers")
 
 
-def _validate_execution_trace(text: str, result: ValidationResult) -> None:
+def _validate_execution_trace(
+    text: str, result: ValidationResult, *, legacy: bool = False
+) -> None:
     trace = _extract_h2_section(text, "Execution Trace")
     if trace is None:
         return
@@ -146,28 +179,115 @@ def _validate_execution_trace(text: str, result: ValidationResult) -> None:
         return
 
     for phase_heading, phase_segment in phase_segments:
-        if "[add additional phases as necessary]" in phase_heading:
-            continue
-        step_segments = _extract_segments_by_heading(phase_segment, r"^####\s+\d+\.\d+\s+.+$")
-        if not step_segments:
-            result.warnings.append(
-                f"{phase_heading.strip()} has no numbered step headings like '#### 1.1 Step Name'"
+        if SOURCE_POINTER_RE.search(phase_segment) is None:
+            issue = f"{phase_heading.strip()} must include a real file/function pointer"
+            (result.warnings if legacy else result.errors).append(issue)
+        if SUDOCODE_FENCE_RE.search(phase_segment) is not None:
+            result.errors.append(
+                f"{phase_heading.strip()} must use a fenced 'ts' block for $sudocode, not 'sudocode'"
             )
-            continue
 
-        for step_heading, step_segment in step_segments:
-            if re.search(r"(?m)^\s*-\s+`?[^`\n]+:[^`\n]+`?\s*$", step_segment) is None:
-                result.errors.append(
-                    f"{step_heading.strip()} must include a file/function pointer bullet"
-                )
-            if SUDOCODE_FENCE_RE.search(step_segment) is not None:
-                result.errors.append(
-                    f"{step_heading.strip()} must use a fenced 'ts' block for $sudocode, not 'sudocode'"
-                )
-            if TS_CODE_BLOCK_RE.search(step_segment) is None:
-                result.errors.append(
-                    f"{step_heading.strip()} must include a fenced 'ts' $sudocode block"
-                )
+
+def _resolve_alternative_heading(
+    text: str, preferred: str, legacy: str, result: ValidationResult
+) -> str | None:
+    if _has_h2(text, preferred):
+        return preferred
+    if _has_h2(text, legacy):
+        return legacy
+    result.errors.append(
+        f"Missing required section: '## {preferred}' (legacy '## {legacy}' is also accepted)"
+    )
+    return None
+
+
+def _validate_flow_diagram(
+    text: str, heading: str | None, result: ValidationResult, *, legacy: bool = False
+) -> None:
+    if heading is None:
+        return
+    section = _extract_h2_section(text, heading)
+    if section is None:
+        return
+    diagram = (MERMAID_DIAGRAM_RE if legacy else MERMAID_GRAPH_RE).search(section)
+    if diagram is None:
+        diagram_requirement = "diagram" if legacy else "'graph TD' diagram"
+        result.errors.append(f"'## {heading}' must include a fenced Mermaid {diagram_requirement}")
+        return
+    graph_lines = [
+        line.strip()
+        for line in diagram.group("body").splitlines()
+        if line.strip() and not line.lstrip().startswith("%%")
+    ]
+    if len(graph_lines) < (2 if legacy else 1):
+        diagram_description = "diagram" if legacy else "'graph TD' diagram"
+        result.errors.append(f"'## {heading}' Mermaid {diagram_description} must include actual flow nodes")
+
+
+def _without_manual_notes_body(text: str) -> str:
+    manual_notes = _extract_h2_section(text, "Manual Notes")
+    if manual_notes is None:
+        return text
+    return text.replace(manual_notes, "\n", 1)
+
+
+def _validate_no_placeholders(text: str, result: ValidationResult) -> None:
+    inspectable = _without_manual_notes_body(text)
+    placeholders = BRACED_PLACEHOLDER_RE.findall(inspectable)
+    placeholders.extend(TEMPLATE_PLACEHOLDER_RE.findall(inspectable))
+    placeholders.extend(PLACEHOLDER_SOURCE_POINTER_RE.findall(inspectable))
+    for placeholder in dict.fromkeys(placeholders):
+        result.errors.append(
+            f"Unresolved template placeholder: {' '.join(placeholder.split())}"
+        )
+
+
+def _validate_debugging_signals(
+    text: str, heading: str | None, result: ValidationResult
+) -> None:
+    if heading is None:
+        return
+    section = _extract_h2_section(text, heading)
+    if section is None:
+        return
+    if re.search(r"\bnone identified\b", section, re.I):
+        return
+    substantive_lines = [
+        line.strip()
+        for line in section.splitlines()
+        if line.strip()
+        and not re.fullmatch(
+            r"(?:[-*]\s*)?(?:metrics?|logs?|debug(?:ging)?(?: probes)?|"
+            r"verification|signals?|todo|tbd|\.{2,}):?",
+            line.strip(),
+            re.I,
+        )
+    ]
+    if not substantive_lines:
+        result.errors.append(
+            f"'## {heading}' must include concrete debugging signals or 'None identified'"
+        )
+
+
+def _validate_changelog(
+    text: str, result: ValidationResult, *, legacy: bool = False
+) -> None:
+    changelog = _extract_h2_section(text, "Changelog")
+    if changelog is None:
+        return
+    entries = [line.strip() for line in changelog.splitlines() if line.strip().startswith("-")]
+    candidates = entries if legacy else entries[:1]
+    has_valid_entry = any(
+        (match := CHANGELOG_ENTRY_RE.fullmatch(entry)) is not None
+        and PLACEHOLDER_SESSION_RE.search(match.group("session").strip()) is None
+        for entry in candidates
+    )
+    if not has_valid_entry:
+        entry_location = "contain an entry" if legacy else "start with an entry"
+        result.errors.append(
+            f"Changelog must {entry_location} containing a YYYY-MM-DD HH:MM timestamp, "
+            "description, non-placeholder session id, and 7-40 character git SHA"
+        )
 
 
 def _validate_manual_notes_and_changelog_order(text: str, result: ValidationResult) -> None:
@@ -183,10 +303,7 @@ def _validate_flow_doc(text: str, result: ValidationResult) -> None:
     required_h2 = [
         "Overview",
         "Entry Points",
-        "Sequence Diagram",
         "Execution Trace",
-        "Notes",
-        "Observability",
         "Related docs",
         "Manual Notes",
         "Changelog",
@@ -194,15 +311,26 @@ def _validate_flow_doc(text: str, result: ValidationResult) -> None:
     _validate_frontmatter(text, result)
     _validate_pr_scope_metadata(text, result)
     _validate_required_h2(text, required_h2, result)
+    flow_heading = _resolve_alternative_heading(text, "Flow", "Sequence Diagram", result)
+    debugging_heading = _resolve_alternative_heading(
+        text, "Debugging and Verification", "Observability", result
+    )
+    legacy_flow = flow_heading == "Sequence Diagram"
 
-    sequence_pos = _h2_position(text, "Sequence Diagram")
+    flow_pos = _h2_position(text, flow_heading) if flow_heading is not None else None
     trace_pos = _h2_position(text, "Execution Trace")
-    if sequence_pos is not None and trace_pos is not None and sequence_pos > trace_pos:
-        result.errors.append("Section order must place '## Sequence Diagram' before '## Execution Trace'")
+    if flow_pos is not None and trace_pos is not None and flow_pos > trace_pos:
+        result.errors.append(
+            f"Section order must place '## {flow_heading}' before '## Execution Trace'"
+        )
 
     _validate_entry_points(text, result)
-    _validate_execution_trace(text, result)
+    _validate_flow_diagram(text, flow_heading, result, legacy=legacy_flow)
+    _validate_execution_trace(text, result, legacy=legacy_flow)
+    _validate_debugging_signals(text, debugging_heading, result)
     _validate_manual_notes_and_changelog_order(text, result)
+    _validate_changelog(text, result, legacy=legacy_flow)
+    _validate_no_placeholders(text, result)
 
 
 def _validate_portable_repo_links(text: str, result: ValidationResult) -> None:

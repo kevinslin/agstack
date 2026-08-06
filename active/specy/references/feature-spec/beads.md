@@ -1,19 +1,20 @@
 # Beads Usage with Feature Specs
 
-Use beads to track each phase of the feature spec so progress and dependencies are
-durable across sessions.
+Use beads to track meaningful implementation work and dependencies across
+sessions. A feature spec does not need named phases to use beads.
 
 ## Read project instructions first
 
 If `skills/.config/dev.beads.instructions.md` exists at the project root, read it and
 follow its rules. Use it for project-specific naming, shortcut rules, and sync policy.
 
-## Map plan phases to beads
+## Map implementation work to beads
 
 1. Create a top-level bead for the plan. Include the plan title and link to the plan
    doc in the bead description.
-2. Create a bead for each phase in the plan's `Phases and Dependencies` section.
-3. Add dependencies between phase beads to match the plan order.
+2. Create a bead for each independently tracked implementation step, or for each
+   named phase when the plan genuinely requires phases.
+3. Add dependencies only where implementation order requires them.
 
 Example:
 
@@ -24,9 +25,9 @@ bd create "Phase 2: implementation" -p 2 --deps "blocks:bd-124"
 bd create "Phase 3: testing and rollout" -p 2 --deps "blocks:bd-125"
 ```
 
-## Use beads for each phase
+## Use beads for each tracked unit
 
-For every phase:
+For every tracked implementation step or phase:
 
 - Set the phase bead to in progress before starting:
   `bd update <id> --status in_progress`
