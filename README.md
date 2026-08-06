@@ -8,6 +8,7 @@ This used to be called `skills` but my claw thought it was a boring name so we'v
 
 ## Top Skills
 
+- [cal](active/cal/SKILL.md): Preview mutual availability and verified room options, confirm the selected time, and create the Google Calendar invite.
 - [specy](active/specy/SKILL.md): Write flow docs and other useful doc types.
 - [dev.review](active/dev.review/SKILL.md): Code review, slop review, spec review, and other review passes.
 - [sw-loop](active/sw-loop/SKILL.md): Devloop with subagents and loops on review.
