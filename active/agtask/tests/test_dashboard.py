@@ -639,6 +639,7 @@ class DashboardIntegrationTest(unittest.TestCase):
         self.assertIn(b'id="task-session-id"', body)
         self.assertIn(b'id="task-session-id" class="session-link"', body)
         self.assertIn(b'id="task-files"', body)
+        self.assertIn(b'src="../vendor/marked.js"', body)
         self.assertNotIn(b"Polish Dashboard", body)
         status, _headers, _body = self.request(
             url, path=task_path + "?view=today"
@@ -661,6 +662,13 @@ class DashboardIntegrationTest(unittest.TestCase):
         self.assertIn(b"encodeURIComponent(task.session_id)", body)
         self.assertNotIn(b"innerHTML", body)
         task_script = body
+
+        status, headers, marked_script = self.request(
+            url, path=parsed.path + "vendor/marked.js"
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(headers["content-type"], "text/javascript; charset=utf-8")
+        self.assertIn(b"marked", marked_script[:1000])
 
         status, headers, body = self.request(
             url,
@@ -704,7 +712,11 @@ class DashboardIntegrationTest(unittest.TestCase):
             [node, str(ROOT / "tests" / "task_detail_client.test.js")],
             cwd=ROOT,
             input=json.dumps(
-                {"source": task_script.decode("utf-8"), "detail": detail}
+                {
+                    "source": task_script.decode("utf-8"),
+                    "markedSource": marked_script.decode("utf-8"),
+                    "detail": detail,
+                }
             ),
             text=True,
             capture_output=True,

@@ -233,8 +233,9 @@ agtask-managed storage beside the ledger, receive the same `status` and
 refreshes. The source file selected in the browser is never modified.
 Click a task row outside its title to open the local detail page. Clicking the
 title, or focusing it and pressing Enter or Space, opens the task directly in
-Codex. The detail view shows the task description, a newest-first rollout
-timeline, and created, updated, and session-ID properties. The session ID also
+Codex. The detail view safely renders Markdown in the task description and
+newest-first rollout timeline, and shows created, updated, and session-ID
+properties. The session ID also
 links directly to the task in Codex. Attached tasks show `file` badges in the
 list and detail views; each badge opens its resolved path in VS Code.
 
