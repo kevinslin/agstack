@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,7 @@ except ImportError:  # pragma: no cover - environment issue
 PATH_STYLES = {"directory", "dotted"}
 DEFAULT_PATH_STYLE = "directory"
 MATCH_FIELDS = {"topics", "artifact_kinds", "source_globs", "cwd_globs"}
+AUDIT_FIELDS = {"enabled", "trace_root"}
 
 
 def fail(message: str) -> None:
@@ -129,6 +131,38 @@ def resolve_root(raw_root: str, config_dir: Path) -> Path:
     return path.resolve(strict=False)
 
 
+def default_audit(home: Path) -> dict[str, Any]:
+    trace_root = home.expanduser().resolve(strict=False) / ".config" / "mem" / "traces"
+    return {
+        "enabled": False,
+        "trace_root": str(trace_root),
+    }
+
+
+def normalize_audit(value: Any, field: str, config_dir: Path, home: Path) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        fail(f"{field} must be a mapping")
+
+    extra_keys = set(value) - AUDIT_FIELDS
+    if extra_keys:
+        joined = ", ".join(sorted(extra_keys))
+        fail(f"{field} has unsupported key(s): {joined}")
+
+    normalized = default_audit(home)
+    if "enabled" in value:
+        enabled = value["enabled"]
+        if not isinstance(enabled, bool):
+            fail(f"{field}.enabled must be a boolean")
+        normalized["enabled"] = enabled
+    if "trace_root" in value:
+        raw_trace_root = non_empty_string(value["trace_root"], f"{field}.trace_root")
+        expanded = os.path.expandvars(os.path.expanduser(raw_trace_root))
+        if re.search(r"\$(?:[A-Za-z_][A-Za-z0-9_]*|\{[^}]+\})", expanded):
+            fail(f"{field}.trace_root contains an unresolved environment variable")
+        normalized["trace_root"] = str(resolve_root(raw_trace_root, config_dir))
+    return normalized
+
+
 def infer_path_style(root: Path) -> str:
     if not root.is_dir():
         return DEFAULT_PATH_STYLE
@@ -166,7 +200,7 @@ def load_yaml(path: Path) -> Any:
         fail(f"could not read {path}: {exc}")
 
 
-def normalize_config(path: Path, require_roots: bool) -> dict[str, Any]:
+def normalize_config(path: Path, require_roots: bool, home: Path) -> tuple[dict[str, Any], bool]:
     data = load_yaml(path)
     if not isinstance(data, dict):
         fail("config must be a YAML mapping")
@@ -230,28 +264,39 @@ def normalize_config(path: Path, require_roots: bool) -> dict[str, Any]:
             normalized["priority"] = priority
         normalized_bases.append(normalized)
 
-    return {
+    normalized_config = {
         "config_path": str(path),
         "version": 1,
         "bases": normalized_bases,
+        "audit": default_audit(home),
     }
+    audit_declared = "audit" in data
+    if "audit" in data:
+        normalized_config["audit"] = normalize_audit(data["audit"], "audit", path.parent, home)
+    return normalized_config, audit_declared
 
 
-def merge_configs(paths: list[Path], require_roots: bool) -> dict[str, Any]:
-    normalized_configs = [normalize_config(path, require_roots) for path in paths]
+def merge_configs(paths: list[Path], require_roots: bool, home: Path) -> dict[str, Any]:
+    normalized_configs = [normalize_config(path, require_roots, home) for path in paths]
     merged_bases: list[dict[str, Any]] = []
     seen_names: set[str] = set()
-    for config in normalized_configs:
+    for config, _ in normalized_configs:
         for base in config["bases"]:
             if base["name"] in seen_names:
                 continue
             seen_names.add(base["name"])
             merged_bases.append(base)
+    audit = default_audit(home)
+    for config, audit_declared in normalized_configs:
+        if audit_declared:
+            audit = config["audit"]
+            break
     return {
         "config_path": str(paths[0]),
         "config_paths": [str(path) for path in paths],
         "version": 1,
         "bases": merged_bases,
+        "audit": audit,
     }
 
 
@@ -266,7 +311,7 @@ def load_config(
     for path in paths:
         if not path.is_file():
             fail(f"config does not exist: {path}")
-    return merge_configs(paths, require_roots)
+    return merge_configs(paths, require_roots, home)
 
 
 def parse_args() -> argparse.Namespace:

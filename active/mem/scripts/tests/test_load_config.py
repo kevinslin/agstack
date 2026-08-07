@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import json
+import os
+import site
 import subprocess
 import tempfile
 import textwrap
@@ -226,6 +228,169 @@ class LoadConfigTests(unittest.TestCase):
         self.assertEqual(base["priority"], 25)
         self.assertEqual(base["match"]["topics"], ["configuration"])
 
+    def test_audit_defaults_are_exposed(self) -> None:
+        self.write_config(
+            f"""
+            version: 1
+            bases:
+              - name: docs
+                description: Durable documentation notes.
+                root: {self.base}
+                schemas:
+                  - name: tool
+            """
+        )
+
+        result = self.run_loader("--home", str(self.root / "home"))
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        data = json.loads(result.stdout)
+        self.assertEqual(
+            data["audit"],
+            {
+                "enabled": False,
+                "trace_root": str((self.root / "home" / ".config" / "mem" / "traces").resolve()),
+            },
+        )
+
+    def test_audit_is_normalized(self) -> None:
+        trace_root = self.root / "custom-traces"
+        self.write_config(
+            f"""
+            version: 1
+            audit:
+              enabled: true
+              trace_root: {trace_root}
+            bases:
+              - name: docs
+                description: Durable documentation notes.
+                root: {self.base}
+                schemas:
+                  - name: tool
+            """
+        )
+
+        result = self.run_loader()
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(
+            json.loads(result.stdout)["audit"],
+            {"enabled": True, "trace_root": str(trace_root.resolve())},
+        )
+
+    def test_relative_audit_trace_root_is_resolved_from_config(self) -> None:
+        self.write_config(
+            f"""
+            version: 1
+            audit:
+              trace_root: traces
+            bases:
+              - name: docs
+                description: Durable documentation notes.
+                root: {self.base}
+                schemas:
+                  - name: tool
+            """
+        )
+
+        result = self.run_loader()
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(
+            json.loads(result.stdout)["audit"],
+            {"enabled": False, "trace_root": str((self.root / "traces").resolve())},
+        )
+
+    def test_audit_trace_root_expands_home_environment_variable(self) -> None:
+        self.write_config(
+            f"""
+            version: 1
+            audit:
+              trace_root: $HOME/.config/mem/custom-traces
+            bases:
+              - name: docs
+                description: Durable documentation notes.
+                root: {self.base}
+                schemas:
+                  - name: tool
+            """
+        )
+
+        env = os.environ.copy()
+        home = self.root / "env-home"
+        env["HOME"] = str(home)
+        env["PYTHONPATH"] = os.pathsep.join(
+            path for path in (site.getusersitepackages(), env.get("PYTHONPATH")) if path
+        )
+        result = subprocess.run(
+            ["python3", str(SCRIPT_PATH), "--config", str(self.config)],
+            text=True,
+            capture_output=True,
+            check=False,
+            env=env,
+        )
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(
+            json.loads(result.stdout)["audit"]["trace_root"],
+            str((home / ".config" / "mem" / "custom-traces").resolve()),
+        )
+
+    def test_invalid_audit_fields_are_rejected(self) -> None:
+        for audit, message in (
+            ("true", "audit must be a mapping"),
+            ("{enabled: 1}", "audit.enabled must be a boolean"),
+            ("{trace_root: ''}", "audit.trace_root must be a non-empty string"),
+            ("{unknown: true}", "audit has unsupported key(s): unknown"),
+        ):
+            with self.subTest(audit=audit):
+                self.write_config(
+                    f"""
+                    version: 1
+                    audit: {audit}
+                    bases:
+                      - name: docs
+                        description: Durable documentation notes.
+                        root: {self.base}
+                        schemas:
+                          - name: tool
+                    """
+                )
+
+                result = self.run_loader()
+
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(message, result.stderr)
+
+    def test_audit_trace_root_rejects_unresolved_environment_variable(self) -> None:
+        self.write_config(
+            f"""
+            version: 1
+            audit:
+              enabled: true
+              trace_root: $MEM_AUDIT_ROOT_THAT_IS_NOT_SET/traces
+            bases:
+              - name: docs
+                description: Durable documentation notes.
+                root: {self.base}
+                schemas:
+                  - name: tool
+            """
+        )
+        env = os.environ.copy()
+        env.pop("MEM_AUDIT_ROOT_THAT_IS_NOT_SET", None)
+
+        result = subprocess.run(
+            ["python3", str(SCRIPT_PATH), "--config", str(self.config)],
+            text=True,
+            capture_output=True,
+            check=False,
+            env=env,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("contains an unresolved environment variable", result.stderr)
+
     def test_nearest_ancestor_and_home_configs_are_merged(self) -> None:
         project = self.root / "project"
         nested = project / "one" / "two"
@@ -339,6 +504,128 @@ class LoadConfigTests(unittest.TestCase):
         base = json.loads(result.stdout)["bases"][0]
         self.assertEqual(base["description"], "Local docs.")
         self.assertEqual(base["root"], str(local_base.resolve()))
+
+    def test_home_audit_is_inherited_when_nearest_does_not_declare_it(self) -> None:
+        project = self.root / "project"
+        home = self.root / "home"
+        project.mkdir()
+        home.mkdir()
+        (project / ".mem.yaml").write_text(
+            textwrap.dedent(
+                f"""
+                version: 1
+                bases:
+                  - name: project
+                    description: Project notes.
+                    root: {self.base}
+                    schemas:
+                      - name: tool
+                """
+            ).strip()
+            + "\n",
+            encoding="utf-8",
+        )
+        (home / ".mem.yaml").write_text(
+            textwrap.dedent(
+                f"""
+                version: 1
+                audit:
+                  enabled: true
+                  trace_root: {self.root / "home-traces"}
+                bases:
+                  - name: home
+                    description: Home notes.
+                    root: {self.base}
+                    schemas:
+                      - name: tool
+                """
+            ).strip()
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = subprocess.run(
+            [
+                "python3",
+                str(SCRIPT_PATH),
+                "--cwd",
+                str(project),
+                "--home",
+                str(home),
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(
+            json.loads(result.stdout)["audit"],
+            {"enabled": True, "trace_root": str((self.root / "home-traces").resolve())},
+        )
+
+    def test_nearest_declared_audit_owns_entire_mapping(self) -> None:
+        project = self.root / "project"
+        home = self.root / "home"
+        project.mkdir()
+        home.mkdir()
+        (project / ".mem.yaml").write_text(
+            textwrap.dedent(
+                f"""
+                version: 1
+                audit:
+                  enabled: true
+                bases:
+                  - name: project
+                    description: Project notes.
+                    root: {self.base}
+                    schemas:
+                      - name: tool
+                """
+            ).strip()
+            + "\n",
+            encoding="utf-8",
+        )
+        (home / ".mem.yaml").write_text(
+            textwrap.dedent(
+                f"""
+                version: 1
+                audit:
+                  trace_root: {self.root / "home-traces"}
+                bases:
+                  - name: home
+                    description: Home notes.
+                    root: {self.base}
+                    schemas:
+                      - name: tool
+                """
+            ).strip()
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = subprocess.run(
+            [
+                "python3",
+                str(SCRIPT_PATH),
+                "--cwd",
+                str(project),
+                "--home",
+                str(home),
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(
+            json.loads(result.stdout)["audit"],
+            {
+                "enabled": True,
+                "trace_root": str((home / ".config" / "mem" / "traces").resolve()),
+            },
+        )
 
 
 if __name__ == "__main__":
