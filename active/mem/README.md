@@ -130,6 +130,10 @@ The command:
 An ambiguous or unmatched route is reported as its real terminal status; it is
 not silently converted into a successful lookup.
 
+Managed and source traversal uses descriptor-relative, no-follow opens and
+searches only verified regular files. Oversized and probable binary files are
+skipped without reading their bodies.
+
 ## Audit traces
 
 Tracing is opt-in. With `audit.enabled: false`, or with no audit mapping,

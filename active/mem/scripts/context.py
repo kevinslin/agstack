@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import re
+import stat
 import sys
 import time
 from contextlib import nullcontext
@@ -135,37 +136,80 @@ def resolve_schemas(base: dict[str, Any], query: str) -> list[dict[str, Any]]:
     return resolved
 
 
-def _iter_search_files(scope: Path) -> Iterator[Path]:
-    if scope.is_file() and not scope.is_symlink():
-        yield scope
-        return
-    pending = [scope]
-    while pending:
-        directory = pending.pop()
-        try:
-            entries = sorted(directory.iterdir(), key=lambda path: path.name)
-        except OSError:
-            continue
-        child_directories: list[Path] = []
-        for path in entries:
-            try:
-                if path.is_symlink():
-                    continue
-                if path.is_file():
-                    yield path
-                elif path.is_dir():
-                    child_directories.append(path)
-            except OSError:
-                continue
-        pending.extend(reversed(child_directories))
+def _search_open_flags() -> int:
+    if not hasattr(os, "O_NOFOLLOW"):
+        raise ValueError("secure source search requires O_NOFOLLOW support")
+    flags = os.O_RDONLY
+    for name in ("O_CLOEXEC", "O_NOFOLLOW", "O_NONBLOCK"):
+        flags |= getattr(os, name, 0)
+    return flags
 
 
-def _is_probable_binary(path: Path) -> bool:
+def _walk_search_directory(
+    directory_fd: int,
+    directory_path: Path,
+    flags: int,
+) -> Iterator[tuple[Path, int, os.stat_result]]:
     try:
-        with path.open("rb") as handle:
-            return b"\x00" in handle.read(BINARY_SNIFF_BYTES)
+        with os.scandir(directory_fd) as entries:
+            names = sorted(entry.name for entry in entries)
+    except OSError:
+        return
+    for name in names:
+        child_fd: int | None = None
+        try:
+            child_fd = os.open(name, flags, dir_fd=directory_fd)
+            metadata = os.fstat(child_fd)
+        except OSError:
+            if child_fd is not None:
+                try:
+                    os.close(child_fd)
+                except OSError:
+                    pass
+            continue
+        child_path = directory_path / name
+        try:
+            if stat.S_ISREG(metadata.st_mode):
+                yield child_path, child_fd, metadata
+            elif stat.S_ISDIR(metadata.st_mode):
+                yield from _walk_search_directory(child_fd, child_path, flags)
+        finally:
+            try:
+                os.close(child_fd)
+            except OSError:
+                pass
+
+
+def _iter_search_files(scope: Path) -> Iterator[tuple[Path, int, os.stat_result]]:
+    flags = _search_open_flags()
+    try:
+        root_fd = os.open(scope, flags)
+    except OSError as exc:
+        raise ValueError(f"could not open search scope {scope}: {exc}") from exc
+    try:
+        metadata = os.fstat(root_fd)
+        if stat.S_ISREG(metadata.st_mode):
+            yield scope, root_fd, metadata
+        elif stat.S_ISDIR(metadata.st_mode):
+            yield from _walk_search_directory(root_fd, scope, flags)
+    finally:
+        try:
+            os.close(root_fd)
+        except OSError:
+            pass
+
+
+def _is_probable_binary(fd: int) -> bool:
+    try:
+        os.lseek(fd, 0, os.SEEK_SET)
+        return b"\x00" in os.read(fd, BINARY_SNIFF_BYTES)
     except OSError:
         return True
+    finally:
+        try:
+            os.lseek(fd, 0, os.SEEK_SET)
+        except OSError:
+            pass
 
 
 def search_scope(scope: Path, query: str) -> list[str]:
@@ -175,20 +219,20 @@ def search_scope(scope: Path, query: str) -> list[str]:
     normalized_query = query.casefold().strip()
     query_words = [word for word in re.findall(r"[a-z0-9]+", normalized_query) if len(word) > 1]
     matches: list[str] = []
-    for path in _iter_search_files(resolved_scope):
+    for path, fd, metadata in _iter_search_files(resolved_scope):
         path_text = str(path).casefold()
         path_matches = normalized_query in path_text or (
             query_words and all(word in path_text for word in query_words)
         )
         if path_matches:
-            matches.append(str(path.resolve(strict=False)))
+            matches.append(str(path))
             continue
         try:
-            if path.stat().st_size > MAX_SEARCH_BYTES or _is_probable_binary(path):
+            if metadata.st_size > MAX_SEARCH_BYTES or _is_probable_binary(fd):
                 continue
             found_words: set[str] = set()
             phrase_match = False
-            with path.open("r", encoding="utf-8", errors="ignore") as handle:
+            with os.fdopen(os.dup(fd), "r", encoding="utf-8", errors="ignore") as handle:
                 for line in handle:
                     normalized_line = line.casefold()
                     if normalized_query in normalized_line:
@@ -199,7 +243,7 @@ def search_scope(scope: Path, query: str) -> list[str]:
         except OSError:
             continue
         if phrase_match or (query_words and all(word in found_words for word in query_words)):
-            matches.append(str(path.resolve(strict=False)))
+            matches.append(str(path))
     return sorted(matches)
 
 

@@ -3,18 +3,24 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import textwrap
 import unittest
 from datetime import datetime
 from pathlib import Path
+from unittest import mock
 
 
 TEST_DIR = Path(__file__).resolve().parent
 MEM_PATH = TEST_DIR.parents[0] / "mem.py"
+SCRIPT_DIR = MEM_PATH.parent
+sys.path.insert(0, str(SCRIPT_DIR))
+context_module = importlib.import_module("context")
 SESSION_ID = "019fa5de-c89c-7402-ad74-2978a02a04ad"
 
 
@@ -216,6 +222,69 @@ class ContextLookupTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertEqual(self.records()[0]["matched_paths"], [str(text_match.resolve())])
+
+    def test_source_search_rejects_file_replaced_by_symlink_before_open(self) -> None:
+        outside = self.root / "outside.txt"
+        outside.write_text("outside secret\n", encoding="utf-8")
+        victim = self.source / "victim.txt"
+        victim.write_text("safe text\n", encoding="utf-8")
+        original_open = context_module.os.open
+        replaced = False
+
+        def replace_then_open(
+            path: str | Path,
+            flags: int,
+            mode: int = 0o777,
+            *,
+            dir_fd: int | None = None,
+        ) -> int:
+            nonlocal replaced
+            if dir_fd is not None and os.fspath(path) == victim.name and not replaced:
+                victim.unlink()
+                victim.symlink_to(outside)
+                replaced = True
+            if dir_fd is None:
+                return original_open(path, flags, mode)
+            return original_open(path, flags, mode, dir_fd=dir_fd)
+
+        with mock.patch.object(context_module.os, "open", side_effect=replace_then_open):
+            matches = context_module.search_scope(self.source, "outside secret")
+
+        self.assertTrue(replaced)
+        self.assertEqual(matches, [])
+
+    def test_source_search_rejects_directory_replaced_by_symlink_before_open(self) -> None:
+        outside = self.root / "outside"
+        outside.mkdir()
+        (outside / "secret.txt").write_text("outside secret\n", encoding="utf-8")
+        nested = self.source / "nested"
+        nested.mkdir()
+        (nested / "safe.txt").write_text("safe text\n", encoding="utf-8")
+        original_open = context_module.os.open
+        replaced = False
+
+        def replace_then_open(
+            path: str | Path,
+            flags: int,
+            mode: int = 0o777,
+            *,
+            dir_fd: int | None = None,
+        ) -> int:
+            nonlocal replaced
+            if dir_fd is not None and os.fspath(path) == nested.name and not replaced:
+                (nested / "safe.txt").unlink()
+                nested.rmdir()
+                nested.symlink_to(outside, target_is_directory=True)
+                replaced = True
+            if dir_fd is None:
+                return original_open(path, flags, mode)
+            return original_open(path, flags, mode, dir_fd=dir_fd)
+
+        with mock.patch.object(context_module.os, "open", side_effect=replace_then_open):
+            matches = context_module.search_scope(self.source, "outside secret")
+
+        self.assertTrue(replaced)
+        self.assertEqual(matches, [])
 
     def test_ambiguous_lookup_records_status_without_search_stages(self) -> None:
         other = self.root / "other"
