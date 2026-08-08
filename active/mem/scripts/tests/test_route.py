@@ -20,30 +20,41 @@ class RouteTests(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.root = Path(self._tmp.name)
         self.config = self.root / ".mem.yaml"
-        self.main_base = self.root / "main"
-        self.clawcmd_base = self.root / "clawcmd"
-        self.main_base.mkdir()
-        self.clawcmd_base.mkdir()
+        self.dendron_base = self.root / "dendron"
+        self.oai_base = self.root / "oai"
+        self.claw_base = self.root / "claw"
+        self.dendron_base.mkdir()
+        self.oai_base.mkdir()
+        self.claw_base.mkdir()
         self.config.write_text(
             textwrap.dedent(
                 f"""
                 version: 1
                 bases:
-                  - name: oai/main
-                    description: OpenAI project specifications and references.
-                    root: {self.main_base}
+                  - name: dendron
+                    description: General knowledge base.
+                    root: {self.dendron_base}
                     match:
-                      artifact_kinds: [guide, runbook]
+                      cwd_globs: ["{self.dendron_base}", "{self.dendron_base}/**"]
+                      source_globs: ["{self.dendron_base}", "{self.dendron_base}/**"]
                     schemas:
                       - name: global-core
-                  - name: oai/clawcmd
-                    description: OpenAI Claw Command knowledge base.
-                    aliases: [clawcommand, claw-command]
-                    root: {self.clawcmd_base}
+                  - name: oai
+                    aliases: [oai/monorepo, openai-monorepo]
+                    description: OpenAI engineering knowledge base.
+                    root: {self.oai_base}
                     match:
-                      topics: [ClawConfig, Enterprise Claw]
-                      artifact_kinds: [guide, runbook]
-                      source_globs: ["codex/claw-command/**"]
+                      cwd_globs: ["{self.oai_base}", "{self.oai_base}/**"]
+                      source_globs: ["{self.oai_base}", "{self.oai_base}/**"]
+                    schemas:
+                      - name: global-core
+                  - name: claw
+                    aliases: [claw/main]
+                    description: OpenClaw engineering knowledge base.
+                    root: {self.claw_base}
+                    match:
+                      cwd_globs: ["{self.claw_base}", "{self.claw_base}/**"]
+                      source_globs: ["{self.claw_base}", "{self.claw_base}/**"]
                     schemas:
                       - name: global-core
                 """
@@ -73,52 +84,78 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         return json.loads(result.stdout)
 
-    def test_alias_and_artifact_select_claw_command(self) -> None:
-        result = self.run_router("Record the clawcommand CLI commands as a reusable runbook.")
+    def test_query_selects_general_knowledge_base(self) -> None:
+        result = self.run_router("Record this in the general knowledge base.")
 
         self.assertEqual(result["status"], "selected")
-        self.assertEqual(result["selected"]["name"], "oai/clawcmd")
-        self.assertIn("name-or-alias:clawcommand", result["selected"]["reasons"])
+        self.assertEqual(result["tier"], "query")
+        self.assertEqual(result["selected"]["name"], "dendron")
 
     def test_explicit_target_wins(self) -> None:
-        result = self.run_router("Save a guide.", "--target", "oai/clawcmd")
+        result = self.run_router(
+            "Save this OpenAI guide.",
+            "--target",
+            "dendron",
+            "--cwd",
+            str(self.oai_base),
+            "--source",
+            str(self.claw_base / "src"),
+        )
 
         self.assertEqual(result["status"], "selected")
-        self.assertEqual(result["selected"]["name"], "oai/clawcmd")
+        self.assertEqual(result["tier"], "explicit")
+        self.assertEqual(result["selected"]["name"], "dendron")
         self.assertEqual(result["selected"]["reasons"], ["explicit base name"])
 
-    def test_source_glob_selects_claw_command(self) -> None:
+    def test_same_root_alias_selects_aggregate(self) -> None:
+        result = self.run_router("Save a guide.", "--target", "oai/monorepo")
+
+        self.assertEqual(result["status"], "selected")
+        self.assertEqual(result["tier"], "explicit")
+        self.assertEqual(result["selected"]["name"], "oai")
+        self.assertEqual(result["selected"]["reasons"], ["explicit alias:oai/monorepo"])
+
+    def test_source_ownership_beats_query(self) -> None:
         result = self.run_router(
-            "Capture this configuration workflow.",
+            "Save this in the OpenAI knowledge base.",
             "--source",
-            "codex/claw-command/src/manage_claw_config.py",
+            str(self.claw_base / "src" / "gateway.py"),
         )
 
         self.assertEqual(result["status"], "selected")
-        self.assertEqual(result["selected"]["name"], "oai/clawcmd")
-        self.assertIn(
-            "source:codex/claw-command/**",
-            result["selected"]["reasons"],
-        )
+        self.assertEqual(result["tier"], "ownership")
+        self.assertEqual(result["selected"]["name"], "claw")
 
-    def test_specific_description_beats_cwd_fallback_without_aliases(self) -> None:
-        self.config.write_text(
-            self.config.read_text(encoding="utf-8").replace(
-                "    aliases: [clawcommand, claw-command]\n",
-                "",
-            ),
-            encoding="utf-8",
-        )
-
+    def test_cwd_ownership_beats_query(self) -> None:
         result = self.run_router(
-            "Record the clawcommand configuration commands as a reusable guide.",
+            "Record this in the general knowledge base.",
             "--cwd",
-            str(self.main_base),
+            str(self.oai_base),
         )
 
         self.assertEqual(result["status"], "selected")
-        self.assertEqual(result["selected"]["name"], "oai/clawcmd")
-        self.assertIn("description:claw command", result["selected"]["reasons"])
+        self.assertEqual(result["tier"], "ownership")
+        self.assertEqual(result["selected"]["name"], "oai")
+
+    def test_conflicting_source_and_cwd_ownership_is_ambiguous(self) -> None:
+        result = self.run_router(
+            "Save this in OpenAI.",
+            "--cwd",
+            str(self.oai_base),
+            "--source",
+            str(self.claw_base / "src"),
+        )
+
+        self.assertEqual(result["status"], "ambiguous")
+        self.assertEqual(result["tier"], "ownership")
+        self.assertIsNone(result["selected"])
+
+    def test_unknown_explicit_target_does_not_fall_back(self) -> None:
+        result = self.run_router("OpenAI guide", "--target", "oai/clawcmd")
+
+        self.assertEqual(result["status"], "no_match")
+        self.assertEqual(result["tier"], "explicit")
+        self.assertIsNone(result["selected"])
 
     def test_weak_signal_is_ambiguous(self) -> None:
         result = self.run_router("Save this for later.")

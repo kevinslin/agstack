@@ -146,7 +146,7 @@ def should_materialize(node: SchemaNode) -> bool:
 
 
 def load_schema(schema_name: str) -> tuple[Path, SchemaDocument]:
-    schema_path = REFERENCES_DIR / schema_name / "schema.yaml"
+    schema_path = schema_path_for_name(schema_name)
     return load_schema_file(schema_path)
 
 
@@ -157,8 +157,27 @@ def load_schema_file(schema_path: Path) -> tuple[Path, SchemaDocument]:
     return schema_path.parent, SchemaDocument.model_validate(data)
 
 
+def schema_search_roots() -> list[Path]:
+    cwd = Path.cwd().resolve(strict=False)
+    roots = [directory / "schemas" for directory in (cwd, *cwd.parents)]
+    roots.extend([Path.home() / ".schemas", REFERENCES_DIR])
+
+    unique: list[Path] = []
+    seen: set[Path] = set()
+    for root in roots:
+        resolved = root.resolve(strict=False)
+        if resolved not in seen:
+            seen.add(resolved)
+            unique.append(resolved)
+    return unique
+
+
 def schema_path_for_name(schema_name: str) -> Path:
-    return (REFERENCES_DIR / schema_name / "schema.yaml").resolve()
+    for root in schema_search_roots():
+        candidate = root / schema_name / "schema.yaml"
+        if candidate.is_file():
+            return candidate.resolve(strict=False)
+    return (REFERENCES_DIR / schema_name / "schema.yaml").resolve(strict=False)
 
 
 def resolve_child_schema_path(parent_schema_dir: Path, child_ref: ChildSchemaRef) -> Path:
@@ -660,10 +679,14 @@ def materialize(
 
 
 def list_schemas() -> int:
-    for schema_path in sorted(REFERENCES_DIR.glob("*/schema.yaml")):
-        schema_name = schema_path.parent.name
+    discovered: dict[str, Path] = {}
+    for root in schema_search_roots():
+        for schema_path in sorted(root.glob("*/schema.yaml")):
+            discovered.setdefault(schema_path.parent.name, schema_path)
+
+    for schema_name, schema_path in sorted(discovered.items()):
         try:
-            _, document = load_schema(schema_name)
+            _, document = load_schema_file(schema_path)
             roots = ", ".join(document.tree.keys())
             print(f"{schema_name}\troot: {roots}")
         except Exception as exc:

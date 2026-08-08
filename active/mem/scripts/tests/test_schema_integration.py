@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import stat
 import subprocess
@@ -44,13 +45,73 @@ class SchemaScriptIntegrationTests(unittest.TestCase):
     def install_fixture_schema(self, name: str) -> None:
         shutil.copytree(TEST_DIR / "fixtures" / name, self.references_dir / name)
 
-    def run_schema(self, *args: str) -> subprocess.CompletedProcess[str]:
+    def run_schema(
+        self,
+        *args: str,
+        cwd: Path | None = None,
+        home: Path | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        env = None
+        if home is not None:
+            env = dict(os.environ)
+            env["HOME"] = str(home)
+            env.setdefault("UV_CACHE_DIR", str(Path.home() / ".cache" / "uv"))
         return subprocess.run(
             [str(self.script), *args],
             text=True,
             capture_output=True,
             check=False,
+            cwd=cwd,
+            env=env,
         )
+
+    def test_schema_show_discovers_nearest_ancestor_schema(self) -> None:
+        workspace = self.root / "workspace"
+        nested = workspace / "tools" / "example"
+        nested.mkdir(parents=True)
+        schema = workspace / "schemas" / "workspace-layout" / "schema.yaml"
+        schema.parent.mkdir(parents=True)
+        schema.write_text(
+            "version: 1.0\nschema:\n  tools:\n    description: Local tool projects.\n",
+            encoding="utf-8",
+        )
+
+        result = self.run_schema("show", "workspace-layout", cwd=nested)
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertIn("workspace-layout", result.stdout)
+        self.assertIn("tools", result.stdout)
+
+    def test_schema_list_includes_project_local_schemas(self) -> None:
+        workspace = self.root / "workspace"
+        schema = workspace / "schemas" / "workspace-layout" / "schema.yaml"
+        schema.parent.mkdir(parents=True)
+        schema.write_text(
+            "version: 1.0\nschema:\n  apps:\n    description: Local applications.\n",
+            encoding="utf-8",
+        )
+
+        result = self.run_schema("list", cwd=workspace)
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertIn("workspace-layout\troot: apps", result.stdout)
+
+    def test_schema_show_falls_back_to_global_schema_directory(self) -> None:
+        workspace = self.root / "workspace"
+        workspace.mkdir()
+        home = self.root / "home"
+        schema = home / ".schemas" / "shared-layout" / "schema.yaml"
+        schema.parent.mkdir(parents=True)
+        schema.write_text(
+            "version: 1.0\nschema:\n  shared:\n    description: Global layout.\n",
+            encoding="utf-8",
+        )
+
+        result = self.run_schema("show", "shared-layout", cwd=workspace, home=home)
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertIn("shared-layout", result.stdout)
+        self.assertIn("shared", result.stdout)
 
     def test_unrestricted_path_placeholders_do_not_need_variable_definitions(self) -> None:
         self.write_schema(
@@ -739,6 +800,73 @@ class SchemaScriptIntegrationTests(unittest.TestCase):
         self.assertIn(
             "Topic for a domain entity",
             (out / "t" / "account.md").read_text(encoding="utf-8"),
+        )
+
+    def test_pkg_schema_composes_code_specs_and_global_core(self) -> None:
+        for schema_name in ("global-core", "code-core", "integ-proof", "specs", "pkg"):
+            self.install_prod_schema(schema_name)
+
+        show_result = self.run_schema("show", "pkg")
+        self.assertEqual(show_result.returncode, 0, msg=show_result.stderr)
+        self.assertIn("`-- {{package}}", show_result.stdout)
+        self.assertIn("|-- readme", show_result.stdout)
+        self.assertIn("`-- specs", show_result.stdout)
+        self.assertIn("|-- cook", show_result.stdout)
+
+        out = self.root / "out"
+        result = self.run_schema(
+            "materialize",
+            "pkg",
+            "--out",
+            str(out),
+            "--path-style",
+            "directory",
+            "--var",
+            "package=clawcmd",
+            "--var",
+            "cook=configure-service",
+            "--var",
+            "reference=shared-fact",
+            "--var",
+            "topic=account",
+            "--var",
+            "spec_number=1",
+            "--var",
+            "spec_slug=pilot",
+            "--var",
+            "artifact=run-release",
+            "--include",
+            "pkg/clawcmd/readme",
+            "--include",
+            "pkg/clawcmd/cook/configure-service",
+            "--include",
+            "pkg/clawcmd/ref/shared-fact",
+            "--include",
+            "pkg/clawcmd/t/account",
+            "--include",
+            "pkg/clawcmd/specs/1-pilot/artifacts/run-release",
+        )
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertTrue((out / "pkg" / "clawcmd" / "readme.md").is_file())
+        self.assertIn(
+            "## Guide",
+            (out / "pkg" / "clawcmd" / "cook" / "configure-service.md").read_text(
+                encoding="utf-8"
+            ),
+        )
+        self.assertIn(
+            "Reference for a fact",
+            (out / "pkg" / "clawcmd" / "ref" / "shared-fact.md").read_text(
+                encoding="utf-8"
+            ),
+        )
+        self.assertIn(
+            "Topic for a domain entity",
+            (out / "pkg" / "clawcmd" / "t" / "account.md").read_text(encoding="utf-8"),
+        )
+        self.assertTrue(
+            (out / "pkg" / "clawcmd" / "specs" / "1-pilot" / "artifacts" / "run-release.md").is_file()
         )
 
     def test_ag_dir_schema_materializes_project_and_run_notes(self) -> None:

@@ -2,18 +2,31 @@
 
 Use these rules after `$mem` selects a managed base and resolves its schemas.
 
+The selected base's resolved `managed_root` is authoritative for managed knowledge. Constrain candidate-path search, filename and body search, duplicate detection, materialization, updates, and deletes to that boundary. The base `root` may be a wider workspace boundary, such as a Dendron workspace whose managed knowledge lives under `notes/`.
+
 ## Project context lookup
 
 Use this mode when project or workspace instructions require `$mem` to orient source work, even when the user did not request a durable write.
 
+Run the first-class read-only lookup before manual search:
+
+```bash
+python3 ./scripts/mem.py context lookup \
+  --query "{{task intent}}" \
+  --source "{{project-or-package-path}}" \
+  --pretty
+```
+
+Repeat `--source` to supply multiple source files or directories. Routing remains strict unless `--allow-multiple` explicitly authorizes reading every candidate in an ambiguous route; this flag does not apply to writes or materialization. A missing config returns `status: missing_config` with exit code 0.
+
 1. Inspect the resolved schemas and their node descriptions.
 2. Infer one or more likely nodes from the task intent and render their concrete paths.
-3. Search existing files at those candidate paths, then nearby filenames, headings, and body text inside the selected base.
+3. Search existing files at those candidate paths, then bounded filename, heading, and body matches inside each selected managed root.
 4. Use the strongest matching knowledge as context.
-5. When managed knowledge is absent or insufficient, search the relevant project, service, or package source with scoped `rg` or `rg --files`.
+5. When managed knowledge has no match, use the command's bounded fallback search under the supplied source scopes. Follow with scoped `rg` or `rg --files` only when the result remains insufficient.
 6. Widen only after the scoped search fails; avoid broad repository-root scans unless the user needs exhaustive coverage.
 
-Schema-path inference is model judgment guided by descriptions and existing files. Do not require a dedicated ranking command. Context lookup is read-only and never authorizes materialization or edits.
+The JSON result reports the mode, status, query, normalized sources, config paths, route, selected bases and configured schemas, concrete managed and source matches, fallback use, and search statistics. Schema-path inference remains model judgment guided by descriptions and existing files. When the command cannot infer a full schema node deterministically, use the reported configured schemas and concrete matched paths instead of inventing one. Context lookup is read-only and never authorizes materialization or edits.
 
 ## Finding knowledge
 

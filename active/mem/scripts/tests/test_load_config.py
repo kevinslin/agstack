@@ -60,6 +60,130 @@ class LoadConfigTests(unittest.TestCase):
         self.assertEqual(data["bases"][0]["description"], "Durable documentation notes.")
         self.assertEqual(data["bases"][0]["path_style"], "dotted")
         self.assertEqual(data["bases"][0]["schemas"], [{"name": "tool"}])
+        self.assertEqual(data["bases"][0]["managed_root"], str(self.base.resolve()))
+
+    def test_relative_managed_root_is_resolved_beneath_base(self) -> None:
+        notes = self.base / "notes"
+        notes.mkdir()
+        self.write_config(
+            f"""
+            version: 1
+            bases:
+              - name: dendron
+                description: General knowledge base.
+                root: {self.base}
+                managed_root: notes
+                schemas:
+                  - name: tool
+            """
+        )
+
+        result = self.run_loader()
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(
+            json.loads(result.stdout)["bases"][0]["managed_root"],
+            str(notes.resolve()),
+        )
+
+    def test_managed_root_escape_is_rejected(self) -> None:
+        self.write_config(
+            f"""
+            version: 1
+            bases:
+              - name: dendron
+                description: General knowledge base.
+                root: {self.base}
+                managed_root: ../outside
+                schemas:
+                  - name: tool
+            """
+        )
+
+        result = self.run_loader()
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("managed_root must not contain '..' traversal", result.stderr)
+
+    def test_absolute_managed_root_is_rejected(self) -> None:
+        self.write_config(
+            f"""
+            version: 1
+            bases:
+              - name: dendron
+                description: General knowledge base.
+                root: {self.base}
+                managed_root: {self.root / "notes"}
+                schemas:
+                  - name: tool
+            """
+        )
+
+        result = self.run_loader()
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("managed_root must be relative to root", result.stderr)
+
+    def test_managed_root_rejects_non_escaping_parent_traversal(self) -> None:
+        (self.base / "other").mkdir()
+        self.write_config(
+            f"""
+            version: 1
+            bases:
+              - name: dendron
+                description: General knowledge base.
+                root: {self.base}
+                managed_root: notes/../other
+                schemas:
+                  - name: tool
+            """
+        )
+
+        result = self.run_loader()
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("managed_root must not contain '..' traversal", result.stderr)
+
+    def test_managed_root_symlink_escape_is_rejected(self) -> None:
+        outside = self.root / "outside"
+        outside.mkdir()
+        (self.base / "notes").symlink_to(outside, target_is_directory=True)
+        self.write_config(
+            f"""
+            version: 1
+            bases:
+              - name: dendron
+                description: General knowledge base.
+                root: {self.base}
+                managed_root: notes
+                schemas:
+                  - name: tool
+            """
+        )
+
+        result = self.run_loader()
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("managed_root resolves outside root", result.stderr)
+
+    def test_missing_managed_root_is_rejected(self) -> None:
+        self.write_config(
+            f"""
+            version: 1
+            bases:
+              - name: dendron
+                description: General knowledge base.
+                root: {self.base}
+                managed_root: missing
+                schemas:
+                  - name: tool
+            """
+        )
+
+        result = self.run_loader()
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("managed_root does not exist or is not a directory", result.stderr)
 
     def test_schema_path_is_normalized(self) -> None:
         self.write_config(
@@ -82,6 +206,82 @@ class LoadConfigTests(unittest.TestCase):
         self.assertEqual(
             data["bases"][0]["schemas"],
             [{"name": "local", "path": str(self.schema_file.resolve())}],
+        )
+
+    def test_named_schema_is_discovered_in_local_schemas_directory(self) -> None:
+        schema = self.root / "schemas" / "workspace" / "schema.yaml"
+        schema.parent.mkdir(parents=True)
+        schema.write_text("version: 1.0\nschema: {}\n", encoding="utf-8")
+        self.write_config(
+            f"""
+            version: 1
+            bases:
+              - name: docs
+                description: Workspace documentation.
+                root: {self.base}
+                schemas:
+                  - name: workspace
+            """
+        )
+
+        result = self.run_loader()
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(
+            json.loads(result.stdout)["bases"][0]["schemas"],
+            [{"name": "workspace", "path": str(schema.resolve())}],
+        )
+
+    def test_named_schema_falls_back_to_global_schemas_directory(self) -> None:
+        home = self.root / "home"
+        schema = home / ".schemas" / "shared" / "schema.yaml"
+        schema.parent.mkdir(parents=True)
+        schema.write_text("version: 1.0\nschema: {}\n", encoding="utf-8")
+        self.write_config(
+            f"""
+            version: 1
+            bases:
+              - name: docs
+                description: Workspace documentation.
+                root: {self.base}
+                schemas:
+                  - name: shared
+            """
+        )
+
+        result = self.run_loader("--home", str(home))
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(
+            json.loads(result.stdout)["bases"][0]["schemas"],
+            [{"name": "shared", "path": str(schema.resolve())}],
+        )
+
+    def test_local_schema_takes_precedence_over_global_schema(self) -> None:
+        home = self.root / "home"
+        local_schema = self.root / "schemas" / "shared" / "schema.yaml"
+        global_schema = home / ".schemas" / "shared" / "schema.yaml"
+        for schema in (local_schema, global_schema):
+            schema.parent.mkdir(parents=True)
+            schema.write_text("version: 1.0\nschema: {}\n", encoding="utf-8")
+        self.write_config(
+            f"""
+            version: 1
+            bases:
+              - name: docs
+                description: Workspace documentation.
+                root: {self.base}
+                schemas:
+                  - name: shared
+            """
+        )
+
+        result = self.run_loader("--home", str(home))
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(
+            json.loads(result.stdout)["bases"][0]["schemas"],
+            [{"name": "shared", "path": str(local_schema.resolve())}],
         )
 
     def test_scalar_schema_is_rejected(self) -> None:
@@ -339,6 +539,32 @@ class LoadConfigTests(unittest.TestCase):
         base = json.loads(result.stdout)["bases"][0]
         self.assertEqual(base["description"], "Local docs.")
         self.assertEqual(base["root"], str(local_base.resolve()))
+
+    def test_alias_collision_across_bases_is_rejected(self) -> None:
+        second_base = self.root / "second-kb"
+        second_base.mkdir()
+        self.write_config(
+            f"""
+            version: 1
+            bases:
+              - name: oai
+                aliases: [openai-monorepo]
+                description: OpenAI notes.
+                root: {self.base}
+                schemas:
+                  - name: global-core
+              - name: openai-monorepo
+                description: Conflicting notes.
+                root: {second_base}
+                schemas:
+                  - name: global-core
+            """
+        )
+
+        result = self.run_loader()
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("base name/alias collision: openai-monorepo", result.stderr)
 
 
 if __name__ == "__main__":

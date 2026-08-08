@@ -51,7 +51,19 @@ def resolve_schema_path(raw_path: str, field: str) -> Path:
     return path.resolve(strict=False)
 
 
-def normalize_schema(value: Any, field: str) -> dict[str, str]:
+def discover_schema_path(name: str, *, config_dir: Path, home: Path) -> Path | None:
+    for directory in (config_dir, *config_dir.parents):
+        candidate = directory / "schemas" / name / "schema.yaml"
+        if candidate.is_file():
+            return candidate.resolve(strict=False)
+
+    candidate = home.expanduser().resolve(strict=False) / ".schemas" / name / "schema.yaml"
+    return candidate.resolve(strict=False) if candidate.is_file() else None
+
+
+def normalize_schema(
+    value: Any, field: str, *, config_dir: Path, home: Path
+) -> dict[str, str]:
     if not isinstance(value, dict):
         fail(f"{field} must be a mapping with name and optional path")
 
@@ -69,6 +81,10 @@ def normalize_schema(value: Any, field: str) -> dict[str, str]:
         if not path.is_file():
             fail(f"{field}.path does not exist or is not a file: {path}")
         normalized["path"] = str(path)
+    else:
+        discovered = discover_schema_path(name, config_dir=config_dir, home=home)
+        if discovered is not None:
+            normalized["path"] = str(discovered)
 
     return normalized
 
@@ -129,6 +145,29 @@ def resolve_root(raw_root: str, config_dir: Path) -> Path:
     return path.resolve(strict=False)
 
 
+def resolve_managed_root(
+    raw_managed_root: Any,
+    *,
+    root: Path,
+    field: str,
+    require_roots: bool,
+) -> Path:
+    if raw_managed_root is None:
+        return root
+    value = non_empty_string(raw_managed_root, field)
+    relative = Path(value)
+    if relative.is_absolute():
+        fail(f"{field} must be relative to root")
+    if ".." in relative.parts:
+        fail(f"{field} must not contain '..' traversal")
+    managed_root = (root / relative).resolve(strict=False)
+    if not managed_root.is_relative_to(root):
+        fail(f"{field} resolves outside root: {managed_root}")
+    if require_roots and not managed_root.is_dir():
+        fail(f"{field} does not exist or is not a directory: {managed_root}")
+    return managed_root
+
+
 def infer_path_style(root: Path) -> str:
     if not root.is_dir():
         return DEFAULT_PATH_STYLE
@@ -166,7 +205,7 @@ def load_yaml(path: Path) -> Any:
         fail(f"could not read {path}: {exc}")
 
 
-def normalize_config(path: Path, require_roots: bool) -> dict[str, Any]:
+def normalize_config(path: Path, require_roots: bool, *, home: Path) -> dict[str, Any]:
     data = load_yaml(path)
     if not isinstance(data, dict):
         fail("config must be a YAML mapping")
@@ -196,23 +235,35 @@ def normalize_config(path: Path, require_roots: bool) -> dict[str, Any]:
         root = resolve_root(raw_root, path.parent)
         if require_roots and not root.is_dir():
             fail(f"{label}.root does not exist or is not a directory: {root}")
+        managed_root = resolve_managed_root(
+            base.get("managed_root"),
+            root=root,
+            field=f"{label}.managed_root",
+            require_roots=require_roots,
+        )
 
         schemas = base.get("schemas")
         if not isinstance(schemas, list) or not schemas:
             fail(f"{label}.schemas must be a non-empty list")
         normalized_schemas = [
-            normalize_schema(schema, f"{label}.schemas[{schema_index}]")
+            normalize_schema(
+                schema,
+                f"{label}.schemas[{schema_index}]",
+                config_dir=path.parent,
+                home=home,
+            )
             for schema_index, schema in enumerate(schemas)
         ]
         if "path_style" in base:
             path_style = normalize_path_style(base["path_style"], f"{label}.path_style")
         else:
-            path_style = infer_path_style(root)
+            path_style = infer_path_style(managed_root)
 
         normalized: dict[str, Any] = {
             "name": name,
             "description": description,
             "root": str(root),
+            "managed_root": str(managed_root),
             "path_style": path_style,
             "schemas": normalized_schemas,
             "config_path": str(path),
@@ -237,8 +288,8 @@ def normalize_config(path: Path, require_roots: bool) -> dict[str, Any]:
     }
 
 
-def merge_configs(paths: list[Path], require_roots: bool) -> dict[str, Any]:
-    normalized_configs = [normalize_config(path, require_roots) for path in paths]
+def merge_configs(paths: list[Path], require_roots: bool, *, home: Path) -> dict[str, Any]:
+    normalized_configs = [normalize_config(path, require_roots, home=home) for path in paths]
     merged_bases: list[dict[str, Any]] = []
     seen_names: set[str] = set()
     for config in normalized_configs:
@@ -247,6 +298,14 @@ def merge_configs(paths: list[Path], require_roots: bool) -> dict[str, Any]:
                 continue
             seen_names.add(base["name"])
             merged_bases.append(base)
+
+    label_owners: dict[str, str] = {}
+    for base in merged_bases:
+        for label in (base["name"], *base.get("aliases", [])):
+            owner = label_owners.get(label)
+            if owner is not None:
+                fail(f"base name/alias collision: {label} ({owner}, {base['name']})")
+            label_owners[label] = base["name"]
     return {
         "config_path": str(paths[0]),
         "config_paths": [str(path) for path in paths],
@@ -266,7 +325,7 @@ def load_config(
     for path in paths:
         if not path.is_file():
             fail(f"config does not exist: {path}")
-    return merge_configs(paths, require_roots)
+    return merge_configs(paths, require_roots, home=home)
 
 
 def parse_args() -> argparse.Namespace:

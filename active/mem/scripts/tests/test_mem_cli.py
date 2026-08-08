@@ -70,6 +70,46 @@ class MemCliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertTrue((self.base / "team" / "cook" / "configure-service.md").is_file())
 
+    def test_managed_materialization_uses_configured_managed_root(self) -> None:
+        notes = self.base / "notes"
+        notes.mkdir()
+        self.config.write_text(
+            textwrap.dedent(
+                f"""
+                version: 1
+                bases:
+                  - name: dendron
+                    description: General knowledge base.
+                    root: {self.base}
+                    managed_root: notes
+                    path_style: dotted
+                    schemas:
+                      - name: global-core
+                """
+            ).strip()
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = self.run_mem(
+            "schema",
+            "materialize",
+            "global-core",
+            "--config",
+            str(self.config),
+            "--base",
+            "dendron",
+            "--var",
+            "cook=configure-service",
+            "--include",
+            "cook/configure-service",
+            "--skip-existing",
+        )
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertTrue((notes / "cook.configure-service.md").is_file())
+        self.assertFalse((self.base / "cook.configure-service.md").exists())
+
     def test_explicit_out_requires_unmanaged(self) -> None:
         result = self.run_mem(
             "schema",
@@ -100,7 +140,7 @@ class MemCliTests(unittest.TestCase):
         )
 
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("resolves outside the selected base root", result.stderr)
+        self.assertIn("resolves outside the selected managed root", result.stderr)
 
     def test_managed_materialization_rejects_unconfigured_schema(self) -> None:
         result = self.run_mem(

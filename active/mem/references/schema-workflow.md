@@ -1,6 +1,12 @@
 # Schema workflow
 
-Use the bundled schema engine to inspect, validate, compose, and materialize hierarchical file layouts under `./schemas/<schema>/` relative to this reference file.
+Use the schema engine to inspect, validate, compose, and materialize hierarchical file layouts. Resolve named schemas in this order:
+
+1. The nearest ancestor `schemas/<schema>/schema.yaml`.
+2. `$HOME/.schemas/<schema>/schema.yaml`.
+3. Bundled `./schemas/<schema>/schema.yaml` relative to this reference file.
+
+A named schema in `.mem.yaml` follows the same local-then-global discovery, so project configurations stay portable without absolute schema paths.
 
 ## Available schemas
 
@@ -11,6 +17,7 @@ Use the bundled schema engine to inspect, validate, compose, and materialize hie
 - `global-core`: Reusable `cook/{{cook}}`, `ref/{{reference}}`, and `t/{{topic}}` namespaces.
 - `integ-proof`: Integration proofs with claims, scenarios, scripts, and raw artifacts.
 - `project`: Project-level specs, flows, cookbooks, and reports.
+- `pkg`: Neutral `pkg/{{package}}` wrapper composing package guides, code documentation, and specs.
 - `specs`: Numbered active specs, archives, milestones, proofs, cookbooks, and reports.
 
 ## Layout
@@ -69,14 +76,17 @@ python3 ./scripts/mem.py schema validate tool
 Managed materialization:
 
 ```bash
-python3 ./scripts/mem.py schema materialize global-core \
-  --base oai/clawcmd \
+python3 ./scripts/mem.py schema materialize pkg \
+  --base oai \
+  --var package=clawcmd \
   --var cook=change-claw-config \
-  --include cook/change-claw-config \
+  --include pkg/clawcmd/cook/change-claw-config \
   --skip-existing
 ```
 
-Managed mode resolves the output root, path style, and optional custom schema path from `.mem.yaml`. Use `--root-relative <path>` for a contained subtree. Manual `--out`, `--path-style`, and `--schema-path` overrides are rejected in managed mode.
+Managed mode resolves the managed output root, path style, and optional custom schema path from `.mem.yaml`. Use `--root-relative <path>` for a subtree contained by the resolved managed root. Manual `--out`, `--path-style`, and `--schema-path` overrides are rejected in managed mode.
+
+The `pkg` schema mounts `global-core` before `code-core`, so `global-core` owns the overlapping `ref` and `t` namespaces. It mounts `specs` last under `pkg/{{package}}/specs`. Keep `code-core` project-scoped; configure `code`, `specs`, and `global-core` separately when an aggregate base also needs `packages/{{module}}` and workspace-wide artifacts.
 
 Explicit non-memory materialization:
 
