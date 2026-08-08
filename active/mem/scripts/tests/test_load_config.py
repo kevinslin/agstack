@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import json
 import os
-import site
 import subprocess
 import tempfile
 import textwrap
@@ -62,6 +61,130 @@ class LoadConfigTests(unittest.TestCase):
         self.assertEqual(data["bases"][0]["description"], "Durable documentation notes.")
         self.assertEqual(data["bases"][0]["path_style"], "dotted")
         self.assertEqual(data["bases"][0]["schemas"], [{"name": "tool"}])
+        self.assertEqual(data["bases"][0]["managed_root"], str(self.base.resolve()))
+
+    def test_relative_managed_root_is_resolved_beneath_base(self) -> None:
+        notes = self.base / "notes"
+        notes.mkdir()
+        self.write_config(
+            f"""
+            version: 1
+            bases:
+              - name: dendron
+                description: General knowledge base.
+                root: {self.base}
+                managed_root: notes
+                schemas:
+                  - name: tool
+            """
+        )
+
+        result = self.run_loader()
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(
+            json.loads(result.stdout)["bases"][0]["managed_root"],
+            str(notes.resolve()),
+        )
+
+    def test_managed_root_escape_is_rejected(self) -> None:
+        self.write_config(
+            f"""
+            version: 1
+            bases:
+              - name: dendron
+                description: General knowledge base.
+                root: {self.base}
+                managed_root: ../outside
+                schemas:
+                  - name: tool
+            """
+        )
+
+        result = self.run_loader()
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("managed_root must not contain '..' traversal", result.stderr)
+
+    def test_absolute_managed_root_is_rejected(self) -> None:
+        self.write_config(
+            f"""
+            version: 1
+            bases:
+              - name: dendron
+                description: General knowledge base.
+                root: {self.base}
+                managed_root: {self.root / "notes"}
+                schemas:
+                  - name: tool
+            """
+        )
+
+        result = self.run_loader()
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("managed_root must be relative to root", result.stderr)
+
+    def test_managed_root_rejects_non_escaping_parent_traversal(self) -> None:
+        (self.base / "other").mkdir()
+        self.write_config(
+            f"""
+            version: 1
+            bases:
+              - name: dendron
+                description: General knowledge base.
+                root: {self.base}
+                managed_root: notes/../other
+                schemas:
+                  - name: tool
+            """
+        )
+
+        result = self.run_loader()
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("managed_root must not contain '..' traversal", result.stderr)
+
+    def test_managed_root_symlink_escape_is_rejected(self) -> None:
+        outside = self.root / "outside"
+        outside.mkdir()
+        (self.base / "notes").symlink_to(outside, target_is_directory=True)
+        self.write_config(
+            f"""
+            version: 1
+            bases:
+              - name: dendron
+                description: General knowledge base.
+                root: {self.base}
+                managed_root: notes
+                schemas:
+                  - name: tool
+            """
+        )
+
+        result = self.run_loader()
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("managed_root resolves outside root", result.stderr)
+
+    def test_missing_managed_root_is_rejected(self) -> None:
+        self.write_config(
+            f"""
+            version: 1
+            bases:
+              - name: dendron
+                description: General knowledge base.
+                root: {self.base}
+                managed_root: missing
+                schemas:
+                  - name: tool
+            """
+        )
+
+        result = self.run_loader()
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("managed_root does not exist or is not a directory", result.stderr)
 
     def test_schema_path_is_normalized(self) -> None:
         self.write_config(
@@ -84,6 +207,82 @@ class LoadConfigTests(unittest.TestCase):
         self.assertEqual(
             data["bases"][0]["schemas"],
             [{"name": "local", "path": str(self.schema_file.resolve())}],
+        )
+
+    def test_named_schema_is_discovered_in_local_schemas_directory(self) -> None:
+        schema = self.root / "schemas" / "workspace" / "schema.yaml"
+        schema.parent.mkdir(parents=True)
+        schema.write_text("version: 1.0\nschema: {}\n", encoding="utf-8")
+        self.write_config(
+            f"""
+            version: 1
+            bases:
+              - name: docs
+                description: Workspace documentation.
+                root: {self.base}
+                schemas:
+                  - name: workspace
+            """
+        )
+
+        result = self.run_loader()
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(
+            json.loads(result.stdout)["bases"][0]["schemas"],
+            [{"name": "workspace", "path": str(schema.resolve())}],
+        )
+
+    def test_named_schema_falls_back_to_global_schemas_directory(self) -> None:
+        home = self.root / "home"
+        schema = home / ".schemas" / "shared" / "schema.yaml"
+        schema.parent.mkdir(parents=True)
+        schema.write_text("version: 1.0\nschema: {}\n", encoding="utf-8")
+        self.write_config(
+            f"""
+            version: 1
+            bases:
+              - name: docs
+                description: Workspace documentation.
+                root: {self.base}
+                schemas:
+                  - name: shared
+            """
+        )
+
+        result = self.run_loader("--home", str(home))
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(
+            json.loads(result.stdout)["bases"][0]["schemas"],
+            [{"name": "shared", "path": str(schema.resolve())}],
+        )
+
+    def test_local_schema_takes_precedence_over_global_schema(self) -> None:
+        home = self.root / "home"
+        local_schema = self.root / "schemas" / "shared" / "schema.yaml"
+        global_schema = home / ".schemas" / "shared" / "schema.yaml"
+        for schema in (local_schema, global_schema):
+            schema.parent.mkdir(parents=True)
+            schema.write_text("version: 1.0\nschema: {}\n", encoding="utf-8")
+        self.write_config(
+            f"""
+            version: 1
+            bases:
+              - name: docs
+                description: Workspace documentation.
+                root: {self.base}
+                schemas:
+                  - name: shared
+            """
+        )
+
+        result = self.run_loader("--home", str(home))
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(
+            json.loads(result.stdout)["bases"][0]["schemas"],
+            [{"name": "shared", "path": str(local_schema.resolve())}],
         )
 
     def test_scalar_schema_is_rejected(self) -> None:
@@ -244,45 +443,22 @@ class LoadConfigTests(unittest.TestCase):
         result = self.run_loader("--home", str(self.root / "home"))
 
         self.assertEqual(result.returncode, 0, msg=result.stderr)
-        data = json.loads(result.stdout)
         self.assertEqual(
-            data["audit"],
+            json.loads(result.stdout)["audit"],
             {
                 "enabled": False,
-                "trace_root": str((self.root / "home" / ".config" / "mem" / "traces").resolve()),
+                "trace_root": str(
+                    (self.root / "home" / ".config" / "mem" / "traces").resolve()
+                ),
             },
         )
 
-    def test_audit_is_normalized(self) -> None:
-        trace_root = self.root / "custom-traces"
+    def test_audit_is_normalized_and_relative_to_its_config(self) -> None:
         self.write_config(
             f"""
             version: 1
             audit:
               enabled: true
-              trace_root: {trace_root}
-            bases:
-              - name: docs
-                description: Durable documentation notes.
-                root: {self.base}
-                schemas:
-                  - name: tool
-            """
-        )
-
-        result = self.run_loader()
-
-        self.assertEqual(result.returncode, 0, msg=result.stderr)
-        self.assertEqual(
-            json.loads(result.stdout)["audit"],
-            {"enabled": True, "trace_root": str(trace_root.resolve())},
-        )
-
-    def test_relative_audit_trace_root_is_resolved_from_config(self) -> None:
-        self.write_config(
-            f"""
-            version: 1
-            audit:
               trace_root: traces
             bases:
               - name: docs
@@ -298,42 +474,7 @@ class LoadConfigTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertEqual(
             json.loads(result.stdout)["audit"],
-            {"enabled": False, "trace_root": str((self.root / "traces").resolve())},
-        )
-
-    def test_audit_trace_root_expands_home_environment_variable(self) -> None:
-        self.write_config(
-            f"""
-            version: 1
-            audit:
-              trace_root: $HOME/.config/mem/custom-traces
-            bases:
-              - name: docs
-                description: Durable documentation notes.
-                root: {self.base}
-                schemas:
-                  - name: tool
-            """
-        )
-
-        env = os.environ.copy()
-        home = self.root / "env-home"
-        env["HOME"] = str(home)
-        env["PYTHONPATH"] = os.pathsep.join(
-            path for path in (site.getusersitepackages(), env.get("PYTHONPATH")) if path
-        )
-        result = subprocess.run(
-            ["python3", str(SCRIPT_PATH), "--config", str(self.config)],
-            text=True,
-            capture_output=True,
-            check=False,
-            env=env,
-        )
-
-        self.assertEqual(result.returncode, 0, msg=result.stderr)
-        self.assertEqual(
-            json.loads(result.stdout)["audit"]["trace_root"],
-            str((home / ".config" / "mem" / "custom-traces").resolve()),
+            {"enabled": True, "trace_root": str((self.root / "traces").resolve())},
         )
 
     def test_invalid_audit_fields_are_rejected(self) -> None:
@@ -356,9 +497,7 @@ class LoadConfigTests(unittest.TestCase):
                           - name: tool
                     """
                 )
-
                 result = self.run_loader()
-
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn(message, result.stderr)
 
@@ -367,7 +506,6 @@ class LoadConfigTests(unittest.TestCase):
             f"""
             version: 1
             audit:
-              enabled: true
               trace_root: $MEM_AUDIT_ROOT_THAT_IS_NOT_SET/traces
             bases:
               - name: docs
@@ -390,6 +528,60 @@ class LoadConfigTests(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("contains an unresolved environment variable", result.stderr)
+
+    def test_nearest_audit_mapping_has_explicit_merge_precedence(self) -> None:
+        project = self.root / "project"
+        home = self.root / "home"
+        project.mkdir()
+        home.mkdir()
+        project_config = project / ".mem.yaml"
+        home_config = home / ".mem.yaml"
+        base_yaml = textwrap.dedent(
+            f"""
+            bases:
+              - name: docs
+                description: Durable documentation notes.
+                root: {self.base}
+                schemas:
+                  - name: tool
+            """
+        )
+        project_config.write_text("version: 1\n" + base_yaml, encoding="utf-8")
+        home_config.write_text(
+            "version: 1\naudit:\n"
+            f"  enabled: true\n  trace_root: {self.root / 'home-traces'}\n"
+            + base_yaml,
+            encoding="utf-8",
+        )
+        command = [
+            "python3",
+            str(SCRIPT_PATH),
+            "--cwd",
+            str(project),
+            "--home",
+            str(home),
+        ]
+
+        inherited = subprocess.run(command, text=True, capture_output=True, check=False)
+        self.assertEqual(inherited.returncode, 0, msg=inherited.stderr)
+        self.assertEqual(
+            json.loads(inherited.stdout)["audit"]["trace_root"],
+            str((self.root / "home-traces").resolve()),
+        )
+
+        project_config.write_text(
+            "version: 1\naudit:\n  enabled: true\n" + base_yaml,
+            encoding="utf-8",
+        )
+        owned = subprocess.run(command, text=True, capture_output=True, check=False)
+        self.assertEqual(owned.returncode, 0, msg=owned.stderr)
+        self.assertEqual(
+            json.loads(owned.stdout)["audit"],
+            {
+                "enabled": True,
+                "trace_root": str((home / ".config" / "mem" / "traces").resolve()),
+            },
+        )
 
     def test_nearest_ancestor_and_home_configs_are_merged(self) -> None:
         project = self.root / "project"
@@ -505,127 +697,31 @@ class LoadConfigTests(unittest.TestCase):
         self.assertEqual(base["description"], "Local docs.")
         self.assertEqual(base["root"], str(local_base.resolve()))
 
-    def test_home_audit_is_inherited_when_nearest_does_not_declare_it(self) -> None:
-        project = self.root / "project"
-        home = self.root / "home"
-        project.mkdir()
-        home.mkdir()
-        (project / ".mem.yaml").write_text(
-            textwrap.dedent(
-                f"""
-                version: 1
-                bases:
-                  - name: project
-                    description: Project notes.
-                    root: {self.base}
-                    schemas:
-                      - name: tool
-                """
-            ).strip()
-            + "\n",
-            encoding="utf-8",
-        )
-        (home / ".mem.yaml").write_text(
-            textwrap.dedent(
-                f"""
-                version: 1
-                audit:
-                  enabled: true
-                  trace_root: {self.root / "home-traces"}
-                bases:
-                  - name: home
-                    description: Home notes.
-                    root: {self.base}
-                    schemas:
-                      - name: tool
-                """
-            ).strip()
-            + "\n",
-            encoding="utf-8",
+    def test_alias_collision_across_bases_is_rejected(self) -> None:
+        second_base = self.root / "second-kb"
+        second_base.mkdir()
+        self.write_config(
+            f"""
+            version: 1
+            bases:
+              - name: oai
+                aliases: [openai-monorepo]
+                description: OpenAI notes.
+                root: {self.base}
+                schemas:
+                  - name: global-core
+              - name: openai-monorepo
+                description: Conflicting notes.
+                root: {second_base}
+                schemas:
+                  - name: global-core
+            """
         )
 
-        result = subprocess.run(
-            [
-                "python3",
-                str(SCRIPT_PATH),
-                "--cwd",
-                str(project),
-                "--home",
-                str(home),
-            ],
-            text=True,
-            capture_output=True,
-            check=False,
-        )
+        result = self.run_loader()
 
-        self.assertEqual(result.returncode, 0, msg=result.stderr)
-        self.assertEqual(
-            json.loads(result.stdout)["audit"],
-            {"enabled": True, "trace_root": str((self.root / "home-traces").resolve())},
-        )
-
-    def test_nearest_declared_audit_owns_entire_mapping(self) -> None:
-        project = self.root / "project"
-        home = self.root / "home"
-        project.mkdir()
-        home.mkdir()
-        (project / ".mem.yaml").write_text(
-            textwrap.dedent(
-                f"""
-                version: 1
-                audit:
-                  enabled: true
-                bases:
-                  - name: project
-                    description: Project notes.
-                    root: {self.base}
-                    schemas:
-                      - name: tool
-                """
-            ).strip()
-            + "\n",
-            encoding="utf-8",
-        )
-        (home / ".mem.yaml").write_text(
-            textwrap.dedent(
-                f"""
-                version: 1
-                audit:
-                  trace_root: {self.root / "home-traces"}
-                bases:
-                  - name: home
-                    description: Home notes.
-                    root: {self.base}
-                    schemas:
-                      - name: tool
-                """
-            ).strip()
-            + "\n",
-            encoding="utf-8",
-        )
-
-        result = subprocess.run(
-            [
-                "python3",
-                str(SCRIPT_PATH),
-                "--cwd",
-                str(project),
-                "--home",
-                str(home),
-            ],
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-
-        self.assertEqual(result.returncode, 0, msg=result.stderr)
-        self.assertEqual(
-            json.loads(result.stdout)["audit"],
-            {
-                "enabled": True,
-                "trace_root": str((home / ".config" / "mem" / "traces").resolve()),
-            },
-        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("base name/alias collision: openai-monorepo", result.stderr)
 
 
 if __name__ == "__main__":

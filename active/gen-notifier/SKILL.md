@@ -2,7 +2,7 @@
 name: gen-notifier
 description: "Top-level agents only: send exactly one final-state desktop notification before the final report."
 dependencies: []
-version: 1.2.0
+version: 1.2.1
 ---
 
 # Task Completion Notifier
@@ -30,11 +30,13 @@ Use this skill only once per job, at the very end, after the work is finalized a
 - Do not notify before verification, cleanup, or finalization is complete
 - If the user explicitly asks for different timing, follow the user's instruction instead
 
-## Chronicle Suppression
+## Memory Summary Suppression
 
 Do not send a desktop notification for chronicle-related threads unless the user explicitly asks to override this suppression for that thread.
 
 Treat a thread as chronicle-related when the primary work is about chronicle memory/resources, chronicle rollout summaries, or communication-triage workflows sourced from chronicle data.
+
+Also suppress notifications when the primary work is a Skysight memory summary, including summaries synthesized from Skysight observations or injected Skysight memory context.
 
 This suppression overrides the default "notify for all jobs" behavior, including long-running tasks.
 
@@ -123,7 +125,7 @@ Don't send notifications for:
 - Tasks where user is actively watching
 - Cases where the job is not yet finalized
 - Subagent, delegated-worker, review-worker, or background-worker completion
-- Chronicle-related threads, unless the user explicitly requests an override
+- Chronicle-related threads or Skysight memory-summary work, unless the user explicitly requests an override
 
 ## Best Practices
 

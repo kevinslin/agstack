@@ -205,7 +205,7 @@ class ContextLookupTests(unittest.TestCase):
     def test_source_search_streams_text_and_skips_large_or_binary_bodies(self) -> None:
         self.write_config(enabled=True)
         text_match = self.source / "small.txt"
-        text_match.write_text("needle\nphrase\n", encoding="utf-8")
+        text_match.write_text("needle phrase\n", encoding="utf-8")
         (self.source / "large.dat").write_text(
             "needle phrase\n" + "x" * (2 * 1024 * 1024),
             encoding="utf-8",
@@ -293,7 +293,7 @@ class ContextLookupTests(unittest.TestCase):
 
         result = self.run_lookup("unrelated")
 
-        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(result.returncode, 2, msg=result.stderr)
         record = self.records()[0]
         self.assertEqual(record["status"], "ambiguous")
         self.assertEqual(record["hierarchy"], [])
@@ -346,7 +346,7 @@ class ContextLookupTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         output = json.loads(result.stdout)
         self.assertEqual(output["selection"]["bases"], ["other"], msg=result.stdout)
-        self.assertEqual(output["status"], "unmatched")
+        self.assertEqual(output["status"], "no_matches")
         record = self.records()[0]
         self.assertEqual(record["selection"]["bases"], ["other"])
         self.assertIn("source:second-source", record["selection"]["reasons"])
@@ -366,15 +366,12 @@ class ContextLookupTests(unittest.TestCase):
         )
 
         self.assertEqual(result.returncode, 2)
-        self.assertIn("search scope does not exist", result.stderr)
+        self.assertIn("source path does not exist", result.stderr)
         record = self.records()[0]
         self.assertEqual(record["status"], "error")
-        self.assertEqual(record["operations"][-1]["name"], "search_source")
+        self.assertEqual([operation["name"] for operation in record["operations"]], ["load_config"])
         self.assertEqual(record["fallback"]["paths"], [str(self.source.resolve())])
-        self.assertEqual(
-            [entry["path"] for entry in record["hierarchy"] if entry["schema"] == "source"],
-            [str(self.source.resolve())],
-        )
+        self.assertEqual(record["hierarchy"], [])
 
     def test_missing_or_unsafe_session_fails_before_search(self) -> None:
         self.write_config(enabled=True)

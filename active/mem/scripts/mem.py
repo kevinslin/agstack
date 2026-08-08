@@ -70,16 +70,16 @@ def select_base(config: dict[str, object], target: str) -> dict[str, object]:
     return matches[0]
 
 
-def managed_destination(root: str, root_relative: str | None) -> Path:
-    base_root = Path(root).expanduser().resolve(strict=False)
+def managed_destination(managed_root: str, root_relative: str | None) -> Path:
+    base_root = Path(managed_root).expanduser().resolve(strict=False)
     if root_relative is None:
         return base_root
     relative = Path(root_relative)
     if relative.is_absolute():
-        fail("--root-relative must be relative to the selected base root")
+        fail("--root-relative must be relative to the selected managed root")
     destination = (base_root / relative).resolve(strict=False)
     if not destination.is_relative_to(base_root):
-        fail("--root-relative resolves outside the selected base root")
+        fail("--root-relative resolves outside the selected managed root")
     return destination
 
 
@@ -142,7 +142,7 @@ def prepare_schema_args(args: list[str]) -> list[str]:
                 f"schema {schema_name!r} is not configured for base {base_name!r}; "
                 f"configured schemas: {configured_names}"
             )
-        destination = managed_destination(str(base["root"]), root_relative)
+        destination = managed_destination(str(base["managed_root"]), root_relative)
         if "path" in configured_schema:
             prepared.extend(["--schema-path", str(configured_schema["path"])])
         prepared.extend(
@@ -169,6 +169,7 @@ def prepare_schema_args(args: list[str]) -> list[str]:
 def usage() -> str:
     return """usage:
   mem.py config show [load_config options]
+  mem.py context lookup --query <text> [context options]
   mem.py route [route options]
   mem.py context lookup [context options]
   mem.py schema <list|show|describe|validate|materialize> [schema options]
@@ -192,13 +193,25 @@ def main() -> None:
         if not command_args or command_args[0] != "show":
             fail("config requires the 'show' subcommand")
         run_python("load_config.py", command_args[1:])
-    if command == "route":
-        run_python("route.py", command_args)
     if command == "context":
+        if not command_args or command_args[0] != "lookup":
+            fail("context requires the 'lookup' subcommand")
         from context import main as run_context
 
-        run_context(command_args)
+        context_args = command_args[1:]
+        run_context(
+            context_args,
+            command_argv=[
+                sys.executable,
+                str(Path(__file__).resolve()),
+                "context",
+                "lookup",
+                *context_args,
+            ],
+        )
         return
+    if command == "route":
+        run_python("route.py", command_args)
     if command == "schema":
         run_schema(prepare_schema_args(command_args))
     fail(f"unknown command: {command}")

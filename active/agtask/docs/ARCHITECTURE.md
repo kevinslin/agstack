@@ -12,10 +12,13 @@ The system has five cooperating parts:
 
 - The [skill workflow](../skills/agtask/SKILL.md) designates the invoking thread
   for main kind or selects clean/fork creation for child kind, resolves
-  deterministic kind and project inputs through `resolve-create`, preserves a
-  pre-creation logical ID, binds it to the real Codex session ID, and verifies
-  tracking.
-- The [bundled CLI](../skills/agtask/scripts/agtask) owns schema management, thread state, rollout persistence, command-hook handling and configuration, and layered `.agtask.json` discovery.
+  deterministic kind, project, and inherited sidebar-section inputs through
+  `resolve-create`, preserves a pre-creation logical ID, binds it to the real
+  Codex session ID, and verifies tracking.
+- The [bundled CLI](../skills/agtask/scripts/agtask) owns schema management,
+  thread state, rollout persistence, the database-adjacent sidebar-section
+  cache, command-hook handling and configuration, and layered `.agtask.json`
+  discovery.
 - The dashboard command owns a transient, tokenized HTTP server on numeric loopback. It serves an in-memory HTML/CSS/JavaScript shell and fresh ledger snapshots; the browser owns rendering and control state, with one guarded manual-status mutation.
 - Codex command hooks map platform lifecycle events into structured rollouts and restore task context on `SessionStart`.
 - The Codex orchestration layer consumes structured lifecycle prompt hooks returned by the CLI and decides when and how to deliver them.
@@ -32,6 +35,7 @@ flowchart LR
     CLI --> Prompts["Structured hook_prompts"]
     Prompts --> Skill
     CLI --> DB[("~/.llm/agtask/ledger.db")]
+    CLI --> Sections[("~/.llm/agtask/sidebar-sections.json")]
 
     Source["Canonical repo source"] --> Installer["install-skill"]
     Installer --> Skillz["scoped skillz sync"]
@@ -45,8 +49,9 @@ The ledger is a purpose-built projection. Full conversation content remains in n
 ### Skill workflow
 
 The skill owns orchestration that requires Codex app APIs: deriving the task
-title and exact initial prompt, resolving the caller ID and CWD, directly
-pinning and titling main tasks, creating child threads, composing returned
+title and exact initial prompt, resolving the caller ID and CWD, discovering
+the caller's custom sidebar section, directly placing and titling main tasks,
+creating child threads, composing returned
 `OnCreate` data and the resolver's exact bootstrap trailer with child task
 prompts, sending child first turns, publishing deep links, and verifying
 persisted results. It passes the byte-identical creation prompt as
@@ -55,6 +60,16 @@ of the stable description. It also passes the resolved kind and project on
 every registration. Child kind passes the caller session as
 `--parent-session-id`,
 independent of clean or fork mode.
+
+For pin-enabled tasks, orchestration first checks the invoking or root-main
+session's `section-cache` entry. A tracked child's own observed custom section
+takes precedence. On a missing, stale, or unsafe entry, it calls `list_threads`
+once and matches `sections[].itemKeys` using the exact session and `local` or
+`remote` host category. Matching custom sections are inherited; built-in
+sections and absent custom membership resolve to `pinned`. Store only verified
+observations, even when the parent has only the legacy pin tool: the child may
+receive the newer section tool. `nopin` skips discovery, cache access, and app
+placement.
 
 The direct add route reads the invoking Codex task itself. It pages
 `read_thread` to the oldest page with outputs omitted, preserves the current
@@ -92,12 +107,15 @@ event.
 Successful `add --json`, `register --json`, and `record-turn --json` responses
 are the verification snapshots; normal add or creation does not reopen the
 ledger or inspect child completion. Ambiguous command outcomes permit bounded
-error-path reads and retries. For local and queued child tasks, title and pin
-assignment are
+error-path reads and retries. For local and queued child tasks, title and
+sidebar placement are
 deferred through the final bootstrap trailer and run inside the materialized
 child. For a remote child with a real Codex session ID (`threadId` in the
-creation result), the parent also applies both idempotent actions as a fallback
-for a remote host without the hook. Neither path downgrades verified tracking.
+creation result), or a local child whose copied helper session must be
+rebound, the parent also applies both idempotent actions as a fallback. Each
+placement prefers `move_thread_to_sidebar_section` and uses legacy
+`set_thread_pinned` only when the move tool is unavailable. Neither path
+downgrades verified tracking.
 
 ### Bundled CLI
 
@@ -106,6 +124,7 @@ The Python-standard-library CLI is the only database writer. Its commands group 
 | Responsibility | Commands |
 | --- | --- |
 | Creation inputs | `resolve-create` |
+| Sidebar observation cache | `section-cache get`, `section-cache set`, `section-cache invalidate` |
 | Configuration | `config` |
 | Schema and queries | `init`, `show`, `list`, `search` |
 | Local HTML dashboard and guarded status picker | `dashboard` |
@@ -114,6 +133,23 @@ The Python-standard-library CLI is the only database writer. Its commands group 
 | Codex integration | `hook`, `install-hooks`, `uninstall-hooks` |
 
 Explicit commands fail with actionable errors. The `hook` entrypoint fails open so ledger bookkeeping never interrupts Codex work.
+
+### Sidebar-section cache boundary
+
+`sidebar-sections.json` is a nonauthoritative JSON cache beside the configured
+SQLite ledger; `database_path().parent` makes an `AGTASK_DB` override relocate
+both together. Stable real Codex session IDs key independent observations of
+`host_id`, `section_id`, optional display name, and CLI-generated
+`observed_at`. Entries expire after five minutes and do not become SQLite rows
+or modify the ledger schema.
+
+The CLI owns cache validation, a private directory, owner-only cache/lock
+files, interprocess serialization, and same-directory atomic replacement.
+Malformed JSON, unsupported versions, unsafe permissions, symlinks, and
+untrusted ownership are never accepted as section authority. Invalidating a
+deleted custom section removes only that source session's entry and permits
+one fresh sidebar lookup and placement retry; other session entries remain
+intact.
 
 ### Rename boundary
 
@@ -389,8 +425,11 @@ This keeps message text display-oriented while event keys provide idempotency.
 `bootstrap_trailer`. Version 1 remains the action-only `pin: bool` plus
 one-line `title: str` envelope. Child creation emits version 2, which also
 requires a canonical UUIDv4 creation `id` plus nonempty `parent_session_id` and
-`project` strings. Each resolver call creates a new ID; orchestration reuses it
-for the whole creation attempt.
+`project` strings. A pin-enabled child can additionally include a strictly
+validated `section_id` supplied by `resolve-create --section-id`; older
+envelopes omit it and resolve to `pinned`, while `pin=false` omits placement
+metadata. Each resolver call creates a new ID; orchestration reuses it for the
+whole creation attempt.
 For the default clean-child path, opt-in `--task` and `--project-id` inputs
 also return a versioned `creation_plan` with byte-exact prompt assembly and
 directly executable `create_thread` arguments. Calls without `--task` retain
@@ -428,12 +467,18 @@ commits.
 The deterministic hook only validates the envelope, strips it from summary
 input, and renders allowlisted model context through the structured
 `hookSpecificOutput.additionalContext` field. For `pin=true`, that context tells
-the child model to invoke `codex_app__set_thread_pinned` on its own session ID.
+the child model to invoke `codex_app__move_thread_to_sidebar_section` with its
+own real session ID and validated target `sectionId` when available. Only when
+that tool is unavailable does it fall back to
+`codex_app__set_thread_pinned`; legacy global pinning cannot preserve a
+requested custom section and is reported as degraded placement.
 The title handler independently tells it to invoke
 `codex_app__set_thread_title` with the resolved title treated only as tool data.
 Those Codex app calls are explicitly model-mediated; they are not shell
-execution by the hook. Setting pinned state to true or the same title is
-idempotent. The child reports success, tool unavailability, or the exact app
+execution by the hook. Repeating the same section move, setting pinned state to
+true, or applying the same title is idempotent. A successful custom-section
+move is never followed by global pinning. The child reports success,
+tool unavailability, legacy degradation, or the exact app
 error for each action and continues the actual task. Malformed envelopes and
 action failures fail open.
 
@@ -449,10 +494,12 @@ timing, and UUID ordering are never used to choose the canonical session.
 Remote creation adds a parent-side reliability path. When the selected or
 returned host is non-local and creation returns a real Codex session ID
 (`threadId` in the creation result), the caller directly applies the resolved
-title and requested pin state through the Codex app before returning. This does
-not replace or suppress the child hook; the actions may safely converge because
-both setters are idempotent. Queued client/worktree IDs cannot use the fallback
-because they are not real Codex session IDs.
+title and resolved sidebar placement through the Codex app before returning,
+preferring section moves over legacy pinning. The same fallback repairs a
+local authoritative-session rebound whose copied helper consumed the hook
+context. This does not replace or suppress the child hook; matching moves and
+title assignments converge idempotently. Queued client/worktree IDs cannot use
+the fallback because they are not real Codex session IDs.
 
 ## Hook boundary mapping
 

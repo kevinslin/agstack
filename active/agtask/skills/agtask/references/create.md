@@ -18,7 +18,12 @@ reports a partial or conflicting result.
    host is local or remote. When multiple projects match, prefer the one on the
    invoking task's current host. Ask for the target only when there is no exact
    match or same-host preference does not resolve an ambiguity.
-4. Run the bundled resolver once:
+4. Unless pinning is explicitly disabled, resolve the invoking task's sidebar
+   section as described below. Do this even when the parent exposes only the
+   legacy pinning tool: the child may expose the newer section-move tool.
+   Preserve the stable custom section ID, or use `pinned` when the invoking
+   task is not in a custom section.
+5. Run the bundled resolver once:
 
 ```text
 python3 ./scripts/agtask resolve-create \
@@ -33,10 +38,13 @@ python3 ./scripts/agtask resolve-create \
   [--model <model-id|inherit>] \
   [--thinking <level|inherit>] \
   [--pin <true|false> | --nopin] \
+  [--section-id <resolved-section-id>] \
   --json
 ```
 
-5. Validate that `kind=child`, `mode=clean`, `worktree=false`,
+   Pass `--section-id` only for pin-enabled children. Never append a section
+   instruction to, or otherwise reconstruct, the returned creation prompt.
+6. Validate that `kind=child`, `mode=clean`, `worktree=false`,
    `environment.type=local`, and `creation_plan.next_tool.name=create_thread`.
    Here `environment.type=local` means use the saved project's existing
    checkout rather than a new worktree; it does not require the saved project
@@ -45,7 +53,7 @@ python3 ./scripts/agtask resolve-create \
    tool. Call `create_thread` once
    with `creation_plan.next_tool.arguments` unchanged. Do not reconstruct,
    reformat, or append to `creation_plan.next_tool.arguments.prompt`.
-6. When creation returns `threadId`, immediately publish:
+7. When creation returns `threadId`, immediately publish:
 
 ```text
 Task: [<title>](codex://threads/<threadId>) — created
@@ -57,7 +65,7 @@ Task: [<title>](codex://threads/<threadId>) — created
    and stop. The prompt already contains the version-2 bootstrap trailer, so
    the materialized child's first hook self-registers it and performs deferred
    title and pin actions.
-7. For a real `threadId`, reconcile the hook idempotently without
+8. For a real `threadId`, reconcile the hook idempotently without
    rereading successful writes:
 
 ```text
@@ -87,16 +95,54 @@ python3 ./scripts/agtask record-turn \
    the race; these writes must converge with it. If either result is ambiguous,
    conflicts, or contains `session_rebound_from`, follow the advanced recovery
    workflow.
-8. Classify the child host from the creation result's `hostId`, falling back to
+9. Classify the child host from the creation result's `hostId`, falling back to
    the selected project's `hostId`. For a remote child with a real `threadId`,
-   set the resolved title from the parent and set `pinned=true` when requested.
-   These idempotent parent actions cover remote hosts without the agtask hook;
-   do not wait for the child. Keep title and pin deferred for a local child.
-9. Return the deep link, logical task `id`, session or queued ID, parent session
+   set the resolved title from the parent and, when pinning is enabled, prefer
+   `move_thread_to_sidebar_section({threadId, sectionId})`; use
+   `set_thread_pinned({threadId, pinned: true})` only when the section tool is
+   unavailable. Report legacy-only custom-section placement as global-pinning
+   fallback. These idempotent parent actions cover remote hosts without the
+   agtask hook; do not wait for the child. Keep title and section placement
+   deferred for a local child unless authoritative-session recovery applies.
+10. Return the deep link, logical task `id`, session or queued ID, parent session
    ID, project, mode, worktree, model, verified tracking state, and initial
    rollout result. Describe local title and pin actions as deferred to the
-   child. Report remote title and pin actions as direct parent fallback
-   results.
+   child. Report the resolved section and remote title/placement actions as
+   direct parent fallback results.
+
+## Resolve sidebar placement
+
+For a pin-enabled child, identify the invoking session and host. A tracked main
+uses its own session ID. A tracked child inherits its own observed custom
+section when present; otherwise follow `parent_session_id` to the root main.
+
+1. Run `./scripts/agtask section-cache get --session-id <session-id> --json`.
+   Reuse `entry.section_id` on `state=hit`; do not call `list_threads`.
+2. On `miss`, `stale`, malformed cache data, or an untrusted entry, call
+   `list_threads` once. Match `sections[].itemKeys` against the exact session
+   and host category; keys use `codex:thread:local:<session-id>` or
+   `codex:thread:remote:<session-id>`, even when the actual host ID is more
+   specific.
+3. Inherit a matching custom `sectionId`. Built-in `pinned`, `threads`, and
+   `chats`, or no matching custom section, resolve to `pinned`. Persist only a
+   successfully observed result:
+
+```text
+./scripts/agtask section-cache set \
+  --session-id <session-id> --host-id <host-id> \
+  --section-id <resolved-section-id> \
+  [--section-name <display-name>] --json
+```
+
+4. If `list_threads` is unavailable, fails, or omits section data, report
+   discovery unavailable and use `pinned` without caching that fallback.
+
+The cache is `sidebar-sections.json` beside the configured ledger; entries
+expire after five minutes. If a custom-section move fails because the section
+no longer exists, run `section-cache invalidate --session-id <session-id>
+--json`, refresh that session once, and retry placement once. Never move to an
+unrelated section or loop. Explicit `nopin`/`pin=false` skips section lookup,
+cache reads and writes, section moves, and legacy pinning entirely.
 
 ## Resolution rules
 

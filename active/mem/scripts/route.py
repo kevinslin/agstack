@@ -8,7 +8,6 @@ import fnmatch
 import json
 import re
 import sys
-from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -74,25 +73,15 @@ def description_signals(description: str) -> list[str]:
     return signals
 
 
-def score_base(
+def score_query_signals(
     base: dict[str, Any],
     *,
     query: str,
-    cwd: Path,
-    source: str | Sequence[str] | None,
     artifact_kind: str | None,
-    target: str | None,
 ) -> tuple[int, list[str]]:
     score = 0
     reasons: list[str] = []
     aliases = base.get("aliases", [])
-
-    if target:
-        if target == base["name"]:
-            return 10_000, ["explicit base name"]
-        if target in aliases:
-            return 9_000, [f"explicit alias:{target}"]
-        return -10_000, []
 
     for label in [base["name"], *aliases]:
         if phrase_matches(query, label):
@@ -115,65 +104,61 @@ def score_base(
                 score += 30
                 reasons.append(f"artifact:{configured_kind}")
 
-    cwd_string = str(cwd.expanduser().resolve(strict=False))
-    for pattern in match.get("cwd_globs", []):
-        if fnmatch.fnmatch(cwd_string, pattern):
-            score += 70
-            reasons.append(f"cwd:{pattern}")
-
-    if isinstance(source, str):
-        sources = [source]
-    else:
-        sources = list(source or [])
-    if sources:
-        for pattern in match.get("source_globs", []):
-            if any(fnmatch.fnmatch(candidate, pattern) for candidate in sources):
-                score += 70
-                reasons.append(f"source:{pattern}")
+    if phrase_matches(query, base["description"]):
+        score += 80
+        reasons.append(f"description:{base['description'].lower()}")
 
     for signal in description_signals(base["description"]):
         if phrase_matches(query, signal):
             score += 80 if " " in signal else 3
             reasons.append(f"description:{signal}")
 
-    if cwd_string == base["root"]:
-        score += 60
-        reasons.append("cwd equals base root")
-
     return score, reasons
 
 
-def route(
-    config: dict[str, Any],
-    *,
-    query: str,
-    cwd: Path,
-    source: str | Sequence[str] | None = None,
-    artifact_kind: str | None = None,
-    target: str | None = None,
+def path_matches(value: str, pattern: str) -> bool:
+    resolved = str(Path(value).expanduser().resolve(strict=False))
+    return fnmatch.fnmatch(value, pattern) or fnmatch.fnmatch(resolved, pattern)
+
+
+def ownership_reasons(
+    base: dict[str, Any], *, cwd: Path, source: str | list[str] | None
+) -> list[str]:
+    reasons: list[str] = []
+    match = base.get("match", {})
+    cwd_string = str(cwd.expanduser().resolve(strict=False))
+
+    for pattern in match.get("cwd_globs", []):
+        if path_matches(cwd_string, pattern):
+            reasons.append(f"cwd:{pattern}")
+    if cwd_string in {base["root"], base.get("managed_root", base["root"])}:
+        reasons.append("cwd equals base root")
+
+    sources = [source] if isinstance(source, str) else (source or [])
+    for source_path in sources:
+        for pattern in match.get("source_globs", []):
+            if path_matches(source_path, pattern):
+                reasons.append(f"source:{pattern}")
+
+    return reasons
+
+
+def ranked_candidate(
+    base: dict[str, Any], *, score: int, reasons: list[str]
 ) -> dict[str, Any]:
-    ranked: list[dict[str, Any]] = []
-    for base in config["bases"]:
-        score, reasons = score_base(
-            base,
-            query=query,
-            cwd=cwd,
-            source=source,
-            artifact_kind=artifact_kind,
-            target=target,
-        )
-        if score >= 0:
-            ranked.append(
-                {
-                    "name": base["name"],
-                    "root": base["root"],
-                    "config_path": base["config_path"],
-                    "score": score,
-                    "priority": int(base.get("priority", 0)),
-                    "reasons": reasons,
-                }
-            )
-    ranked.sort(
+    return {
+        "name": base["name"],
+        "root": base["root"],
+        "managed_root": base.get("managed_root", base["root"]),
+        "config_path": base["config_path"],
+        "score": score,
+        "priority": int(base.get("priority", 0)),
+        "reasons": reasons,
+    }
+
+
+def sort_candidates(candidates: list[dict[str, Any]]) -> None:
+    candidates.sort(
         key=lambda candidate: (
             -candidate["score"],
             -candidate["priority"],
@@ -181,8 +166,75 @@ def route(
         )
     )
 
+
+def route(
+    config: dict[str, Any],
+    *,
+    query: str,
+    cwd: Path,
+    source: str | list[str] | None = None,
+    artifact_kind: str | None = None,
+    target: str | None = None,
+) -> dict[str, Any]:
+    if target:
+        for base in config["bases"]:
+            aliases = base.get("aliases", [])
+            if target == base["name"]:
+                candidate = ranked_candidate(base, score=10_000, reasons=["explicit base name"])
+                return {
+                    "status": "selected",
+                    "tier": "explicit",
+                    "selected": candidate,
+                    "candidates": [candidate],
+                    "config_paths": config["config_paths"],
+                }
+            if target in aliases:
+                candidate = ranked_candidate(
+                    base, score=9_000, reasons=[f"explicit alias:{target}"]
+                )
+                return {
+                    "status": "selected",
+                    "tier": "explicit",
+                    "selected": candidate,
+                    "candidates": [candidate],
+                    "config_paths": config["config_paths"],
+                }
+        return {
+            "status": "no_match",
+            "tier": "explicit",
+            "selected": None,
+            "candidates": [],
+            "config_paths": config["config_paths"],
+        }
+
+    owned: list[dict[str, Any]] = []
+    for base in config["bases"]:
+        reasons = ownership_reasons(base, cwd=cwd, source=source)
+        if reasons:
+            owned.append(ranked_candidate(base, score=len(reasons), reasons=reasons))
+    if owned:
+        sort_candidates(owned)
+        return {
+            "status": "selected" if len(owned) == 1 else "ambiguous",
+            "tier": "ownership",
+            "selected": owned[0] if len(owned) == 1 else None,
+            "candidates": owned[:5],
+            "config_paths": config["config_paths"],
+        }
+
+    ranked: list[dict[str, Any]] = []
+    for base in config["bases"]:
+        score, reasons = score_query_signals(
+            base,
+            query=query,
+            artifact_kind=artifact_kind,
+        )
+        if score >= 0:
+            ranked.append(ranked_candidate(base, score=score, reasons=reasons))
+    sort_candidates(ranked)
+
     if not ranked:
-        return {"status": "no_match", "selected": None, "candidates": []}
+        return {"status": "no_match", "tier": "query", "selected": None, "candidates": []}
 
     top = ranked[0]
     if len(ranked) == 1:
@@ -200,6 +252,7 @@ def route(
         )
     return {
         "status": "selected" if decisive else "ambiguous",
+        "tier": "query",
         "selected": top if decisive else None,
         "candidates": ranked[:5],
         "config_paths": config["config_paths"],
@@ -210,7 +263,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--query", required=True, help="User intent or durable artifact request.")
     parser.add_argument("--target", help="Explicit base name or alias.")
-    parser.add_argument("--source", help="Relevant source path for source_globs matching.")
+    parser.add_argument(
+        "--source",
+        action="append",
+        help="Relevant source path for source_globs matching; repeat for multiple scopes.",
+    )
     parser.add_argument("--artifact-kind", help="Explicit artifact kind such as guide or runbook.")
     parser.add_argument("--config", type=Path, help="Use only this .mem.yaml.")
     parser.add_argument("--cwd", type=Path, default=Path.cwd())

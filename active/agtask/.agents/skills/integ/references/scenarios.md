@@ -73,21 +73,23 @@ user's real configuration:
 
 ## bootstrap-arguments-v1
 
-Scenario version: 3
+Scenario version: 4
 
 Before the live lifecycle, invoke the installed hook against untracked fixture
 IDs so no ledger state can authorize behavior:
 
 1. Require an exact final canonical `{"pin":true,"title":"..."}` envelope at
    `UserPromptSubmit` to render a model-mediated
-   `codex_app__set_thread_pinned` request and an independent
-   `codex_app__set_thread_title` request containing the real hook session ID and
-   exact resolved title.
+   `codex_app__move_thread_to_sidebar_section` request targeting section
+   `pinned`, with `codex_app__set_thread_pinned` as the legacy fallback, plus
+   an independent `codex_app__set_thread_title` request containing the real
+   hook session ID and exact resolved title.
 2. Require the hook to return those requests through structured
    `hookSpecificOutput.additionalContext`, and require both rendered contracts to
    state idempotency, treat the title only
    as tool data, surface success or exact failure, and continue the task.
-3. Require `pin=false` to suppress only the pin action while retaining rename.
+3. Require `pin=false` to suppress both section placement and legacy pinning
+   while retaining rename.
 4. Require wrong pin/title types, an empty title, duplicate or unknown keys,
    noncanonical JSON, unsupported versions, lookalike prose, non-final
    envelopes, and `SessionStart` payloads to render no bootstrap action.
@@ -96,15 +98,20 @@ IDs so no ledger state can authorize behavior:
 
 ## creation-bootstrap-v2
 
-Scenario version: 3
+Scenario version: 4
 
 Before parent-side reconciliation, run a real first turn against a materialized
 Codex child and project its exact `UserPromptSubmit` payload through the source
 hook adapter:
 
 1. Require the canonical version-2 trailer to contain a pre-generated logical
-   creation `id`, the exact parent session ID, project, title, and pin value.
-   Version 1 remains action-only and cannot register an untracked task.
+   creation `id`, the exact parent session ID, project, title, pin value, and
+   optional stable `section_id`. Require the hook to prefer section placement
+   with that exact destination while retaining legacy pin fallback. Require
+   `section-cache` to report an initial miss, store the exact custom section
+   alongside the proof-local ledger, and return that section on a cache hit.
+   Version 1 remains action-only and cannot register an untracked task; older
+   version-2 trailers without `section_id` remain valid.
 2. Require the hook to initialize the isolated ledger when necessary and, in
    one transaction, bind that logical ID to the real child `session_id`, append
    exactly one `thread.created` rollout, and append the normalized first user

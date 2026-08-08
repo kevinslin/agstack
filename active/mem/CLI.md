@@ -1,160 +1,260 @@
 # mem CLI reference
 
-This manual documents the unified `mem.py` entry point, including read-only
-project-context lookup and its optional conversation-scoped audit trace.
+Use `./scripts/mem.py` to inspect memory configuration, explain routing, perform bounded read-only lookup, inspect schemas, and materialize schema nodes.
 
-## Contents
-
-- [Invocation](#invocation)
-- [`config show`](#config-show)
-- [`route`](#route)
-- [`context lookup`](#context-lookup)
-- [Audit configuration](#audit-configuration)
-- [Audit trace lifecycle](#audit-trace-lifecycle)
-- [Audit JSON Lines fields](#audit-json-lines-fields)
-- [Deduplication and timing](#deduplication-and-timing)
-- [Security and errors](#security-and-errors)
-- [`schema`](#schema)
-
-## Invocation
-
-Run from the directory containing `SKILL.md`:
+Run commands from the directory containing `SKILL.md`:
 
 ```bash
-python3 ./scripts/mem.py <command> [options]
+python3 ./scripts/mem.py --help
 ```
 
-Commands write structured JSON to standard output where applicable. Validation
-and runtime failures write an `error:` message to standard error and exit
-nonzero. `--pretty` changes JSON formatting only.
+Python 3 and PyYAML are required for configuration, routing, and context commands. Schema commands execute `./scripts/schema.py` through `uv`, which installs the dependencies declared in that script.
+
+## Command summary
+
+```text
+mem.py config show
+mem.py context lookup
+mem.py route
+mem.py schema list
+mem.py schema show
+mem.py schema describe
+mem.py schema validate
+mem.py schema materialize
+```
+
+All JSON commands emit compact JSON by default. Add `--pretty` for indented output.
+
+## Configuration discovery
+
+Unless `--config` is present, commands load:
+
+1. the nearest `.mem.yaml` at or above `--cwd`;
+2. `.mem.yaml` under `--home`.
+
+The nearest configuration wins for duplicate base names. Unique home bases remain available. Base names and aliases must be globally unique after merging.
+
+See [Config in the README](./README.md#config) for every `.mem.yaml` field, default, routing signal, and validation rule.
+
+Common configuration options:
+
+- `--config PATH`: load only this file; do not merge discovered files.
+- `--cwd PATH`: directory used to find the nearest ancestor config; defaults to the current directory.
+- `--home PATH`: directory used for the home config; defaults to the current user's home.
+- `--pretty`: indent JSON output.
 
 ## `config show`
 
-Print the merged, validated, normalized configuration:
+Load, validate, merge, and print normalized configuration.
 
 ```bash
-python3 ./scripts/mem.py config show [options]
+python3 ./scripts/mem.py config show [OPTIONS]
 ```
 
 Options:
 
-| Option | Meaning |
-| --- | --- |
-| `--config PATH` | Load only `PATH`; do not merge nearest and home configs. |
-| `--cwd PATH` | Find the nearest ancestor `.mem.yaml` from this directory. Defaults to the current directory. |
-| `--home PATH` | Use this home directory when locating the home `.mem.yaml`. |
-| `--allow-missing-roots` | Normalize without requiring configured base roots to exist. |
-| `--pretty` | Indent JSON output. |
+- `--config PATH`: load only the named configuration.
+- `--cwd PATH`: override ancestor-config discovery.
+- `--home PATH`: override home-config discovery.
+- `--allow-missing-roots`: validate and normalize without requiring `root` and `managed_root` directories to exist. Custom schema paths must still exist.
+- `--pretty`: indent JSON output.
 
-Without `--config`, `mem` loads the nearest ancestor `.mem.yaml` first and
-`$HOME/.mem.yaml` second. Same-named bases from the nearer file take precedence;
-unique home bases remain available. The result contains:
+The result includes `config_path`, ordered `config_paths`, `version`, normalized `bases`, and the effective `audit` mapping. Each base includes absolute `root`, absolute `managed_root`, resolved `path_style`, normalized schemas, and its owning `config_path`. `audit.enabled` defaults to `false`, and `audit.trace_root` defaults to `$HOME/.config/mem/traces`.
 
-```json
-{
-  "config_path": "/absolute/project/.mem.yaml",
-  "config_paths": [
-    "/absolute/project/.mem.yaml",
-    "/absolute/home/.mem.yaml"
-  ],
-  "version": 1,
-  "audit": {
-    "enabled": true,
-    "trace_root": "/absolute/home/.config/mem/traces"
-  },
-  "bases": []
-}
+```bash
+python3 ./scripts/mem.py config show --pretty
+python3 ./scripts/mem.py config show --config /tmp/example.mem.yaml --allow-missing-roots --pretty
 ```
 
-`bases` contains normalized roots, path styles, schemas, and optional routing
-metadata. `audit` is always the effective normalized object: `enabled` defaults
-to `false`, and `trace_root` defaults to `$HOME/.config/mem/traces`.
-
-Audit settings are inherited as a whole mapping. If the nearest configuration
-declares `audit`, that mapping wins and its omitted fields receive defaults; its
-missing fields are not filled from the home audit mapping. If the nearest file
-omits `audit`, the home mapping is used.
+The command exits nonzero and writes `error: ...` to stderr for missing files, invalid YAML, invalid fields, missing roots, unsafe managed roots, missing custom schema files, and name or alias collisions.
 
 ## `route`
 
-Select a configured base and explain the decision without searching it:
+Select a configured base and explain the routing decision without reading or writing knowledge files.
 
 ```bash
-python3 ./scripts/mem.py route --query QUERY [options]
+python3 ./scripts/mem.py route --query TEXT [OPTIONS]
 ```
 
 Options:
 
-| Option | Meaning |
-| --- | --- |
-| `--query TEXT` | Required user intent or artifact request. |
-| `--target NAME` | Explicit base name or alias. |
-| `--source PATH` | Source path considered by configured `source_globs`. |
-| `--artifact-kind KIND` | Explicit kind such as `guide`, `reference`, or `runbook`. |
-| `--config PATH` | Load only this configuration. |
-| `--cwd PATH` | Working directory used for lookup and `cwd_globs`. |
-| `--home PATH` | Home directory used for configuration discovery. |
-| `--allow-missing-roots` | Do not require configured roots to exist. |
-| `--pretty` | Indent JSON output. |
+- `--query TEXT`: required user intent or durable artifact request.
+- `--target NAME_OR_ALIAS`: select an explicit base or alias.
+- `--source PATH`: source path used for ownership matching; repeat for multiple scopes. The route command matches strings and does not require the paths to exist.
+- `--artifact-kind KIND`: explicit artifact signal such as `guide` or `runbook`.
+- `--config PATH`, `--cwd PATH`, `--home PATH`: configuration controls.
+- `--allow-missing-roots`: route against valid configuration whose base roots do not yet exist.
+- `--pretty`: indent JSON output.
 
-The result status is `selected`, `ambiguous`, or `no_match`. An explicit base
-name or alias takes precedence over scored routing.
+Routing tiers are strict: `explicit` precedes `ownership`, which precedes `query`. The result has `status` (`selected`, `ambiguous`, or `no_match`), `tier`, `selected`, ranked `candidates`, and `config_paths`. Candidate records include the base name, root, managed root, score, priority, config path, and reasons.
+
+### Query routing
+
+The router evaluates the query only when no `--target` is supplied and no base owns the current directory or any `--source` path. It scores each configured base by comparing `--query` with that base's name, aliases, description, and optional `match` fields:
+
+| Matching signal | Points per match | Candidate reason |
+| --- | ---: | --- |
+| Base `name` or an entry in `aliases` | 120 | `name-or-alias:<value>` |
+| An entry in `match.topics` | 50 | `topic:<value>` |
+| An entry in `match.artifact_kinds` | 30 | `artifact:<value>` |
+| The complete base `description` | 80 | `description:<value>` |
+| A two- or three-word phrase from `description` | 80 | `description:<phrase>` |
+| An individual meaningful word from `description` | 3 | `description:<word>` |
+
+Points accumulate when multiple signals match. Matching is case-insensitive. Phrases also match after punctuation and spaces are removed when the normalized phrase contains at least five characters, so names such as `open-claw` can match `openclaw`.
+
+Description phrases are built after removing generic words such as `knowledge`, `notes`, `workspace`, `project`, `specs`, and `openai`. Artifact matching uses `--artifact-kind` when provided; otherwise it uses the first recognized artifact word in the query, such as `guide`, `runbook`, `spec`, `report`, or `research`.
+
+Candidates are ordered by descending score, descending configured `priority`, and finally alphabetical base name. Selection then follows these rules:
+
+1. If only one base is configured, select it even when its score is zero.
+2. With multiple bases, the highest score must be greater than zero and either exceed the next score by at least 15 points or tie that score while having a strictly higher `priority`.
+3. Otherwise return `ambiguous`. A higher priority cannot rescue a zero-score tie, a 1–14 point lead, or conflicting ownership.
+
+For example, with a base named `claw` whose description contains `OpenClaw`:
+
+```bash
+python3 ./scripts/mem.py route \
+  --query "OpenClaw gateway deployment" \
+  --pretty
+```
+
+The result selects `claw` in the `query` tier with score `123`: `120` for the base-name match and `3` for the meaningful description word `openclaw`.
+
+### Routing examples
+
+```bash
+python3 ./scripts/mem.py route \
+  --query "write an OpenClaw runbook" \
+  --source /Users/kevinlin/code/openclaw \
+  --pretty
+
+python3 ./scripts/mem.py route \
+  --query "create a package guide" \
+  --target oai \
+  --artifact-kind guide \
+  --pretty
+```
+
+`ambiguous` and `no_match` are valid JSON results and do not themselves produce a nonzero exit. A managed caller must treat both as stopping conditions and retry with an explicit `--target` after resolving intent.
 
 ## `context lookup`
 
-Search managed knowledge and, only on a managed miss, explicitly scoped source
-paths:
+Search managed knowledge first, then optional source scopes, without writing files.
 
 ```bash
-python3 ./scripts/mem.py context lookup \
-  --query QUERY \
-  [--target NAME] \
-  [--source PATH ...] \
-  [--artifact-kind KIND] \
-  [configuration options] \
-  [--pretty]
+python3 ./scripts/mem.py context lookup --query TEXT [OPTIONS]
 ```
 
 Options:
 
-| Option | Meaning |
-| --- | --- |
-| `--query TEXT` | Required lookup intent. The exact value is audited when tracing is enabled. |
-| `--target NAME` | Select an explicit configured base name or alias. |
-| `--source PATH` | Add a scoped fallback source path. Repeat for multiple scopes. |
-| `--artifact-kind KIND` | Supply a routing artifact kind explicitly. |
-| `--config PATH` | Load only this configuration. |
-| `--cwd PATH` | Working directory for configuration discovery and routing. |
-| `--home PATH` | Home directory for configuration discovery. |
-| `--allow-missing-roots` | Normalize without requiring base roots to exist. |
-| `--pretty` | Indent JSON output. |
+- `--query TEXT`: required non-empty search text.
+- `--target NAME_OR_ALIAS`: select an explicit base or alias.
+- `--source PATH`: existing regular file or directory used for routing and fallback search; repeat for at most 20 scopes. Symlink scopes are rejected.
+- `--allow-multiple`: when routing is ambiguous, search every reported candidate base. Use only for read-only lookup.
+- `--artifact-kind KIND`: optional routing artifact signal.
+- `--config PATH`, `--cwd PATH`, `--home PATH`: configuration controls.
+- `--pretty`: indent JSON output.
 
-Lookup order is fixed:
+### Lookup execution
 
-1. Load and validate configuration.
-2. Route the query or resolve `--target`.
-3. Resolve the selected base's configured schemas.
-4. Search the selected managed root and record one hierarchy decision per
-   configured schema, using shared query terms as evidence when present.
-5. If managed knowledge has no match, search only the repeatable `--source`
-   scopes.
-6. Return the observed outcome and, when enabled, commit its audit record.
+`context lookup` follows this sequence:
 
-The command is read-only. It does not create schema nodes or modify files in
-the base or source scopes.
+1. Discover the nearest and home `.mem.yaml` files, or load only `--config`. If neither discovered file exists, return `missing_config` successfully; a missing explicitly requested `--config` returns `invalid_config`.
+2. Load and validate the effective configuration. If audit tracing is enabled, validate `CODEX_THREAD_ID` and lock the conversation trace before the lookup can proceed.
+3. Normalize and deduplicate `--source` paths. Each source must already exist, be a regular file or directory, and not itself be a symlink. Trim `--query` and reject an empty value.
+4. Run the same routing algorithm as `route`: explicit target first, filesystem ownership second, and query scoring last.
+5. Select the routed base. An ambiguous route stops unless `--allow-multiple` is present, in which case the command searches the reported candidate bases. `--allow-multiple` does not override `no_match` and never permits writes.
+6. Resolve each selected base's configured schema names to bundled or custom `schema.yaml` paths. A missing schema or duplicate schema name returns `invalid_schema`. The command reports schemas as context; it does not infer or materialize a schema node.
+7. Search existing files under each selected `managed_root`. If any managed matches are found, return them immediately without searching source files.
+8. If managed knowledge has no match and validated source scopes were supplied, search only those scopes. Return their matches or `no_matches`. Without source scopes, return `no_matches` directly.
+9. When audit is enabled, atomically persist the observed command, operations, decisions, and outcome before returning.
 
-The JSON result exposes:
+The command never writes, materializes, moves, or deletes files.
 
-| Field | Meaning |
-| --- | --- |
-| `selection` | Selected tier, base names, and grounded routing reasons. |
-| `hierarchy` | Observed managed and fallback path decisions. |
-| `fallback` | Whether source fallback ran, its scoped paths, and why. |
-| `status` | Real terminal outcome, including matched, ambiguous, or unmatched states. |
-| `matched_paths` | Files that satisfied the lookup; empty when none matched. |
-| `candidates` | Ranked candidates returned by the router. |
+### Match semantics
 
-## Audit configuration
+Search matching is case-insensitive. A filename or individual line matches when it contains either the complete query or every alphanumeric term extracted from the query. All terms must occur in the same filename or line; matches are not assembled across multiple lines.
+
+Each file produces at most one result, with this precedence:
+
+1. `filename`: the basename matches; `line` and `line_text` are `null`.
+2. `heading`: a matching line begins with `#` after leading whitespace is removed.
+3. `body`: the first matching non-heading line, used only when no matching heading exists.
+
+Directories and filenames are traversed in sorted order. Managed bases are searched in their selected order, and source scopes are searched in the order provided. Overlapping source scopes do not produce duplicate file results.
+
+### Search bounds and safety
+
+Managed search and source fallback each have independent limits:
+
+- 2,000 scanned files across that search area.
+- 500 scanned directories across that search area.
+- 20 returned matches across that search area.
+- 1,000,000 bytes per file.
+- 500 characters per returned matching line.
+- 20 supplied source scopes before deduplication.
+
+The walker skips symlink files and directories, hidden directories, and common generated/dependency directories such as `.git`, `node_modules`, `vendor`, `build`, `dist`, and `__pycache__`. Non-UTF-8, binary, oversized, and unreadable files are skipped. `search_stats` records skipped files, read errors, scanned counts, and whether either search was truncated.
+
+### Result fields
+
+Every invocation emits a JSON object containing:
+
+- `mode`: always `context_lookup`.
+- `status`: the terminal lookup or validation status.
+- `query`: the trimmed query string.
+- `sources`: normalized source paths; duplicates are removed after validation.
+- `config_paths`: configuration files considered or loaded, in precedence order.
+- `route`: the complete routing result, or `null` when validation stops before routing.
+- `selected_bases`: each selected base's `name`, `root`, `managed_root`, `path_style`, `config_path`, and resolved `schemas`.
+- `managed_matches`: records containing `base`, absolute `path`, `relative_path` under the managed root, `match_type`, `line`, and `line_text`.
+- `fallback_used`: `true` only when no managed match exists and at least one source scope is searched.
+- `source_matches`: records containing absolute `path`, source `scope`, `match_type`, `line`, and `line_text`.
+- `search_stats`: scanned/skipped counts, truncation flags, and active `limits`.
+- `selection`, `hierarchy`, `fallback`, `matched_paths`, and `candidates`: audit-compatible projections of the observed routing, paths searched, fallback decision, and concrete matches.
+- `error`: an explanation included for invalid configuration, query, source, or schema.
+
+### Context lookup examples
+
+```bash
+# Search only the selected base's managed knowledge.
+python3 ./scripts/mem.py context lookup \
+  --query "gateway authentication" \
+  --target claw \
+  --pretty
+
+# Fall back to this exact source scope only when managed knowledge has no match.
+python3 ./scripts/mem.py context lookup \
+  --query "gateway authentication" \
+  --target claw \
+  --source /Users/kevinlin/code/openclaw \
+  --pretty
+
+# Allow read-only lookup across candidate bases when routing is ambiguous.
+python3 ./scripts/mem.py context lookup \
+  --query "deployment guide" \
+  --allow-multiple \
+  --pretty
+```
+
+### Context lookup statuses
+
+| JSON status | Exit status | Meaning |
+| --- | ---: | --- |
+| `matched` | 0 | Managed knowledge matched, or source fallback found a match. |
+| `no_matches` | 0 | The selected areas were searched but no file matched. |
+| `missing_config` | 0 | No discoverable configuration exists; continue without managed context. |
+| `ambiguous` | 2 | Several bases match and `--allow-multiple` was not supplied. |
+| `no_match` | 2 | Routing could not select a base, including an unknown explicit target. |
+| `invalid_query` | 2 | The trimmed query is empty. |
+| `invalid_source` | 2 | A source is missing, unsafe, unsupported, or exceeds the scope limit. |
+| `invalid_config` | 2 | The selected configuration is missing or fails validation. |
+| `invalid_schema` | 2 | A selected base references a missing or duplicate schema. |
+
+Inspect the JSON `status` and optional `error` rather than relying on exit status alone.
+
+## Audit traces
 
 Add an optional top-level mapping to `.mem.yaml`:
 
@@ -164,192 +264,169 @@ audit:
   trace_root: ~/.config/mem/traces
 ```
 
-| Field | Type | Default | Meaning |
-| --- | --- | --- | --- |
-| `enabled` | Boolean | `false` | Enable mandatory tracing for audited lookup commands. |
-| `trace_root` | String path | `$HOME/.config/mem/traces` | Root for conversation trace files. `~` and environment variables are expanded and the result is normalized to an absolute path. |
+`enabled` must be a Boolean and defaults to `false`. `trace_root` is expanded and normalized to an absolute path and defaults to `$HOME/.config/mem/traces`. The nearest configuration that declares `audit` owns the whole effective mapping; missing fields receive defaults instead of being inherited from the home mapping.
 
-Unknown keys, non-boolean `enabled`, or invalid `trace_root` values fail
-configuration validation. Use `config show --pretty` to see the merged values
-that a lookup will use.
+An enabled lookup requires a valid conversation UUID in `CODEX_THREAD_ID`. Its first lookup selects `<trace_root>/<local YYYY>/<MM>/<DD>/<CODEX_THREAD_ID>.jsonl`; later lookups reuse that file after midnight. Directories use mode `0700`, files use mode `0600`, same-conversation updates are locked, and each completed update atomically replaces the trace file.
 
-## Audit trace lifecycle
+Each nonempty line is a version-1 JSON record with:
 
-Audit-disabled lookups create no directories or files. Audit-enabled lookups
-require the active Codex thread ID in `CODEX_THREAD_ID`. Its value must be a
-valid UUID; no filename, process, or unrelated conversation is used as a
-fallback.
+- identity and aggregate timing: `session_id`, `lookup_id`, `started_at`, `finished_at`, `duration_ms`, and `occurrence_count`;
+- exact execution: `query`, `commands[].argv`, safely quoted `commands[].command`, and ordered `operations` that actually ran;
+- occurrence history: `attempts` with command timings, operation timings, duration, and terminal trace status;
+- outcome evidence: `selection`, `hierarchy`, `fallback`, `status`, `matched_paths`, and ordered `source_scopes`.
 
-The first audited lookup chooses:
+`lookup_id` hashes canonical logical identity inputs: session ID, query, ordered command arguments, selected bases, hierarchy paths, and source scopes. Timing, scores, outcomes, and explanatory prose are excluded. Repeated identities merge into one record by incrementing `occurrence_count`, appending an attempt, updating the latest outcome, and adding elapsed duration.
 
-```text
-<trace_root>/<local YYYY>/<MM>/<DD>/<CODEX_THREAD_ID>.jsonl
-```
+Traces record no environment values, file bodies, credentials, unrelated commands, fabricated invocations, or private reasoning. Missing or invalid session identity, unsafe containment, bad permissions, lock failure, malformed existing data, serialization failure, or atomic-write failure stops an audit-enabled lookup explicitly; it never continues as an unlogged search.
 
-The date is the user's local date at that first lookup. Every later lookup for
-the conversation reuses the same file, even after midnight. A conversation
-therefore owns exactly one trace file. Directories use mode `0700` and the file
-uses mode `0600`.
+## Schema inspection
 
-Each nonempty line is one complete UTF-8 JSON object. Distinct logical lookups
-have separate lines; repeat occurrences are merged into the existing line.
-Same-conversation writes are serialized and the file is replaced atomically.
+Bundled schemas live under `./references/schemas/<name>/schema.yaml`.
 
-## Audit JSON Lines fields
+### `schema list`
 
-Required fields for every lookup record:
-
-| Field | Shape | Meaning |
-| --- | --- | --- |
-| `version` | Integer | Trace schema version; currently `1`. |
-| `started_at` | Timestamp | Start of the first occurrence. |
-| `finished_at` | Timestamp | End of the latest occurrence. |
-| `duration_ms` | Integer | Sum of all attempt durations. |
-| `session_id` | UUID string | Validated active `CODEX_THREAD_ID`. |
-| `lookup_id` | `sha256:...` string | Stable logical-lookup fingerprint. |
-| `occurrence_count` | Integer | Number of merged occurrences. |
-| `query` | String | Exact lookup query. |
-| `commands` | Array | Commands that actually executed. |
-| `operations` | Array | Ordered stages from the latest attempt. |
-| `attempts` | Array | Complete timing and status history for every occurrence. |
-| `hierarchy` | Array | Grounded path decisions observed during lookup. |
-| `source_scopes` | Array of paths | Ordered explicit source scopes included in the logical lookup. |
-
-Outcome fields:
-
-| Field | Meaning |
-| --- | --- |
-| `selection` | Routing tier, selected base names, and evidence-backed reasons. |
-| `fallback` | `used`, searched `paths`, and the reason fallback did or did not run. |
-| `status` | Latest terminal lookup status. |
-| `matched_paths` | Latest matched managed or source paths. |
-
-### Commands
-
-Each `commands` entry contains:
-
-- `argv`: exact executed argument tokens in order.
-- `command`: a safely shell-quoted, replayable representation of `argv`.
-- `started_at`, `finished_at`, and `duration_ms`: execution timing.
-
-Only commands that actually execute are recorded. Internal calls are not
-invented as command entries.
-
-### Operations
-
-Each operation contains `name`, `started_at`, `finished_at`, and `duration_ms`.
-Entries are ordered and created only for stages that ran. Expected names include
-`load_config`, `route`, `resolve_schemas`, `search_managed`, and
-`search_source`; `search_source` is absent when source fallback did not run.
-
-### Attempts
-
-Each attempt contains its own `started_at`, `finished_at`, `duration_ms`,
-`command_timings`, `operation_timings`, and terminal `status`.
-`command_timings[].command_index` refers to the corresponding entry in the
-top-level `commands` array.
-
-### Hierarchy
-
-Each hierarchy decision contains:
-
-- `path`: observed managed or source path.
-- `schema`: associated schema when applicable.
-- `decision`: what the lookup did with the path, such as `searched`.
-- `reason`: concise, evidence-backed explanation.
-
-Hierarchy entries describe the selected managed root once per configured schema
-and any source fallback paths. They do not claim node inference or reasoning
-that was not observed.
-
-## Deduplication and timing
-
-`lookup_id` is the SHA-256 digest of canonical JSON containing exactly the
-logical identity inputs:
-
-- conversation session ID;
-- query;
-- ordered executed command argument arrays;
-- selected base names;
-- selected hierarchy paths; and
-- source scopes.
-
-Timestamps, durations, routing scores, outcomes, and explanatory prose are
-excluded. Consequently, changing a query, executed command, selected target,
-hierarchy path, or source scope creates a distinct record.
-
-Repeating the same identity updates one record: `occurrence_count` increments,
-the full timing snapshot is appended to `attempts`, `finished_at` and the latest
-observable outcome are refreshed, and the attempt duration is added to
-top-level `duration_ms`. `started_at` remains the first attempt's start and
-`operations` reflects only the latest attempt.
-
-Every lookup, command, and actual operation uses timezone-aware ISO 8601
-timestamps with millisecond precision. Durations are nonnegative elapsed
-milliseconds measured with a monotonic clock, so wall-clock changes do not
-corrupt elapsed timing.
-
-## Security and errors
-
-Tracing is constrained to the normalized `trace_root`. It records lookup
-metadata, never:
-
-- environment variables or their values;
-- file bodies;
-- credentials or secrets;
-- unrelated shell commands;
-- fabricated command invocations; or
-- private model reasoning.
-
-Audit-enabled lookup fails explicitly and does not perform an unlogged search
-when any required audit guarantee cannot be met. Fatal audit conditions include:
-
-- missing or invalid `CODEX_THREAD_ID`;
-- invalid audit configuration;
-- a destination that escapes `trace_root`;
-- unsafe path or session filename input;
-- inability to create or enforce `0700` directories and a `0600` file;
-- lock, atomic replacement, serialization, or update failure; and
-- malformed existing trace data that prevents a safe merge.
-
-Failed, ambiguous, and unmatched audited lookups that reach a recordable
-terminal state retain their real status and use empty selection or match fields
-where no selection occurred. Audit writes never modify managed knowledge or
-source scopes.
-
-## `schema`
-
-Inspect bundled schemas:
+List bundled schemas and their root nodes.
 
 ```bash
 python3 ./scripts/mem.py schema list
-python3 ./scripts/mem.py schema show SCHEMA
-python3 ./scripts/mem.py schema describe SCHEMA
-python3 ./scripts/mem.py schema validate SCHEMA
 ```
 
-Materialize under a configured base:
+Each line is `<schema>\troot: <roots>`. An invalid schema is reported inline as `<schema>\tinvalid: <error>`; the command still exits `0` so callers must inspect the output.
+
+### `schema show`
+
+Print variables and the fully composed schema tree.
+
+```bash
+python3 ./scripts/mem.py schema show SCHEMA [--schema-path PATH]
+```
+
+- `SCHEMA`: bundled schema name and display label.
+- `--schema-path PATH`: inspect this explicit `schema.yaml` instead of the bundled schema. The positional schema remains required and labels the output.
+
+```bash
+python3 ./scripts/mem.py schema show pkg
+```
+
+### `schema describe`
+
+Print every composed path that has a description as Markdown bullets.
+
+```bash
+python3 ./scripts/mem.py schema describe SCHEMA [--schema-path PATH]
+```
+
+Use this command before choosing a node for managed knowledge placement.
+
+```bash
+python3 ./scripts/mem.py schema describe global-core
+```
+
+### `schema validate`
+
+Validate the schema document, variables, nodes, templates, and composed children.
+
+```bash
+python3 ./scripts/mem.py schema validate SCHEMA [--schema-path PATH]
+```
+
+Successful output is:
+
+```text
+<schema> valid <absolute-schema-path>
+```
+
+The separators are tabs. Invalid schemas print `error: ...` to stderr and exit `1`.
+
+## `schema materialize`
+
+Render selected schema nodes into either a configured managed base or an explicitly unmanaged destination.
+
+### Managed mode
 
 ```bash
 python3 ./scripts/mem.py schema materialize SCHEMA \
   --base BASE \
   [--root-relative PATH] \
-  [schema materialization options]
+  [--var KEY=VALUE]... \
+  [--include RENDERED_PATH]... \
+  [--overwrite | --skip-existing]
 ```
 
-Managed mode derives output root, path style, and custom schema path from the
-selected base. `--root-relative` must resolve inside the selected base root.
-Manual `--out`, `--path-style`, and `--schema-path` overrides are rejected.
+Managed-only options:
 
-Materialize an explicit non-memory artifact:
+- `--base BASE`: required base name or alias. The schema must be configured on that base.
+- `--root-relative PATH`: materialize below this relative subtree of the base's resolved managed root. Absolute paths and `..` escapes are rejected.
+- `--config PATH`, `--cwd PATH`, `--home PATH`: configuration controls used to resolve the base.
+
+Managed mode derives `--out`, `--path-style`, and a custom `--schema-path` from the base configuration. Supplying any of those options directly is an error. `--base` and `--unmanaged` are mutually exclusive.
+
+```bash
+python3 ./scripts/mem.py schema materialize pkg \
+  --base oai \
+  --var package=clawcmd \
+  --var cook=change-claw-config \
+  --include pkg/clawcmd/cook/change-claw-config \
+  --skip-existing
+```
+
+### Unmanaged mode
 
 ```bash
 python3 ./scripts/mem.py schema materialize SCHEMA \
   --out PATH \
   --unmanaged \
-  [schema materialization options]
+  [--schema-path PATH] \
+  [--path-style directory|dotted] \
+  [--var KEY=VALUE]... \
+  [--include RENDERED_PATH]... \
+  [--overwrite | --skip-existing]
 ```
 
-An explicit `--out` requires `--unmanaged`. See the
-[schema workflow](./references/schema-workflow.md) for schema fields,
-composition, and materialization options.
+Unmanaged-only options:
+
+- `--out PATH`: explicit output directory; requires `--unmanaged`.
+- `--unmanaged`: confirms that the destination is outside managed memory ownership.
+- `--schema-path PATH`: use an explicit schema file.
+- `--path-style directory|dotted`: choose nested paths such as `pkg/foo/readme.md` or dotted paths such as `pkg.foo.readme.md`. When omitted, the engine infers a style from the include/output-root convention.
+
+`--config`, `--cwd`, `--home`, and `--root-relative` are rejected in unmanaged mode.
+
+```bash
+python3 ./scripts/mem.py schema materialize integ-proof \
+  --out /tmp/proofs \
+  --unmanaged \
+  --path-style directory \
+  --var proof=example \
+  --include example/proof \
+  --skip-existing
+```
+
+### Shared materialization options
+
+- `SCHEMA`: schema name. In managed mode it must appear in the selected base's `schemas` list.
+- `--var KEY=VALUE`: template variable; repeat as needed. Required variables without defaults must be supplied, and declared value restrictions are enforced.
+- `--include RENDERED_PATH`: full rendered schema path to materialize; repeat to select multiple nodes. Use slash-separated paths for `directory` style and dotted paths for `dotted` style.
+- `--overwrite`: replace existing generated files.
+- `--skip-existing`: leave existing files untouched and print only newly written paths.
+
+`--overwrite` and `--skip-existing` are mutually exclusive. Without either flag, the command refuses to overwrite an existing file. On success, stdout contains one generated path per line. Errors print `error: ...` to stderr and exit nonzero.
+
+Materialize explicit leaf paths whenever possible. Omitting `--include` can select every renderable node whose variables resolve, which is rarely appropriate for managed knowledge.
+
+## Common recovery paths
+
+- **`missing config`**: managed configuration is optional for context lookup. Continue the underlying read task without `$mem`, or pass the intended `--config` if one exists.
+- **`ambiguous` or `no_match` route**: inspect candidates with `route --pretty`, then retry with `--target`.
+- **unknown base**: run `config show --pretty` and use a normalized base name or alias.
+- **schema is not configured for base**: choose one of the base's configured schemas or update the canonical configuration outside this command.
+- **managed path rejected**: remove the absolute or traversing `--root-relative` value; managed output must remain inside `managed_root`.
+- **refusing to overwrite**: inspect the existing file, then choose `--skip-existing` or explicitly authorize `--overwrite`.
+- **invalid schema**: run `schema validate` and correct the schema or composed child before materializing.
+
+## Related documentation
+
+- [`README.md`](./README.md): architecture, boundaries, and invariants.
+- [`SKILL.md`](./SKILL.md): managed workflow and final-response contract.
+- [`./references/knowledge-workflow.md`](./references/knowledge-workflow.md): read/write/update/delete behavior.
+- [`./references/schema-workflow.md`](./references/schema-workflow.md): schema model and authoring rules.

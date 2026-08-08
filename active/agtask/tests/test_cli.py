@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+import datetime as dt
 import html
 import json
 import os
@@ -27,8 +28,12 @@ Write a compact database proof.
 """
 
 CREATION_ID = "f1cce008-e001-4dbd-a231-37783065e3fb"
+CUSTOM_SECTION_ID = "515c42ed-d59b-4559-a33e-b1d0612af20b"
 BOOTSTRAP_TRAILER = f"""<agtask-bootstrap version="2">
 {{"id":"{CREATION_ID}","parent_session_id":"parent-thread","pin":true,"project":"agtask","title":"agtask/database-proof"}}
+</agtask-bootstrap>"""
+BOOTSTRAP_SECTION_TRAILER = f"""<agtask-bootstrap version="2">
+{{"id":"{CREATION_ID}","parent_session_id":"parent-thread","pin":true,"project":"agtask","section_id":"pinned","title":"agtask/database-proof"}}
 </agtask-bootstrap>"""
 
 BOOTSTRAP_FALSE_TRAILER = f"""<agtask-bootstrap version="2">
@@ -62,17 +67,21 @@ def bootstrap_prompt(
     parent_session_id: str = "parent-thread",
     pin: bool = True,
     project: str = "agtask",
+    section_id: str | None = None,
     title: str = "agtask/database-proof",
     prompt: str = FORK_PROMPT,
 ) -> str:
+    values = {
+        "id": creation_id,
+        "parent_session_id": parent_session_id,
+        "pin": pin,
+        "project": project,
+        "title": title,
+    }
+    if section_id is not None:
+        values["section_id"] = section_id
     arguments = json.dumps(
-        {
-            "id": creation_id,
-            "parent_session_id": parent_session_id,
-            "pin": pin,
-            "project": project,
-            "title": title,
-        },
+        values,
         separators=(",", ":"),
         sort_keys=True,
     )
@@ -327,6 +336,165 @@ class CliIntegrationTest(unittest.TestCase):
             ).stdout
         )
 
+    def test_section_cache_round_trip_uses_database_directory_and_secure_modes(self) -> None:
+        session_id = "019f81f5-06bc-73e1-b339-7442491fd833"
+        missing = json.loads(
+            self.run_cli("section-cache", "get", "--session-id", session_id, "--json").stdout
+        )
+        self.assertEqual(missing, {"state": "miss", "session_id": session_id})
+        self.assertFalse(self.store.exists())
+
+        stored = json.loads(
+            self.run_cli(
+                "section-cache",
+                "set",
+                "--session-id",
+                session_id,
+                "--host-id",
+                "local",
+                "--section-id",
+                CUSTOM_SECTION_ID,
+                "--section-name",
+                "proj/clawpilot",
+                "--json",
+            ).stdout
+        )
+        cache_path = self.store / "sidebar-sections.json"
+        lock_path = self.store / "sidebar-sections.json.lock"
+        self.assertEqual(stored["state"], "stored")
+        self.assertEqual(stored["entry"]["section_id"], CUSTOM_SECTION_ID)
+        self.assertEqual(stored["entry"]["section_name"], "proj/clawpilot")
+        self.assertEqual(stat.S_IMODE(self.store.stat().st_mode), 0o700)
+        self.assertEqual(stat.S_IMODE(cache_path.stat().st_mode), 0o600)
+        self.assertEqual(stat.S_IMODE(lock_path.stat().st_mode), 0o600)
+        self.assertFalse(self.db_path.exists())
+
+        hit = json.loads(
+            self.run_cli("section-cache", "get", "--session-id", session_id, "--json").stdout
+        )
+        self.assertEqual(hit, {"state": "hit", "session_id": session_id, "entry": stored["entry"]})
+        document = json.loads(cache_path.read_text())
+        self.assertEqual(document, {"version": 1, "sessions": {session_id: stored["entry"]}})
+
+    def test_section_cache_stale_invalidate_and_preserves_other_sessions(self) -> None:
+        session_id = "019f81f5-06bc-73e1-b339-7442491fd833"
+        other_id = "019fd897-1cfe-75c3-9ed0-dc6a7d59e0cd"
+        for identity, section_id in ((session_id, CUSTOM_SECTION_ID), (other_id, "pinned")):
+            self.run_cli(
+                "section-cache", "set", "--session-id", identity,
+                "--host-id", "local", "--section-id", section_id, "--json",
+            )
+        cache_path = self.store / "sidebar-sections.json"
+        document = json.loads(cache_path.read_text())
+        document["sessions"][session_id]["observed_at"] = (
+            dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=6)
+        ).isoformat().replace("+00:00", "Z")
+        cache_path.write_text(json.dumps(document))
+
+        stale = json.loads(
+            self.run_cli("section-cache", "get", "--session-id", session_id, "--json").stdout
+        )
+        self.assertEqual(stale["state"], "stale")
+        self.assertEqual(stale["entry"]["section_id"], CUSTOM_SECTION_ID)
+        invalidated = json.loads(
+            self.run_cli(
+                "section-cache", "invalidate", "--session-id", session_id, "--json"
+            ).stdout
+        )
+        self.assertEqual(invalidated, {"state": "invalidated", "session_id": session_id})
+        remaining = json.loads(cache_path.read_text())
+        self.assertEqual(set(remaining["sessions"]), {other_id})
+        repeated = json.loads(
+            self.run_cli(
+                "section-cache", "invalidate", "--session-id", session_id, "--json"
+            ).stdout
+        )
+        self.assertEqual(repeated, {"state": "miss", "session_id": session_id})
+
+    def test_section_cache_rejects_unsafe_files_and_invalid_identities(self) -> None:
+        session_id = "019f81f5-06bc-73e1-b339-7442491fd833"
+        self.run_cli(
+            "section-cache", "set", "--session-id", session_id,
+            "--host-id", "local", "--section-id", "pinned", "--json",
+        )
+        cache_path = self.store / "sidebar-sections.json"
+        cache_path.chmod(0o644)
+        unsafe = json.loads(
+            self.run_cli("section-cache", "get", "--session-id", session_id, "--json").stdout
+        )
+        self.assertEqual(unsafe, {"state": "miss", "session_id": session_id})
+        refused = self.run_cli(
+            "section-cache", "set", "--session-id", session_id,
+            "--host-id", "local", "--section-id", "pinned", "--json", check=False,
+        )
+        self.assertNotEqual(refused.returncode, 0)
+        self.assertIn("unsafe section cache file", refused.stderr)
+        cache_path.chmod(0o600)
+
+        for invalid_section in ("", " pinned", "pinned ", "threads", "not-a-uuid"):
+            with self.subTest(section_id=invalid_section):
+                invalid = self.run_cli(
+                    "section-cache", "set", "--session-id", session_id,
+                    "--host-id", "local", "--section-id", invalid_section,
+                    "--json", check=False,
+                )
+                self.assertNotEqual(invalid.returncode, 0)
+
+        external = self.root / "external.json"
+        external.write_text("{}")
+        cache_path.unlink()
+        cache_path.symlink_to(external)
+        symlink = json.loads(
+            self.run_cli("section-cache", "get", "--session-id", session_id, "--json").stdout
+        )
+        self.assertEqual(symlink, {"state": "miss", "session_id": session_id})
+        self.assertEqual(external.read_text(), "{}")
+
+    def test_section_cache_concurrent_writes_preserve_every_session(self) -> None:
+        session_ids = [f"019f81f5-06bc-73e1-b339-{index:012d}" for index in range(8)]
+
+        def store(session_id: str) -> subprocess.CompletedProcess[str]:
+            return self.run_cli(
+                "section-cache", "set", "--session-id", session_id,
+                "--host-id", "local", "--section-id", CUSTOM_SECTION_ID,
+                "--json",
+            )
+
+        with ThreadPoolExecutor(max_workers=len(session_ids)) as executor:
+            list(executor.map(store, session_ids))
+        document = json.loads((self.store / "sidebar-sections.json").read_text())
+        self.assertEqual(set(document["sessions"]), set(session_ids))
+
+    def test_resolve_create_validates_and_carries_sidebar_section_only_when_pinned(self) -> None:
+        result = json.loads(
+            self.run_cli(
+                "resolve-create", "--title", "agtask/database-proof",
+                "--parent-session-id", "parent-thread",
+                "--section-id", CUSTOM_SECTION_ID, "--json",
+            ).stdout
+        )
+        self.assertEqual(result["bootstrap_args"]["section_id"], CUSTOM_SECTION_ID)
+        self.assertIn(f'"section_id":"{CUSTOM_SECTION_ID}"', result["bootstrap_trailer"])
+
+        nopin = json.loads(
+            self.run_cli(
+                "resolve-create", "--title", "agtask/database-proof",
+                "--parent-session-id", "parent-thread",
+                "--section-id", CUSTOM_SECTION_ID, "--nopin", "--json",
+            ).stdout
+        )
+        self.assertNotIn("section_id", nopin["bootstrap_args"])
+        self.assertFalse(self.store.exists())
+
+        for invalid_section in ("", " pinned", "pinned ", "not-a-uuid"):
+            with self.subTest(section_id=invalid_section):
+                invalid = self.run_cli(
+                    "resolve-create", "--title", "agtask/database-proof",
+                    "--parent-session-id", "parent-thread",
+                    "--section-id", invalid_section, "--json", check=False,
+                )
+                self.assertNotEqual(invalid.returncode, 0)
+
     def test_resolve_create_normalizes_execution_inputs_without_opening_ledger(self) -> None:
         cases = [
             (
@@ -344,9 +512,10 @@ class CliIntegrationTest(unittest.TestCase):
                         "parent_session_id": "parent-thread",
                         "pin": True,
                         "project": "agtask",
+                        "section_id": "pinned",
                         "title": "agtask/database-proof",
                     },
-                    "bootstrap_trailer": BOOTSTRAP_TRAILER,
+                    "bootstrap_trailer": BOOTSTRAP_SECTION_TRAILER,
                     "include_model": False,
                     "hook_prompts": [],
                     "kind": "child",
@@ -377,9 +546,10 @@ class CliIntegrationTest(unittest.TestCase):
                         "parent_session_id": "parent-thread",
                         "pin": True,
                         "project": "agtask",
+                        "section_id": "pinned",
                         "title": "agtask/database-proof",
                     },
-                    "bootstrap_trailer": BOOTSTRAP_TRAILER,
+                    "bootstrap_trailer": BOOTSTRAP_SECTION_TRAILER,
                     "include_model": False,
                     "hook_prompts": [],
                     "kind": "child",
@@ -408,9 +578,10 @@ class CliIntegrationTest(unittest.TestCase):
                         "parent_session_id": "parent-thread",
                         "pin": True,
                         "project": "agtask",
+                        "section_id": "pinned",
                         "title": "agtask/database-proof",
                     },
-                    "bootstrap_trailer": BOOTSTRAP_TRAILER,
+                    "bootstrap_trailer": BOOTSTRAP_SECTION_TRAILER,
                     "include_model": False,
                     "hook_prompts": [],
                     "kind": "child",
@@ -526,7 +697,7 @@ class CliIntegrationTest(unittest.TestCase):
             ).stdout
         )
         creation_id = result["id"]
-        trailer = BOOTSTRAP_TRAILER.replace(CREATION_ID, creation_id)
+        trailer = BOOTSTRAP_SECTION_TRAILER.replace(CREATION_ID, creation_id)
         prompt = "Task:\nWrite a compact database proof.\n\n" + trailer
         self.assertEqual(result["thinking"], "high")
         self.assertTrue(result["include_thinking"])
@@ -567,7 +738,7 @@ class CliIntegrationTest(unittest.TestCase):
             ).stdout
         )
         creation_id = result["id"]
-        trailer = BOOTSTRAP_TRAILER.replace(CREATION_ID, creation_id)
+        trailer = BOOTSTRAP_SECTION_TRAILER.replace(CREATION_ID, creation_id)
         prompt = "Task:\n  Write a compact database proof.\n\n\n" + trailer
         self.assertEqual(result["thinking"], "inherit")
         self.assertFalse(result["include_thinking"])
@@ -600,7 +771,7 @@ class CliIntegrationTest(unittest.TestCase):
             ).stdout
         )
         creation_id = result["id"]
-        trailer = BOOTSTRAP_TRAILER.replace(CREATION_ID, creation_id)
+        trailer = BOOTSTRAP_SECTION_TRAILER.replace(CREATION_ID, creation_id)
         self.assertEqual(
             result["creation_plan"]["next_tool"]["arguments"]["prompt"],
             "Task:\nWrite a compact database proof."
@@ -1547,7 +1718,14 @@ class CliIntegrationTest(unittest.TestCase):
                 "prompt": BOOTSTRAP_PROMPT,
             }
         )
+        self.assertIn("codex_app__move_thread_to_sidebar_section", prompt_result.stdout)
         self.assertIn("codex_app__set_thread_pinned", prompt_result.stdout)
+        context = self.hook_context(prompt_result)
+        self.assertLess(
+            context.index("codex_app__move_thread_to_sidebar_section"),
+            context.index("codex_app__set_thread_pinned"),
+        )
+        self.assertIn('"sectionId":"pinned"', context)
         self.assertIn("codex_app__set_thread_title", prompt_result.stdout)
         state = self.show(CREATION_ID)
         user_rows = [row for row in state["rollouts"] if row["role"] == "user"]
@@ -1557,6 +1735,62 @@ class CliIntegrationTest(unittest.TestCase):
         )
         self.assertEqual(state["description"], "Write a compact database proof.")
         self.assertNotIn("agtask-bootstrap", json.dumps(state))
+
+    def test_custom_section_bootstrap_prefers_move_and_describes_legacy_fallback(self) -> None:
+        session_id = "019fd897-1cfe-75c3-9ed0-dc6a7d59e0cd"
+        prompt = bootstrap_prompt(section_id=CUSTOM_SECTION_ID)
+        result = self.hook(
+            {
+                "hook_event_name": "UserPromptSubmit",
+                "session_id": session_id,
+                "turn_id": "custom-section-first-turn",
+                "prompt": prompt,
+            }
+        )
+        context = self.hook_context(result)
+        self.assertIn(
+            f'"sectionId":"{CUSTOM_SECTION_ID}","threadId":"{session_id}"',
+            context,
+        )
+        self.assertLess(
+            context.index("codex_app__move_thread_to_sidebar_section"),
+            context.index("codex_app__set_thread_pinned"),
+        )
+        self.assertIn("global only; custom section unavailable", context)
+        self.assertIn("idempotent", context)
+        self.assertIn("failed: <exact error>", context)
+        self.assertIn("continue the actual task", context)
+
+    def test_legacy_v1_bootstrap_defaults_to_pinned_sidebar_section(self) -> None:
+        self.run_cli("init")
+        self.register("legacy-v1", session_id="legacy-v1", status="todo")
+        result = self.hook(
+            {
+                "hook_event_name": "UserPromptSubmit",
+                "session_id": "legacy-v1",
+                "turn_id": "legacy-v1-turn",
+                "prompt": BOOTSTRAP_V1_PROMPT,
+            }
+        )
+        context = self.hook_context(result)
+        self.assertIn('"sectionId":"pinned","threadId":"legacy-v1"', context)
+        self.assertIn("codex_app__set_thread_pinned", context)
+
+    def test_invalid_section_bootstrap_never_emits_placement_actions(self) -> None:
+        self.register("invalid-section", session_id="invalid-section", status="todo")
+        prompt = bootstrap_prompt(
+            fixture_creation_id("invalid-section"), section_id="not-a-uuid"
+        )
+        result = self.hook(
+            {
+                "hook_event_name": "UserPromptSubmit",
+                "session_id": "invalid-section",
+                "turn_id": "invalid-section-turn",
+                "prompt": prompt,
+            }
+        )
+        self.assertNotIn("codex_app__move_thread_to_sidebar_section", result.stdout)
+        self.assertNotIn("codex_app__set_thread_pinned", result.stdout)
 
     def test_escaped_delegated_bootstrap_is_excluded_from_summary(self) -> None:
         self.run_cli("init")
@@ -1881,10 +2115,11 @@ class CliIntegrationTest(unittest.TestCase):
                     "parent_session_id": "parent-thread",
                     "pin": True,
                     "project": "explicit",
+                    "section_id": "pinned",
                     "title": "agtask/explicit-title",
                 },
                 "bootstrap_trailer": """<agtask-bootstrap version="2">
-{"id":"%s","parent_session_id":"parent-thread","pin":true,"project":"explicit","title":"agtask/explicit-title"}
+{"id":"%s","parent_session_id":"parent-thread","pin":true,"project":"explicit","section_id":"pinned","title":"agtask/explicit-title"}
 </agtask-bootstrap>""".replace("%s", explicit_id),
                 "environment": {"type": "local"},
                 "include_model": False,

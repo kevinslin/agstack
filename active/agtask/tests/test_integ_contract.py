@@ -100,6 +100,37 @@ class IntegrationRunnerContractTest(unittest.TestCase):
         self.assertIn("export AGTASK_DB", runner)
         self.assertNotIn(".llm/agtask/ledger.db", runner)
 
+    def test_bootstrap_protocol_preserves_section_and_legacy_placement(self) -> None:
+        lifecycle_path = INTEG_SKILL / "scripts" / "test_lifecycle.py"
+        verify_bootstrap = runpy.run_path(str(lifecycle_path))[
+            "verify_bootstrap_protocol"
+        ]
+        cli = ROOT / "skills" / "agtask" / "scripts" / "agtask"
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            home = root / "home"
+            home.mkdir()
+            database = root / "ledger.db"
+            environment = os.environ.copy()
+            environment["HOME"] = str(home)
+            environment["AGTASK_DB"] = str(database)
+            subprocess.run(
+                ["python3", str(cli), "init", "--json"],
+                cwd=ROOT,
+                env=environment,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            result = verify_bootstrap(cli, database, ROOT, environment)
+
+        context = result["valid_output"]["hookSpecificOutput"]["additionalContext"]
+        self.assertEqual(result["scenario_version"], 4)
+        self.assertIn("codex_app__move_thread_to_sidebar_section", context)
+        self.assertIn('"sectionId":"pinned"', context)
+        self.assertIn("codex_app__set_thread_pinned", context)
+
     def test_creation_identity_regression_rebinds_copied_session(self) -> None:
         lifecycle_path = INTEG_SKILL / "scripts" / "test_lifecycle.py"
         verify_creation = runpy.run_path(str(lifecycle_path))[
@@ -121,8 +152,9 @@ class IntegrationRunnerContractTest(unittest.TestCase):
                 ROOT,
                 environment,
             )
+            self.assertTrue((root / "sidebar-sections.json").is_file())
 
-        self.assertEqual(result["scenario_version"], 3)
+        self.assertEqual(result["scenario_version"], 4)
         self.assertEqual(
             result["session_rebound_from"], result["copied_session_id"]
         )
@@ -261,7 +293,8 @@ class IntegrationRunnerContractTest(unittest.TestCase):
         self.assertIn("## current-task-add", scenarios)
         self.assertIn("## archived-session-audit", scenarios)
         self.assertIn("ADD_SCENARIO_VERSION = 1", lifecycle)
-        self.assertIn("CREATION_BOOTSTRAP_SCENARIO_VERSION = 3", lifecycle)
+        self.assertIn("BOOTSTRAP_SCENARIO_VERSION = 4", lifecycle)
+        self.assertIn("CREATION_BOOTSTRAP_SCENARIO_VERSION = 4", lifecycle)
         self.assertIn("DASHBOARD_SCENARIO_VERSION = 16", lifecycle)
         self.assertIn("RENAME_SCENARIO_VERSION = 2", lifecycle)
         self.assertIn("AUDIT_SCENARIO_VERSION = 2", lifecycle)
