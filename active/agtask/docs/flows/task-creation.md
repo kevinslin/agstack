@@ -1,6 +1,6 @@
 ---
 created: 2026-07-21
-updated: 2026-07-21
+updated: 2026-08-06
 last_updated_session: codex/019f6e7b-6fee-7b22-9ee7-0448a1431036
 ---
 
@@ -29,7 +29,8 @@ rollout; it does not create the child row.
 graph TD
     subgraph Parent["Invoking Codex task"]
         A["User invokes agtask"] --> B["Parent UserPromptSubmit records only the parent turn when tracked"]
-        B --> C["resolve-create generates logical id and, for fast clean creation, the canonical prompt and tool plan"]
+        B --> SC["Pin-enabled parent resolves cached custom section or default pinned"]
+        SC --> C["resolve-create generates logical id, section-aware trailer, and optional canonical tool plan"]
         C --> D{"Task kind"}
         D -->|main| E["Register the invoking session as the task"]
         D -->|child| F{"Creation mode"}
@@ -59,12 +60,12 @@ graph TD
         J --> S["Child UserPromptSubmit binds id to session_id and records first turn"]
         L --> S
         R --> S
-        S --> V["Materialized child owns title and pin actions"]
+        S --> V["Materialized child owns title and section-move-first placement"]
         J --> T["Parent register and bootstrap write reconcile idempotently"]
         R --> T
-        T --> W{"Remote host with real session ID"}
-        W -->|yes| X["Parent applies idempotent title and requested pin fallback"]
-        W -->|no| Y["Title and pin remain child-owned"]
+        T --> W{"Remote host or local authoritative-session rebound"}
+        W -->|yes| X["Parent applies title and section-move-first placement fallback"]
+        W -->|no| Y["Title and sidebar placement remain child-owned"]
         Q --> U["Report queued; no registration or prompt occurs in this flow"]
     end
 ```
@@ -74,9 +75,20 @@ graph TD
 ### 1. Resolve one creation attempt
 
 The parent resolves task kind, clean-or-fork mode, environment, title, model,
-pin policy, project, and one logical creation ID before calling a Codex task
-tool. That ID is reused for every registration and bootstrap write in this
-attempt.
+pin policy, project, inherited sidebar section, and one logical creation ID
+before calling a Codex task tool. That ID is reused for every registration and
+bootstrap write in this attempt.
+
+For pin-enabled creation, `section-cache get --session-id <source-session-id>
+--json` first checks the invoking tracked main or applicable root main; a
+tracked child's own observed custom section takes precedence. A fresh hit
+avoids sidebar enumeration. A missing or stale entry triggers one
+`list_threads` call and an exact `sections[].itemKeys` match using
+`codex:thread:local:<session-id>` or
+`codex:thread:remote:<session-id>`. Store the verified custom section or
+default `pinned` destination using `section-cache set`; unavailable discovery
+uses `pinned` without caching an unverified observation. `nopin` skips the
+lookup, cache access, and placement entirely.
 
 #### 1.1 Generate the logical ID, child trailer, and optional clean plan
 
@@ -86,7 +98,7 @@ attempt.
 resolved := merge_defaults_and_explicit_inputs()
 creation_id := uuid_v4()
 if resolved.kind == "child"
-  trailer := canonical_v2_trailer(creation_id)
+  trailer := canonical_v2_trailer(creation_id, section_id_when_pinning)
 if resolved.kind == "child" and resolved.mode == "clean" and task_text exists
   prompt := task_text + configured_on_create + trailer
   plan := create_thread(prompt, saved_project_id, resolved.environment)
@@ -169,13 +181,19 @@ require one thread row and one initial user rollout
 return codex_deep_link(threadId)
 ```
 
-The parent does not wait for deferred child-owned title and pin actions. When
+The parent does not wait for deferred child-owned title and placement actions. When
 the child is remote and creation returned a real Codex session ID, the parent
-also applies the same title and requested pin as an idempotent reliability
+also applies the same title and resolved sidebar section as an idempotent reliability
 fallback before returning. Local children normally leave both actions to the
 child. If authoritative one-shot registration displaces a copied helper
 session, the parent applies the same fallback locally because the real child
 did not receive bootstrap action context.
+
+Each placement first uses `move_thread_to_sidebar_section({threadId,
+sectionId})` when available. Only when that tool is unavailable does it use
+`set_thread_pinned({threadId, pinned: true})`; the legacy path reports
+degradation when a custom section was requested. Never also globally pin after
+a successful custom-section move.
 
 ## Notes
 
@@ -227,14 +245,26 @@ did not receive bootstrap action context.
 - Ordinary registration and hook conflicts remain strict; titles, timing, and
   UUID ordering are never used to choose the canonical session.
 
-### Remote-host title and pin fallback
+### Sidebar cache ownership and recovery
+
+- The nonauthoritative cache is `sidebar-sections.json` beside the resolved
+  ledger; `AGTASK_DB` moves both together without changing the SQLite schema.
+- Entries are keyed by stable source session ID and record host, stable section
+  ID, optional display name, and observation time. They expire after five
+  minutes; unrelated session entries remain independent.
+- Missing custom-section errors invalidate only the source-session entry,
+  perform one refreshed `list_threads` lookup, and allow one placement retry.
+- A parent with only the legacy pin tool still resolves and embeds a custom
+  section because the newly created child may receive the section-move tool.
+
+### Remote-host title and sidebar-placement fallback
 
 - A remote child with a real Codex session ID (`threadId` in the creation
-  result) receives a parent-side title and requested-pin fallback before the
+  result) receives a parent-side title and resolved-placement fallback before the
   parent returns.
 - The version-2 child actions remain enabled. If the remote host has the agtask
-  hook, the child may repeat the same app actions safely because both setters
-  are idempotent.
+  hook, the child may repeat the same section move and title safely because
+  both are idempotent. Legacy global pinning remains an availability fallback.
 - A queued `clientThreadId` or worktree ID is not a Codex session ID, so the
   parent cannot target either app action. A queued clean child retains those
   actions in its submitted prompt; a queued fork has no submitted prompt yet.
@@ -247,7 +277,7 @@ Metrics:
 Logs:
 - Parent orchestration reports `created; tracking pending`, verified, partial,
   or queued state. For a remote child with a real session ID, it also reports
-  the direct parent fallback result for title and pin.
+  the direct parent fallback result for title and sidebar placement.
 - Explicit registration errors are printed by the agtask CLI. Hook-side
   malformed or conflicting bootstraps intentionally remain silent.
 
@@ -264,5 +294,6 @@ Logs:
 [keep this for the user to add notes. do not change between edits]
 
 ## Changelog
+- 2026-08-06: Added cached main-section discovery, inherited child placement, section-move-first compatibility, and bounded missing-section recovery.
 - 2026-07-21 10:21: Added remote-host title and pin fallback while preserving child-owned actions and queued-client behavior (019f6e7b-6fee-7b22-9ee7-0448a1431036 - b026a6e)
 - 2026-07-21 10:07: Split task creation into a dedicated flow and distinguished regular clean, clean worktree, same-directory fork, and worktree-fork behavior (019f6e7b-6fee-7b22-9ee7-0448a1431036 - d0ab5633f6fc478e631614a90bf4c7e2054faafa)

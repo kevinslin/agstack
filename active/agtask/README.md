@@ -68,6 +68,7 @@ python3 "$AGTASK" close --session-id <codex-session-id> \
   --merge-token <token-from-prepare> --json
 python3 "$AGTASK" reopen --id <creation-id> --json
 python3 "$AGTASK" config --json
+python3 "$AGTASK" section-cache get --session-id <codex-session-id> --json
 ```
 
 Machine-readable thread results expose logical `id`, Codex `session_id`, and
@@ -130,19 +131,43 @@ to deliver it. Contended prepares return randomized retry hints without a
 prompt. Claimed prepares return a renewable fencing token, while idempotent
 register and committing-close retries return an empty `hook_prompts` array.
 
+## Sidebar placement
+
+Pin-enabled children inherit the invoking task's custom sidebar section; tasks
+in built-in sections, or without discoverable custom membership, use Codex's
+default `Pinned` section (`sectionId="pinned"`). The skill checks the invoking
+or root-main session's cached section before creation and calls `list_threads`
+once only when its entry is missing, stale, or unsafe. A tracked child's own
+observed custom section takes precedence over its root main's section.
+
+The nonauthoritative cache is `~/.llm/agtask/sidebar-sections.json`, beside
+`ledger.db`; `AGTASK_DB` relocates both together. Entries are keyed by stable
+Codex session ID, contain only host/section identity, display name, and
+observation time, and expire after five minutes. The CLI provides
+`section-cache get`, `set`, and `invalidate` without changing the SQLite schema.
+Unavailable sidebar discovery falls back to `pinned` without caching an
+unverified observation. `nopin` performs no lookup, cache access, or placement.
+
+When available, `move_thread_to_sidebar_section` places a task in the resolved
+custom section or `pinned`. `set_thread_pinned` is used only when the section
+tool is unavailable; it can preserve global pinning but cannot place a task in
+a requested custom section. Missing custom sections invalidate only their
+source-session cache entry and allow one refreshed placement retry.
+
 ## Creation bootstrap arguments
 
 `resolve-create` also returns `bootstrap_args` and a versioned
 `bootstrap_trailer`. The skill passes its resolved title through required
 `resolve-create --title` and, for child creation, the invoking parent session
-ID. It
-then appends the trailer as the exact final block of every created task prompt.
+ID and optional `--section-id`. It then appends the trailer as the exact final
+block of every created task prompt.
 Version 2 adds a generated canonical UUIDv4 creation `id` and strict
-parent-session/project registration identity to `pin` and `title`:
+parent-session/project registration identity to `pin` and `title`. Pin-enabled
+children also carry an optional strictly validated `section_id`:
 
 ```text
 <agtask-bootstrap version="2">
-{"id":"1d7e4ef1-0c28-4a3d-93b1-779c7fe52bd8","parent_session_id":"parent-session-id","pin":true,"project":"agtask","title":"agtask/bootstrap-title"}
+{"id":"1d7e4ef1-0c28-4a3d-93b1-779c7fe52bd8","parent_session_id":"parent-session-id","pin":true,"project":"agtask","section_id":"pinned","title":"agtask/bootstrap-title"}
 </agtask-bootstrap>
 ```
 
@@ -179,22 +204,25 @@ never HTML-decoded. Malformed input and failed actions fail open, and version-2
 app actions are exposed only after registration and first-turn recording commit
 successfully.
 
-For `pin=true`, the hook injects a request for the child model to call the Codex
-app pin action on its own now-real session ID. It independently requests the
-Codex app title action with the resolved `title`. Both setters are idempotent,
-and the title string is tool data rather than instructions. The child reports
-success, unavailability, or the exact app error for each action and continues
-the task. This separates deterministic hook parsing from model-mediated app
-state and lets queued worktree creation self-register after materialization
-without parent polling.
+For `pin=true`, the hook asks the child model to move its own now-real session
+into the resolved sidebar section when `move_thread_to_sidebar_section` is
+available, or globally pin it through legacy `set_thread_pinned` otherwise.
+Older envelopes without `section_id` default to `pinned`; `pin=false` emits no
+placement action. The title action remains independent. Repeating the same
+section move or title is idempotent, and section/title strings are tool data,
+never instructions. The child reports placement, legacy custom-section
+degradation, unavailability, or the exact app error and continues the task.
+Queued worktrees retain these actions until materialization.
 
 When a child is created on a remote host and the creation API returns a real
 Codex session ID (`threadId` in the creation result), the calling agent also
-applies the same title and requested pin state through the Codex app. This
-parent-side fallback covers remote hosts that do not have the agtask hook
-installed. The version-2 child actions remain enabled because both setters are
-idempotent. A queued client/worktree ID is not a real Codex session ID and
-cannot receive app actions; those remain deferred until the child materializes.
+applies the same title and resolved section through the Codex app, preferring
+the section-move tool and falling back to legacy pinning only when necessary.
+This parent-side fallback also covers local authoritative-session rebound and
+remote hosts without the agtask hook. Child actions remain enabled because
+same-section moves and title assignments are idempotent. A queued
+client/worktree ID is not a real Codex session ID and cannot receive app
+actions; those remain deferred until the child materializes.
 Bootstrap metadata is removed before task summary and rollout reconciliation.
 
 Use `config --json` to inspect the merged document and loaded paths. Set

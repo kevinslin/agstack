@@ -40,6 +40,14 @@ designation never creates another task. Audit requires explicit confirmation
 before mutation. Rename coordinates the Codex app and ledger without silently
 accepting divergence. Close owns its merge lease through completion or release.
 
+## Notification boundary
+
+Starting or continuing an agtask is task bookkeeping, not terminal completion
+of the work that task tracks. Never invoke `gen-notifier` when creating,
+designating, adding, attaching, auditing, renaming, reopening, or otherwise
+starting or continuing a task. Leave completion notifications to the top-level
+caller after the overall tracked work reaches a genuine final state.
+
 ## Usage
 
 ```text
@@ -60,6 +68,8 @@ $agtask close [task-id-or-session-id]
 ## Administrative commands
 
 - Normalize creation inputs: `./scripts/agtask resolve-create`
+- Inspect or update cached sidebar membership:
+  `./scripts/agtask section-cache get|set|invalidate`
 - Add the current task:
   `./scripts/agtask add <project> --session-id <id> --title <title> --initial-prompt <prompt>`
 - Attach a local file:

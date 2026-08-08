@@ -33,6 +33,7 @@ POST_CLOSE_DIRECTIVE = "Reply with exactly INTEG_POST_CLOSE_READY"
 CONFIG_TITLE = "agtask/integ-configured-title"
 EXPLICIT_TITLE = "agtask/integ-explicit-title"
 BOOTSTRAP_PROTOCOL_TITLE = "agtask/integ-materialized-title"
+BOOTSTRAP_CUSTOM_SECTION_ID = "515c42ed-d59b-4559-a33e-b1d0612af20b"
 BOOTSTRAP_TRUE_TRAILER = """<agtask-bootstrap version="1">
 {"pin":true,"title":"agtask/integ-materialized-title"}
 </agtask-bootstrap>"""
@@ -48,9 +49,9 @@ MAIN_SCENARIO_VERSION = 6
 CONFIG_SCENARIO_NAME = "layered-config-prompt-hooks"
 CONFIG_SCENARIO_VERSION = 5
 BOOTSTRAP_SCENARIO_NAME = "bootstrap-arguments-v1"
-BOOTSTRAP_SCENARIO_VERSION = 3
+BOOTSTRAP_SCENARIO_VERSION = 4
 CREATION_BOOTSTRAP_SCENARIO_NAME = "creation-bootstrap-v2"
-CREATION_BOOTSTRAP_SCENARIO_VERSION = 3
+CREATION_BOOTSTRAP_SCENARIO_VERSION = 4
 LIFECYCLE_SCENARIO_NAME = "lifecycle-create-directive-close-hooks"
 LIFECYCLE_SCENARIO_VERSION = 13
 DASHBOARD_SCENARIO_NAME = "dashboard-html"
@@ -1299,7 +1300,11 @@ def verify_bootstrap_protocol(
     )
     valid_context = valid_document["hookSpecificOutput"].get("additionalContext", "")
     require(
-        "codex_app__set_thread_pinned" in valid_context
+        "codex_app__move_thread_to_sidebar_section" in valid_context
+        and "codex_app__set_thread_pinned" in valid_context
+        and valid_context.index("codex_app__move_thread_to_sidebar_section")
+        < valid_context.index("codex_app__set_thread_pinned")
+        and '"sectionId":"pinned"' in valid_context
         and "codex_app__set_thread_title" in valid_context
         and '"threadId":"integ-materialized-child"' in valid_context
         and f'"title":"{BOOTSTRAP_PROTOCOL_TITLE}"' in valid_context
@@ -1314,7 +1319,8 @@ def verify_bootstrap_protocol(
         "additionalContext"
     ]
     require(
-        "codex_app__set_thread_pinned" not in pin_false_context
+        "codex_app__move_thread_to_sidebar_section" not in pin_false_context
+        and "codex_app__set_thread_pinned" not in pin_false_context
         and "codex_app__set_thread_title" in pin_false_context,
         "pin=false did not preserve the title action",
     )
@@ -1376,6 +1382,51 @@ def verify_creation_identity_regression(
     parent_session_id = "019f6e68-19d6-7e10-a449-506a0de88117"
     title = "Implement per-project merge queue"
     description = "Implement a simple per-project merge queue for agtask."
+    cache_miss = run_cli(
+        cli,
+        "section-cache",
+        "get",
+        "--session-id",
+        parent_session_id,
+        cwd=cwd,
+        environment=environment,
+    )
+    require(cache_miss.get("state") == "miss", "new main session unexpectedly had cached sidebar placement")
+    cache_stored = run_cli(
+        cli,
+        "section-cache",
+        "set",
+        "--session-id",
+        parent_session_id,
+        "--host-id",
+        "local",
+        "--section-id",
+        BOOTSTRAP_CUSTOM_SECTION_ID,
+        "--section-name",
+        "proj/clawpilot",
+        cwd=cwd,
+        environment=environment,
+    )
+    require(
+        cache_stored.get("state") == "stored"
+        and cache_stored.get("entry", {}).get("section_id") == BOOTSTRAP_CUSTOM_SECTION_ID,
+        "main session custom section was not cached",
+    )
+    cache_hit = run_cli(
+        cli,
+        "section-cache",
+        "get",
+        "--session-id",
+        parent_session_id,
+        cwd=cwd,
+        environment=environment,
+    )
+    require(
+        cache_hit.get("state") == "hit"
+        and cache_hit.get("entry", {}).get("section_id") == BOOTSTRAP_CUSTOM_SECTION_ID
+        and (database.parent / "sidebar-sections.json").is_file(),
+        "section cache did not reuse the proof-local ledger directory",
+    )
     trailer = (
         '<agtask-bootstrap version="2">\n'
         + json.dumps(
@@ -1384,6 +1435,7 @@ def verify_creation_identity_regression(
                 "parent_session_id": parent_session_id,
                 "pin": True,
                 "project": "agtask-regression",
+                "section_id": BOOTSTRAP_CUSTOM_SECTION_ID,
                 "title": title,
             },
             separators=(",", ":"),
@@ -1496,7 +1548,10 @@ def verify_creation_identity_regression(
     copied_document = json.loads(copied_output)
     context = copied_document["hookSpecificOutput"]["additionalContext"]
     require(
-        f'"threadId":"{copied_session_id}"' in context,
+        f'"threadId":"{copied_session_id}"' in context
+        and "codex_app__move_thread_to_sidebar_section" in context
+        and "codex_app__set_thread_pinned" in context
+        and f'"sectionId":"{BOOTSTRAP_CUSTOM_SECTION_ID}"' in context,
         "copied first-writer proof did not target its own session",
     )
     return {

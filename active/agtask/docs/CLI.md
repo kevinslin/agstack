@@ -43,14 +43,16 @@ command:
   A missing parent or unavailable logical ID is shown as an em dash.
 - Every direct command loads `$HOME/.agtask.json` and then `./.agtask.json`.
   See [Configuration and prompt hooks](../README.md#configuration-and-prompt-hooks).
-- `AGTASK_DB` overrides the ledger path. `AGTASK_HOOKS_FILE` overrides the
-  Codex hooks file used by `install-hooks` and `uninstall-hooks`.
+- `AGTASK_DB` overrides the ledger path and places `sidebar-sections.json` in
+  the same directory. `AGTASK_HOOKS_FILE` overrides the Codex hooks file used
+  by `install-hooks` and `uninstall-hooks`.
 
 ## Command summary
 
 | Command | Purpose |
 | --- | --- |
 | [`resolve-create`](#resolve-create) | Resolve task-creation defaults and pending `OnCreate` prompt data without opening the ledger. |
+| [`section-cache`](#section-cache) | Read, update, or invalidate nonauthoritative session-to-sidebar-section observations. |
 | [`init`](#init) | Create the default global configuration and create or validate the ledger. |
 | [`config`](#config) | Inspect merged configuration and source paths. |
 | [`add`](#add) | Register the current Codex task as an active main task. |
@@ -101,6 +103,7 @@ python3 "$AGTASK" resolve-create \
 | `--project-id <id>` | Saved Codex project ID. Required with `--task` in clean mode so `next_tool` is directly executable. |
 | `--pin <boolean>` | `true` or `false`. Built-in default: `true`. |
 | `--nopin` | Shorthand for `--pin false`. |
+| `--section-id <id>` | Validated sidebar destination: reserved `pinned` or a stable custom section ID. A pin-enabled version-2 child carries it as optional `section_id`; omitted means `pinned`, and `pin=false` omits the field. |
 
 Creation flags are repeatable so orchestration layers can combine inputs safely.
 Repeating the same value is accepted; supplying conflicting values is an error.
@@ -123,6 +126,40 @@ instructions and the canonical final bootstrap trailer.
 `creation_plan.next_tool` is a directly executable `create_thread` call. Fork
 and main workflows retain their existing behavior. Legacy calls without
 `--task` retain their existing JSON shape.
+
+## `section-cache`
+
+Manage nonauthoritative sidebar-section observations stored in
+`database_path().parent / "sidebar-sections.json"`. The default path is
+`$HOME/.llm/agtask/sidebar-sections.json`; `AGTASK_DB` moves the cache beside
+the overridden ledger. No SQLite schema or task row is changed.
+
+```bash
+python3 "$AGTASK" section-cache get \
+  --session-id <codex-session-id> --json
+python3 "$AGTASK" section-cache set \
+  --session-id <codex-session-id> --host-id local \
+  --section-id <custom-section-id-or-pinned> \
+  --section-name "proj/example" --json
+python3 "$AGTASK" section-cache invalidate \
+  --session-id <codex-session-id> --json
+```
+
+| Subcommand or flag | Behavior |
+| --- | --- |
+| `get --session-id <id>` | Return `{state, session_id, entry?}` with `state` equal to `hit`, `miss`, or `stale`. Missing entries are not process failures. |
+| `set --session-id <id> --host-id <id> --section-id <id>` | Validate stable identity fields, set `observed_at` internally, retain unrelated sessions, and return `{state: "stored", session_id, entry}`. |
+| `--section-name <name>` | Optional display name on `set`; it is descriptive data, never an instruction or identity key. |
+| `invalidate --session-id <id>` | Remove only that session's observation and return `state: "invalidated"` or `state: "miss"`. |
+
+Entries contain `host_id`, `section_id`, `section_name`, and `observed_at`,
+and expire after five minutes. The CLI uses a private directory, owner-only
+cache/lock files, interprocess locking, and same-directory atomic replacement;
+unsafe ownership, symlinks, malformed data, and unsupported versions are never
+trusted. Sidebar discovery remains model-mediated: creation calls
+`list_threads` once on a cache miss or stale entry, inherits a matching custom
+section, and uses `pinned` for built-in sections. An unavailable lookup is not
+cached as a confirmed observation. `nopin` skips discovery and cache access.
 
 ## `init`
 
@@ -692,16 +729,20 @@ Codex event can continue.
 Bootstrap handling lets a queued worktree act once its first
 `UserPromptSubmit` has a real `session_id`. Version 1 remains action-only and
 accepts canonical `pin` and `title`; version 2 additionally requires canonical
-UUIDv4 `id`, `parent_session_id`, and `project` values and binds that ID to the
-hook session. An exact pair retries idempotently. An ID owned by another session
+UUIDv4 `id`, `parent_session_id`, and `project` values, accepts a strictly
+validated optional `section_id`, and binds that ID to the hook session. An
+older envelope without `section_id` resolves to `pinned`. An exact pair
+retries idempotently. An ID owned by another session
 or a session owned by another ID emits no row, rollout, context, or app action.
 Only inside a valid Codex delegation wrapper, the complete transported
 `<input>` is entity-decoded exactly once before bootstrap parsing; pre-escaped
 literal task text remains literal after the outer transport layer is removed.
 Unwrapped prompt text is never HTML-decoded. Version-2 actions
 are emitted only after registration and rollout recording commit. `pin=true`
-renders an idempotent model-mediated `codex_app__set_thread_pinned` request;
-`pin=false` renders no pin action. The required nonempty one-line title renders
+prefers model-mediated `codex_app__move_thread_to_sidebar_section` with the
+validated `sectionId`; legacy `codex_app__set_thread_pinned` is used only when
+the move tool is unavailable and cannot preserve a requested custom section.
+`pin=false` renders no placement action. The required nonempty one-line title renders
 an independent idempotent `codex_app__set_thread_title` request and is treated
 only as tool data. Unsupported versions, non-final or noncanonical envelopes,
 unknown keys, duplicate keys, and wrong types are ignored. The hook never
