@@ -41,6 +41,7 @@ Example:
 
 ### Agent
 
+- [agcleanup](active/agcleanup/SKILL.md): Keep Codex lean and responsive by archiving stale tasks, reconciling tracked tasks, and reaping accumulated MCP helpers and orphaned DevBox connections.
 - [ag-dir](active/ag-dir/SKILL.md): Define and maintain an Agent Project Directory (AGD) with clear durable docs, canonical status ownership, and isolated runtime artifacts.
 - [ag-ledger](active/ag-ledger/SKILL.md): Record, sync, and query append-only agent activity ledger entries using local JSONL daily files under META_LEDGER_ROOT (default ~/.llm/ag-ledger), with structured skill metadata and explicit settled, live-frontier, and stable blocked closeout states.
 - [ag-learn](active/ag-learn/SKILL.md): Improve skills from observed agent friction in sessions, PRs, or audits, ranking evidence-based learning candidates before routing canonical skill edits through `$sc`.
@@ -48,7 +49,7 @@ Example:
 - [convosearch](active/convosearch/SKILL.md): Search prior Codex conversations and return up to 3 relevant thread matches with clickable deep links. Use only when explicitly invoked as `$convosearch [query] | [filters]`.
 - [gen-notifier](active/gen-notifier/SKILL.md): Generic desktop notification skill for agents. Send desktop notifications when tasks are complete (or when user input/errors block progress). By default, assume that all jobs will require a notification unless the user says otherwise.
 - [learning-capture](active/learning-capture/SKILL.md): Extract and consolidate key learnings, insights, and actionable takeaways from the current conversation session. Use when the user wants to capture, summarize, or document what was learned during the chat, create study materials from discussions, or save important discoveries and decisions for future reference. Triggers include requests like "capture learnings," "summarize what we discussed," "create notes from this conversation," "what did I learn today," or "document our key findings."
-- [mem](active/mem/SKILL.md): Route durable knowledge and read-only project context, infer candidate paths from schema descriptions, and safely materialize managed or explicit repo-owned layouts through one CLI.
+- [mem](active/mem/SKILL.md): Route durable knowledge, run bounded read-only project context with `python3 ./scripts/mem.py context lookup`, and safely materialize managed or explicit repo-owned layouts; see the [knowledge workflow](active/mem/references/knowledge-workflow.md#project-context-lookup).
 - [meta.summarize](active/meta.summarize/SKILL.md): Summarize Codex activity from ag-ledger using optional `scope`, `lookup`, and `groupby` arguments (`meta.summarize [scope] [lookup] [groupby]`). Use when asked to summarize the current conversation (`convo`), summarize sessions that started in the current workspace (`workspace`), or summarize all sessions across workspaces (`all`) over current day, last 24 hours, last week, or last month.
 - [sc](active/sc/SKILL.md): Create, update, or directly optimize skills and SKILL.md content, using discoverable `$skill-name` references with synchronized dependency metadata plus canonical-source preflight, validation, packaging, and runtime synchronization.
 - [secrets](active/secrets/SKILL.md): Load and manage local dotenvx credential sets for agent workflows. Use when directly invoked as `$secrets` or when a task needs credentials from `~/.secrets/.env.*`.
@@ -87,7 +88,7 @@ Example:
 - [find-links](active/find-links/SKILL.md): This skill should be used when the user wants to fill in TODO links, placeholder links, or missing links in markdown files. Invoke when the user mentions "fill links", "TODO links", "find links", or asks to add appropriate links to concepts in a document.
 - [proofread](active/proofread/SKILL.md): Proofread posts before publication. Use when asked to review a draft blog post, article, social post, announcement, essay, or other publish-ready writing for spelling, grammar, repeated phrasing, logic or factual mistakes, weak arguments, or empty and placeholder links.
 - [spec-template](active/spec-template/SKILL.md): Turn an existing concrete spec into a reusable generic spec template, extracting invariant contracts, replacing implementation-specific details with slots, and preserving the source spec or PR as a worked example.
-- [specy](active/specy/SKILL.md): Create structured research documentation for codebase exploration and feature investigation, routing durable artifacts through `$mem` and using `$docy` `ref/spec` as the shared writing-style owner for architecture, service-design, feature-design, and feature-spec documents. Specy retains artifact routing, templates, execution planning, lifecycle, and handoff requirements.
+- [specy](active/specy/SKILL.md): Create structured research documentation, concise source-backed flow docs, and focused feature specs with one implementation contract, concrete work, and outcome-to-proof verification; add phases, pseudocode, and risk detail only when the change requires them. Route durable artifacts through `$mem` and use `$docy` `ref/spec` for specification writing.
 
 ### Utils
 
