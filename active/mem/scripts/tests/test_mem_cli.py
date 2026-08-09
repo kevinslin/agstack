@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
+import sys
 import tempfile
 import textwrap
 import unittest
@@ -24,7 +26,7 @@ class MemCliTests(unittest.TestCase):
         self.config.write_text(
             textwrap.dedent(
                 f"""
-                version: 1
+                version: 2
                 bases:
                   - name: docs
                     description: Durable documentation.
@@ -76,7 +78,7 @@ class MemCliTests(unittest.TestCase):
         self.config.write_text(
             textwrap.dedent(
                 f"""
-                version: 1
+                version: 2
                 bases:
                   - name: dendron
                     description: General knowledge base.
@@ -109,6 +111,188 @@ class MemCliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertTrue((notes / "cook.configure-service.md").is_file())
         self.assertFalse((self.base / "cook.configure-service.md").exists())
+        self.assertTrue((notes / ".mem.index.json").is_file())
+
+    def test_managed_materialization_refreshes_base_index(self) -> None:
+        result = self.run_mem(
+            "schema",
+            "materialize",
+            "global-core",
+            "--config",
+            str(self.config),
+            "--base",
+            "docs",
+            "--var",
+            "cook=example",
+            "--include",
+            "cook/example",
+        )
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertIn("cook/example.md", result.stdout)
+        index = json.loads((self.base / ".mem.index.json").read_text(encoding="utf-8"))
+        self.assertEqual(index["document_count"], 1)
+
+    def test_managed_skip_existing_preserves_unchanged_index(self) -> None:
+        arguments = (
+            "schema",
+            "materialize",
+            "global-core",
+            "--config",
+            str(self.config),
+            "--base",
+            "docs",
+            "--var",
+            "cook=example",
+            "--include",
+            "cook/example",
+            "--skip-existing",
+        )
+        first = self.run_mem(*arguments)
+        self.assertEqual(first.returncode, 0, msg=first.stderr)
+        index_path = self.base / ".mem.index.json"
+        original_stat = index_path.stat()
+        original_content = index_path.read_bytes()
+
+        second = self.run_mem(*arguments)
+
+        self.assertEqual(second.returncode, 0, msg=second.stderr)
+        self.assertEqual(second.stdout, "")
+        self.assertEqual(index_path.read_bytes(), original_content)
+        self.assertEqual(index_path.stat().st_mtime_ns, original_stat.st_mtime_ns)
+
+    def test_doctor_migration_is_dispatched_through_unified_cli(self) -> None:
+        self.config.write_text(
+            self.config.read_text(encoding="utf-8").replace("version: 2", "version: 1"),
+            encoding="utf-8",
+        )
+
+        result = self.run_mem("doctor", "--migrate", "--config", str(self.config))
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["mode"], "doctor_migrate")
+        self.assertEqual(payload["results"][0]["status"], "migrated")
+        self.assertIn("version: 2", self.config.read_text(encoding="utf-8"))
+
+    def test_failed_managed_materialization_preserves_child_failure(self) -> None:
+        result = self.run_mem(
+            "schema",
+            "materialize",
+            "global-core",
+            "--config",
+            str(self.config),
+            "--base",
+            "docs",
+            "--include",
+            "missing/not-a-schema-node",
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout, "")
+        self.assertEqual(result.stderr, "error: schema 'global-core' produced no files\n")
+        self.assertFalse((self.base / ".mem.index.json").exists())
+        self.assertNotIn("index_refresh_failed", result.stderr)
+
+    def test_refresh_warning_preserves_configuration_controls_and_replays(self) -> None:
+        controls_root = self.root / "configuration controls with spaces"
+        controls_root.mkdir()
+        config_path = controls_root / "explicit config.yaml"
+        config_path.write_text(self.config.read_text(encoding="utf-8"), encoding="utf-8")
+        cwd_path = controls_root / "working directory"
+        home_path = controls_root / "home directory"
+        cwd_path.mkdir()
+        home_path.mkdir()
+        index_path = self.base / ".mem.index.json"
+        index_path.mkdir()
+
+        result = self.run_mem(
+            "schema",
+            "materialize",
+            "global-core",
+            "--config",
+            str(config_path),
+            "--cwd",
+            str(cwd_path),
+            "--home",
+            str(home_path),
+            "--base",
+            "docs",
+            "--var",
+            "cook=example",
+            "--include",
+            "cook/example",
+        )
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(
+            result.stdout,
+            f"{(self.base / 'cook' / 'example.md').resolve(strict=False)}\n",
+        )
+        self.assertTrue((self.base / "cook" / "example.md").is_file())
+        warning_lines = [line for line in result.stderr.splitlines() if line.startswith("{")]
+        self.assertEqual(len(warning_lines), 1, msg=result.stderr)
+        warning = json.loads(warning_lines[0])
+        self.assertEqual(
+            set(warning),
+            {"level", "code", "base", "index_path", "error", "repair_argv"},
+        )
+        self.assertEqual(warning["level"], "warning")
+        self.assertEqual(warning["code"], "index_refresh_failed")
+        self.assertEqual(warning["base"], "docs")
+        self.assertEqual(warning["index_path"], str(index_path.resolve(strict=False)))
+        self.assertTrue(warning["error"])
+        self.assertEqual(
+            warning["repair_argv"],
+            [
+                str(SCRIPT_PATH),
+                "index",
+                "build",
+                "--base",
+                "docs",
+                "--config",
+                str(config_path),
+                "--cwd",
+                str(cwd_path),
+                "--home",
+                str(home_path),
+            ],
+        )
+
+        index_path.rmdir()
+        repaired = subprocess.run(
+            [sys.executable, *warning["repair_argv"]],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(repaired.returncode, 0, msg=repaired.stderr)
+        self.assertEqual(json.loads(repaired.stdout)["results"][0]["base"], "docs")
+
+    def test_refresh_warning_omits_unsupplied_configuration_controls(self) -> None:
+        index_path = self.base / ".mem.index.json"
+        index_path.mkdir()
+
+        result = self.run_mem(
+            "schema",
+            "materialize",
+            "global-core",
+            "--config",
+            str(self.config),
+            "--base",
+            "docs",
+            "--var",
+            "cook=example",
+            "--include",
+            "cook/example",
+        )
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        warning = json.loads(result.stderr.splitlines()[-1])
+        self.assertEqual(
+            warning["repair_argv"],
+            [str(SCRIPT_PATH), "index", "build", "--base", "docs", "--config", str(self.config)],
+        )
 
     def test_explicit_out_requires_unmanaged(self) -> None:
         result = self.run_mem(
@@ -198,7 +382,7 @@ class MemCliTests(unittest.TestCase):
         self.config.write_text(
             textwrap.dedent(
                 f"""
-                version: 1
+                version: 2
                 bases:
                   - name: docs
                     description: Durable documentation.

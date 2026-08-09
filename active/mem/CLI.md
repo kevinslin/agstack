@@ -1,6 +1,6 @@
 # mem CLI reference
 
-Use `./scripts/mem.py` to inspect memory configuration, explain routing, perform bounded read-only lookup, inspect schemas, and materialize schema nodes.
+Use `./scripts/mem.py` to migrate and inspect memory configuration, manage derived base indexes, explain routing, perform bounded document-preserving lookup, inspect schemas, and materialize schema nodes.
 
 Run commands from the directory containing `SKILL.md`:
 
@@ -15,6 +15,10 @@ Python 3 and PyYAML are required for configuration, routing, and context command
 ```text
 mem.py config show
 mem.py context lookup
+mem.py doctor --migrate
+mem.py index build
+mem.py index show
+mem.py index check
 mem.py route
 mem.py schema list
 mem.py schema show
@@ -32,7 +36,7 @@ Unless `--config` is present, commands load:
 1. the nearest `.mem.yaml` at or above `--cwd`;
 2. `.mem.yaml` under `--home`.
 
-The nearest configuration wins for duplicate base names. Unique home bases remain available. Base names and aliases must be globally unique after merging.
+The nearest configuration wins for duplicate base names. Unique home bases remain available. Base names and aliases must be globally unique after merging. Ordinary loading accepts only top-level configuration `version: 2`; after installing the updated skill, run `doctor --migrate` before using an existing version-1 configuration.
 
 See [Config in the README](./README.md#config) for every `.mem.yaml` field, default, routing signal, and validation rule.
 
@@ -59,7 +63,7 @@ Options:
 - `--allow-missing-roots`: validate and normalize without requiring `root` and `managed_root` directories to exist. Custom schema paths must still exist.
 - `--pretty`: indent JSON output.
 
-The result includes `config_path`, ordered `config_paths`, `version`, normalized `bases`, and the effective `audit` mapping. Each base includes absolute `root`, absolute `managed_root`, resolved `path_style`, normalized schemas, and its owning `config_path`. `audit.enabled` defaults to `false`, and `audit.trace_root` defaults to `$HOME/.config/mem/traces`.
+The result includes `config_path`, ordered `config_paths`, configuration `version: 2`, normalized `bases`, and the effective `audit` mapping. Each base includes absolute `root`, absolute `managed_root`, derived `index_path`, resolved `path_style`, normalized schemas, and its owning `config_path`. `audit.enabled` defaults to `false`, and `audit.trace_root` defaults to `$HOME/.config/mem/traces`.
 
 ```bash
 python3 ./scripts/mem.py config show --pretty
@@ -68,9 +72,103 @@ python3 ./scripts/mem.py config show --config /tmp/example.mem.yaml --allow-miss
 
 The command exits nonzero and writes `error: ...` to stderr for missing files, invalid YAML, invalid fields, missing roots, unsafe managed roots, missing custom schema files, and name or alias collisions.
 
+## `doctor --migrate`
+
+Upgrade legacy configuration files before strict current-schema loading.
+
+```bash
+python3 ./scripts/mem.py doctor --migrate [OPTIONS]
+```
+
+Options:
+
+- `--migrate`: required action; upgrade discovered legacy configuration files.
+- `--config PATH`: migrate only the selected file.
+- `--cwd PATH`, `--home PATH`: use the same project/home discovery controls as ordinary commands.
+- `--pretty`: indent JSON output.
+
+For each top-level configuration `version: 1`, migration sets `version: 2` and drops every base's retired `match.topics` and `match.artifact_kinds`. It preserves `cwd_globs` and `source_globs`; if neither remains, it removes the empty `match` mapping entirely. Roots, aliases, schemas, priority, auditing, and other supported settings remain intact. Existing valid version-2 files are unchanged. Retired values are discarded rather than copied into generated indexes.
+
+All transformed files and their merged configuration are validated before any file is written. Changed files retain their original permissions and are replaced atomically one at a time; rerunning safely completes a partial write failure. Migration neither generates indexes nor leaves backups or lockfiles.
+
+Successful per-file work emits one JSON object containing `mode: doctor_migrate`, overall `status`, ordered `config_paths`, and `results`. Each result contains `config_path`, `from_version`, `to_version`, `status` (`migrated`, `unchanged`, or `error`), and `removed_fields`; failed results include `error`. `removed_fields` counts removed configuration keys, not list elements.
+
+```bash
+# Migrate both discoverable project and home files, if present.
+python3 ./scripts/mem.py doctor --migrate --pretty
+
+# Migrate exactly one legacy configuration.
+python3 ./scripts/mem.py doctor --migrate \
+  --config /tmp/example.mem.yaml \
+  --pretty
+```
+
+Exit `0` means every configuration was migrated or already current. Exit `1` means a per-file replacement or final strict reload failed after planning; rerun after correcting the reported error. Exit `2` means invalid arguments, discovery, raw YAML/version inspection, or merged prevalidation failed before any configuration write.
+
+## Base index commands
+
+Each base owns `<managed_root>/.mem.index.json`, a disposable, format-version-1 cache of generated topics, artifact kinds, eligible Markdown document count, relative-path fingerprint, and the first two logical hierarchy levels. Its version is independent of `.mem.yaml` configuration version 2.
+
+Builds and freshness checks scan **every** eligible non-symlink Markdown path without file-count or directory-count limits. They do not read document contents. The existing 2,000-file/500-directory context-search limits apply only to knowledge and source lookup, never to index generation or verification. Concurrent commands use advisory locks on the existing managed-root directory; no durable `.lock` file is created.
+
+All index commands accept `--config PATH`, `--cwd PATH`, `--home PATH`, and `--pretty`. They require existing managed roots and reject `--allow-missing-roots`.
+
+### `index build`
+
+Create, update, repair, or leave unchanged the indexes for one selected base or all configured bases.
+
+```bash
+python3 ./scripts/mem.py index build (--base NAME_OR_ALIAS | --all) [OPTIONS]
+```
+
+- `--base NAME_OR_ALIAS`: select exactly one configured base name or alias.
+- `--all`: process every configured base in merged configuration order.
+
+Exactly one of `--base` and `--all` is required. Per-base statuses are `created`, `updated`, `unchanged`, or `error`. Identical relative-path fingerprints preserve existing index bytes and `generated_at`; safe malformed regular index files are repairable. Run this command after external creation, rename, deletion, synchronization, or direct agent creation of a managed Markdown document.
+
+```bash
+python3 ./scripts/mem.py index build --base oai --pretty
+python3 ./scripts/mem.py index build --all --pretty
+```
+
+### `index show`
+
+Load, validate, and print one stored index without scanning or modifying knowledge paths.
+
+```bash
+python3 ./scripts/mem.py index show --base NAME_OR_ALIAS [OPTIONS]
+```
+
+`--base` is required; `--all` is unsupported. Per-base statuses are `loaded`, `missing`, `invalid`, or `error`. A `loaded` result includes the validated full `index` payload. `show` does not claim the stored index is current.
+
+```bash
+python3 ./scripts/mem.py index show --base oai --pretty
+```
+
+### `index check`
+
+Recompute the uncapped path fingerprint and compare it with each stored index without modifying any index or knowledge document.
+
+```bash
+python3 ./scripts/mem.py index check (--base NAME_OR_ALIAS | --all) [OPTIONS]
+```
+
+Exactly one of `--base` and `--all` is required. Per-base statuses are `current`, `missing`, `stale`, `invalid`, or `error`.
+
+```bash
+python3 ./scripts/mem.py index check --base oai --pretty
+python3 ./scripts/mem.py index check --all --pretty
+```
+
+### Index results and exits
+
+Every index command that reaches per-base work emits one JSON object with `mode`, overall `status`, `config_paths`, and ordered `results`. Each result contains `base`, `index_path`, `status`, `document_count`, `source_fingerprint`, `changed`, and any applicable `error`; `show` additionally returns the validated `index` when loaded. Unknown metadata for missing or invalid indexes is `null`. `changed` is `true` only when `build` creates or updates an index.
+
+Exit `0` means every build/show succeeded or every checked index is current. Exit `1` means at least one selected base was missing, stale, invalid, or failed; `--all` still processes subsequent bases. Exit `2` means arguments, configuration, base selection, or an unsafe index path prevented safe per-base execution. Symlink and out-of-bound index locations are rejected.
+
 ## `route`
 
-Select a configured base and explain the routing decision without reading or writing knowledge files.
+Select a configured base and explain the routing decision without changing knowledge documents. Routing may create missing derived base indexes before consuming their generated query signals.
 
 ```bash
 python3 ./scripts/mem.py route --query TEXT [OPTIONS]
@@ -86,17 +184,17 @@ Options:
 - `--allow-missing-roots`: route against valid configuration whose base roots do not yet exist.
 - `--pretty`: indent JSON output.
 
-Routing tiers are strict: `explicit` precedes `ownership`, which precedes `query`. The result has `status` (`selected`, `ambiguous`, or `no_match`), `tier`, `selected`, ranked `candidates`, and `config_paths`. Candidate records include the base name, root, managed root, score, priority, config path, and reasons.
+Routing tiers are strict: `explicit` precedes `ownership`, which precedes `query`. The result has `status` (`selected`, `ambiguous`, or `no_match`), `tier`, `selected`, ranked `candidates`, and `config_paths`. Candidate records include the base name, root, managed root, score, priority, config path, index status, and reasons. Query routing may initialize multiple candidate indexes; explicit or ownership routing initializes only the selected base.
 
 ### Query routing
 
-The router evaluates the query only when no `--target` is supplied and no base owns the current directory or any `--source` path. It scores each configured base by comparing `--query` with that base's name, aliases, description, and optional `match` fields:
+The router evaluates the query only when no `--target` is supplied and no base owns the current directory or any `--source` path. It scores each configured base by comparing `--query` with that base's name, aliases, description, and path-derived index metadata:
 
 | Matching signal | Points per match | Candidate reason |
 | --- | ---: | --- |
 | Base `name` or an entry in `aliases` | 120 | `name-or-alias:<value>` |
-| An entry in `match.topics` | 50 | `topic:<value>` |
-| An entry in `match.artifact_kinds` | 30 | `artifact:<value>` |
+| A generated entry in `metadata.topics` | 50 | `index-topic:<value>` |
+| A generated entry in `metadata.artifact_kinds` | 30 | `index-artifact:<value>` |
 | The complete base `description` | 80 | `description:<value>` |
 | A two- or three-word phrase from `description` | 80 | `description:<phrase>` |
 | An individual meaningful word from `description` | 3 | `description:<word>` |
@@ -104,6 +202,25 @@ The router evaluates the query only when no `--target` is supplied and no base o
 Points accumulate when multiple signals match. Matching is case-insensitive. Phrases also match after punctuation and spaces are removed when the normalized phrase contains at least five characters, so names such as `open-claw` can match `openclaw`.
 
 Description phrases are built after removing generic words such as `knowledge`, `notes`, `workspace`, `project`, `specs`, and `openai`. Artifact matching uses `--artifact-kind` when provided; otherwise it uses the first recognized artifact word in the query, such as `guide`, `runbook`, `spec`, `report`, or `research`.
+
+Artifact classification precedes topic classification and uses these fixed aliases:
+
+| Observed first- or second-level label | Generated artifact kinds |
+| --- | --- |
+| `cook`, `cookbook`, `cookbooks` | `cookbook`, `guide` |
+| `decision`, `decisions` | `decision` |
+| `finding`, `findings` | `finding` |
+| `guide`, `guides` | `guide` |
+| `lesson`, `lessons` | `lesson` |
+| `ref`, `refs`, `reference`, `references` | `reference` |
+| `report`, `reports` | `report` |
+| `research` | `research` |
+| `runbook`, `runbooks` | `runbook` |
+| `spec`, `specs` | `spec` |
+
+Labels are case-folded, tokenized as ASCII alphanumeric words, and rejoined with spaces. Empty and numeric-only labels are ignored. A matched artifact label never also becomes a topic; another first- or second-level label becomes a topic unless all its tokens belong to the fixed generic set `and`, `at`, `base`, `docs`, `for`, `knowledge`, `notes`, `openai`, `project`, `references`, `related`, `rooted`, `specifications`, `specs`, `tasks`, or `workspace`. Generated topic and artifact lists are sorted and deduplicated.
+
+Missing indexes are built lazily; malformed indexes are reported as `invalid` and repaired only by explicit `index build`. If initialization fails, the base reports `build_failed` and still participates through its name, aliases, and description.
 
 Candidates are ordered by descending score, descending configured `priority`, and finally alphabetical base name. Selection then follows these rules:
 
@@ -119,7 +236,7 @@ python3 ./scripts/mem.py route \
   --pretty
 ```
 
-The result selects `claw` in the `query` tier with score `123`: `120` for the base-name match and `3` for the meaningful description word `openclaw`.
+When the base index contributes no additional matching topic or artifact, the result selects `claw` in the `query` tier with score `123`: `120` for the base-name match and `3` for the meaningful description word `openclaw`. Matching generated index metadata increases that score by the weights shown above.
 
 ### Routing examples
 
@@ -140,7 +257,7 @@ python3 ./scripts/mem.py route \
 
 ## `context lookup`
 
-Search managed knowledge first, then optional source scopes, without writing files.
+Search managed knowledge first, then optional source scopes, without changing knowledge documents or source files. A missing selected-base derived index may be created automatically.
 
 ```bash
 python3 ./scripts/mem.py context lookup --query TEXT [OPTIONS]
@@ -151,7 +268,7 @@ Options:
 - `--query TEXT`: required non-empty search text.
 - `--target NAME_OR_ALIAS`: select an explicit base or alias.
 - `--source PATH`: existing regular file or directory used for routing and fallback search; repeat for at most 20 scopes. Symlink scopes are rejected.
-- `--allow-multiple`: when routing is ambiguous, search every reported candidate base. Use only for read-only lookup.
+- `--allow-multiple`: when routing is ambiguous, search every reported candidate base; document/source content remains unchanged, although missing derived indexes may be initialized.
 - `--artifact-kind KIND`: optional routing artifact signal.
 - `--config PATH`, `--cwd PATH`, `--home PATH`: configuration controls.
 - `--pretty`: indent JSON output.
@@ -166,11 +283,12 @@ Options:
 4. Run the same routing algorithm as `route`: explicit target first, filesystem ownership second, and query scoring last.
 5. Select the routed base. An ambiguous route stops unless `--allow-multiple` is present, in which case the command searches the reported candidate bases. `--allow-multiple` does not override `no_match` and never permits writes.
 6. Resolve each selected base's configured schema names to bundled or custom `schema.yaml` paths. A missing schema or duplicate schema name returns `invalid_schema`. The command reports schemas as context; it does not infer or materialize a schema node.
-7. Search existing files under each selected `managed_root`. If any managed matches are found, return them immediately without searching source files.
-8. If managed knowledge has no match and validated source scopes were supplied, search only those scopes. Return their matches or `no_matches`. Without source scopes, return `no_matches` directly.
-9. When audit is enabled, atomically persist the observed command, operations, decisions, and outcome before returning.
+7. Load the base's derived index, generating it only if missing. Existing valid indexes are not checked for freshness; malformed indexes report `invalid`, and failed initialization reports `build_failed`. Neither condition suppresses normal knowledge search.
+8. Search existing files under each selected `managed_root`. If any managed matches are found, return them immediately without searching source files. Indexed hierarchy nodes never restrict or replace this bounded search.
+9. If managed knowledge has no match and validated source scopes were supplied, search only those scopes. Return their matches or `no_matches`. Without source scopes, return `no_matches` directly.
+10. When audit is enabled, atomically persist the observed command, operations, decisions, and outcome before returning.
 
-The command never writes, materializes, moves, or deletes files.
+The command never writes, materializes, moves, or deletes knowledge documents or source files. Its only permitted managed-root write creates a missing derived `.mem.index.json`; enabled audit tracing separately updates its configured trace file.
 
 ### Match semantics
 
@@ -197,6 +315,8 @@ Managed search and source fallback each have independent limits:
 
 The walker skips symlink files and directories, hidden directories, and common generated/dependency directories such as `.git`, `node_modules`, `vendor`, `build`, `dist`, and `__pycache__`. Non-UTF-8, binary, oversized, and unreadable files are skipped. `search_stats` records skipped files, read errors, scanned counts, and whether either search was truncated.
 
+These bounds apply only to normal document/source lookup. Index build, check, lazy initialization, and post-creation refresh always scan all eligible Markdown paths without inheriting any lookup traversal cap.
+
 ### Result fields
 
 Every invocation emits a JSON object containing:
@@ -207,12 +327,12 @@ Every invocation emits a JSON object containing:
 - `sources`: normalized source paths; duplicates are removed after validation.
 - `config_paths`: configuration files considered or loaded, in precedence order.
 - `route`: the complete routing result, or `null` when validation stops before routing.
-- `selected_bases`: each selected base's `name`, `root`, `managed_root`, `path_style`, `config_path`, and resolved `schemas`.
+- `selected_bases`: each selected base's `name`, `root`, `managed_root`, `path_style`, `config_path`, resolved `schemas`, and `index`; validated index metadata includes `status`, `generated_at`, `source_fingerprint`, generated `metadata`, and two-level `hierarchy`.
 - `managed_matches`: records containing `base`, absolute `path`, `relative_path` under the managed root, `match_type`, `line`, and `line_text`.
 - `fallback_used`: `true` only when no managed match exists and at least one source scope is searched.
 - `source_matches`: records containing absolute `path`, source `scope`, `match_type`, `line`, and `line_text`.
 - `search_stats`: scanned/skipped counts, truncation flags, and active `limits`.
-- `selection`, `hierarchy`, `fallback`, `matched_paths`, and `candidates`: audit-compatible projections of the observed routing, paths searched, fallback decision, and concrete matches.
+- `selection`, `hierarchy`, `fallback`, `matched_paths`, and `candidates`: audit-compatible projections of the observed routing, paths searched, fallback decision, and concrete matches. Top-level `hierarchy` remains schema-derived; generated index hierarchy lives only under `selected_bases[].index` and never changes audit lookup identity.
 - `error`: an explanation included for invalid configuration, query, source, or schema.
 
 ### Context lookup examples
@@ -231,7 +351,7 @@ python3 ./scripts/mem.py context lookup \
   --source /Users/kevinlin/code/openclaw \
   --pretty
 
-# Allow read-only lookup across candidate bases when routing is ambiguous.
+# Search candidate bases without modifying their knowledge documents.
 python3 ./scripts/mem.py context lookup \
   --query "deployment guide" \
   --allow-multiple \
@@ -278,6 +398,8 @@ Each nonempty line is a version-1 JSON record with:
 `lookup_id` hashes canonical logical identity inputs: session ID, query, ordered command arguments, selected bases, hierarchy paths, and source scopes. Timing, scores, outcomes, and explanatory prose are excluded. Repeated identities merge into one record by incrementing `occurrence_count`, appending an attempt, updating the latest outcome, and adding elapsed duration.
 
 Traces record no environment values, file bodies, credentials, unrelated commands, fabricated invocations, or private reasoning. Missing or invalid session identity, unsafe containment, bad permissions, lock failure, malformed existing data, serialization failure, or atomic-write failure stops an audit-enabled lookup explicitly; it never continues as an unlogged search.
+
+Index operations appear in audit timings only when actually performed: `build_index` for missing-index generation and `load_index` for a real index read. The index payload and index hierarchy paths are not copied into traces or incorporated into `lookup_id`.
 
 ## Schema inspection
 
@@ -361,6 +483,8 @@ Managed-only options:
 
 Managed mode derives `--out`, `--path-style`, and a custom `--schema-path` from the base configuration. Supplying any of those options directly is an error. `--base` and `--unmanaged` are mutually exclusive.
 
+After successful managed materialization, the selected base's index is rebuilt automatically. A changed document path updates the fingerprint; overwriting or skipping existing documents without a path change preserves the existing index. A failed schema subprocess retains its original nonzero exit and does not refresh the index. Unmanaged materialization never refreshes a managed index.
+
 ```bash
 python3 ./scripts/mem.py schema materialize pkg \
   --base oai \
@@ -369,6 +493,16 @@ python3 ./scripts/mem.py schema materialize pkg \
   --include pkg/clawcmd/cook/change-claw-config \
   --skip-existing
 ```
+
+### Managed index-refresh warnings
+
+If materialization succeeds but its post-success index refresh fails, the command preserves the created knowledge, exact successful stdout, and exit status `0`. It appends exactly one compact JSON warning to stderr after any existing schema stderr:
+
+```json
+{"level":"warning","code":"index_refresh_failed","base":"oai","index_path":"/managed/root/.mem.index.json","error":"lock timed out after 5 seconds","repair_argv":["mem.py","index","build","--base","oai","--config","/path with spaces/.mem.yaml","--cwd","/workspace","--home","/home/operator"]}
+```
+
+All six warning fields are required. `repair_argv` is the only canonical repair action: its first element is the original CLI entrypoint, followed by `index build --base` and the original selected base, then each explicitly supplied original `--config`, `--cwd`, and `--home` option with its exact value. Options not originally supplied are omitted. Execute the array directly without shell interpolation so values containing spaces remain intact; do not expect a separate `repair_command`. Surface the warning and repair the disposable index, but never roll back or report the successful document creation as failed.
 
 ### Unmanaged mode
 
@@ -417,7 +551,10 @@ Materialize explicit leaf paths whenever possible. Omitting `--include` can sele
 ## Common recovery paths
 
 - **`missing config`**: managed configuration is optional for context lookup. Continue the underlying read task without `$mem`, or pass the intended `--config` if one exists.
+- **legacy configuration version**: run `python3 ./scripts/mem.py doctor --migrate --pretty` after installing the updated skill; use `--config` when migrating only a selected file.
 - **`ambiguous` or `no_match` route**: inspect candidates with `route --pretty`, then retry with `--target`.
+- **missing, stale, or invalid index**: run `python3 ./scripts/mem.py index build --base NAME_OR_ALIAS`; use `index check --all` when verifying all configured bases after synchronization.
+- **`index_refresh_failed` warning after successful creation**: preserve the created document and successful exit, then replay the warning's `repair_argv` exactly.
 - **unknown base**: run `config show --pretty` and use a normalized base name or alias.
 - **schema is not configured for base**: choose one of the base's configured schemas or update the canonical configuration outside this command.
 - **managed path rejected**: remove the absolute or traversing `--root-relative` value; managed output must remain inside `managed_root`.

@@ -21,8 +21,9 @@ except ImportError:  # pragma: no cover - environment issue
 
 PATH_STYLES = {"directory", "dotted"}
 DEFAULT_PATH_STYLE = "directory"
-MATCH_FIELDS = {"topics", "artifact_kinds", "source_globs", "cwd_globs"}
+MATCH_FIELDS = {"source_globs", "cwd_globs"}
 AUDIT_FIELDS = {"enabled", "trace_root"}
+_LOAD_FROM_PATH = object()
 
 
 def fail(message: str) -> None:
@@ -235,13 +236,20 @@ def load_yaml(path: Path) -> Any:
 
 
 def normalize_config(
-    path: Path, require_roots: bool, *, home: Path
+    path: Path,
+    require_roots: bool,
+    *,
+    home: Path,
+    raw_data: Any = _LOAD_FROM_PATH,
 ) -> tuple[dict[str, Any], bool]:
-    data = load_yaml(path)
+    data = load_yaml(path) if raw_data is _LOAD_FROM_PATH else raw_data
     if not isinstance(data, dict):
         fail("config must be a YAML mapping")
-    if data.get("version") != 1:
-        fail("version must be 1")
+    version = data.get("version")
+    if isinstance(version, int) and not isinstance(version, bool) and version == 1:
+        fail("version 1 is no longer supported; run mem doctor --migrate")
+    if not isinstance(version, int) or isinstance(version, bool) or version != 2:
+        fail("version must be 2")
 
     bases = data.get("bases")
     if not isinstance(bases, list) or not bases:
@@ -295,6 +303,7 @@ def normalize_config(
             "description": description,
             "root": str(root),
             "managed_root": str(managed_root),
+            "index_path": str(managed_root / ".mem.index.json"),
             "path_style": path_style,
             "schemas": normalized_schemas,
             "config_path": str(path),
@@ -314,7 +323,7 @@ def normalize_config(
 
     normalized_config = {
         "config_path": str(path),
-        "version": 1,
+        "version": 2,
         "bases": normalized_bases,
         "audit": default_audit(home),
     }
@@ -324,8 +333,22 @@ def normalize_config(
     return normalized_config, audit_declared
 
 
-def merge_configs(paths: list[Path], require_roots: bool, *, home: Path) -> dict[str, Any]:
-    normalized_configs = [normalize_config(path, require_roots, home=home) for path in paths]
+def merge_configs(
+    paths: list[Path],
+    require_roots: bool,
+    *,
+    home: Path,
+    raw_configs: dict[Path, Any] | None = None,
+) -> dict[str, Any]:
+    normalized_configs = [
+        normalize_config(
+            path,
+            require_roots,
+            home=home,
+            raw_data=raw_configs[path] if raw_configs is not None else _LOAD_FROM_PATH,
+        )
+        for path in paths
+    ]
     merged_bases: list[dict[str, Any]] = []
     seen_names: set[str] = set()
     for config, _ in normalized_configs:
@@ -350,7 +373,7 @@ def merge_configs(paths: list[Path], require_roots: bool, *, home: Path) -> dict
     return {
         "config_path": str(paths[0]),
         "config_paths": [str(path) for path in paths],
-        "version": 1,
+        "version": 2,
         "bases": merged_bases,
         "audit": audit,
     }

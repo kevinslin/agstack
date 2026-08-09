@@ -84,7 +84,9 @@ python3 ./scripts/mem.py schema materialize pkg \
   --skip-existing
 ```
 
-Managed mode resolves the managed output root, path style, and optional custom schema path from `.mem.yaml`. Use `--root-relative <path>` for a subtree contained by the resolved managed root. Manual `--out`, `--path-style`, and `--schema-path` overrides are rejected in managed mode.
+Managed mode resolves the managed output root, path style, and optional custom schema path from version-2 `.mem.yaml`. Use `--root-relative <path>` for a subtree contained by the resolved managed root. Manual `--out`, `--path-style`, and `--schema-path` overrides are rejected in managed mode.
+
+After successful managed materialization, the CLI refreshes `<managed_root>/.mem.index.json`; unchanged document paths leave the existing index untouched. If that refresh fails, the created knowledge, original stdout, and exit status `0` are preserved, and stderr receives one structured `index_refresh_failed` warning containing a replayable `repair_argv`. Execute that argument array exactly instead of rolling back the document. Unmanaged materialization does not refresh a managed index. If an agent creates a managed schema-backed Markdown file directly instead of using this command, run `python3 ./scripts/mem.py index build --base NAME_OR_ALIAS` afterward.
 
 The `pkg` schema mounts `global-core` before `code-core`, so `global-core` owns the overlapping `ref` and `t` namespaces. It mounts `specs` last under `pkg/{{package}}/specs`. Keep `code-core` project-scoped; configure `code`, `specs`, and `global-core` separately when an aggregate base also needs `packages/{{module}}` and workspace-wide artifacts.
 

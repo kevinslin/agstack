@@ -45,7 +45,7 @@ class ContextLookupIntegrationTests(unittest.TestCase):
         self.config.write_text(
             textwrap.dedent(
                 f"""
-                version: 1
+                version: 2
                 bases:
                   - name: alpha
                     aliases: [primary]
@@ -104,6 +104,8 @@ class ContextLookupIntegrationTests(unittest.TestCase):
     def tree_digest(self, root: Path) -> str:
         digest = hashlib.sha256()
         for path in sorted(root.rglob("*")):
+            if path.name == ".mem.index.json":
+                continue
             digest.update(str(path.relative_to(root)).encode())
             if path.is_file() and not path.is_symlink():
                 digest.update(path.read_bytes())
@@ -137,10 +139,81 @@ class ContextLookupIntegrationTests(unittest.TestCase):
         self.assertEqual(data["selected_bases"][0]["name"], "alpha")
         self.assertEqual(data["selected_bases"][0]["schemas"][0]["name"], "global-core")
         self.assertTrue(data["selected_bases"][0]["schemas"][0]["path"].endswith("global-core/schema.yaml"))
+        index = data["selected_bases"][0]["index"]
+        self.assertTrue(index["generated_at"])
+        self.assertTrue(index["source_fingerprint"].startswith("sha256:"))
+        self.assertEqual(index["hierarchy"][0]["path"], "context-compass")
+        self.assertEqual(index["hierarchy"][0]["document_count"], 1)
         self.assertEqual(data["managed_matches"][0]["relative_path"], "context-compass.md")
         self.assertEqual(data["managed_matches"][0]["match_type"], "body")
         self.assertFalse(data["fallback_used"])
         self.assertEqual(data["source_matches"], [])
+        self.assertEqual(data["search_stats"]["managed_files_scanned"], 1)
+        self.assertTrue((self.alpha_root / "notes" / ".mem.index.json").is_file())
+        self.assertFalse((self.beta_root / "notes" / ".mem.index.json").exists())
+
+    def test_index_hierarchy_does_not_restrict_full_text_managed_search(self) -> None:
+        nested = self.alpha_root / "notes" / "pkg" / "gateway" / "deeper"
+        nested.mkdir(parents=True)
+        match = nested / "authentication.md"
+        match.write_text("A body-only invisible needle appears here.\n", encoding="utf-8")
+
+        result = self.run_context(
+            "invisible needle", "--config", str(self.config), "--target", "alpha"
+        )
+        data = self.payload(result)
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(data["managed_matches"][0]["path"], str(match.resolve()))
+        self.assertEqual(data["selected_bases"][0]["index"]["hierarchy"][0]["path"], "pkg")
+        self.assertEqual(
+            data["selected_bases"][0]["index"]["hierarchy"][0]["children"][0]["path"],
+            "pkg/gateway",
+        )
+        self.assertNotIn("pkg/gateway", [item["path"] for item in data["hierarchy"]])
+
+    def test_invalid_index_does_not_change_managed_matching_or_replace_cache(self) -> None:
+        managed = self.alpha_root / "notes"
+        match = managed / "durable.md"
+        match.write_text("invalid-cache-needle\n", encoding="utf-8")
+        index = managed / ".mem.index.json"
+        index.write_text("{not valid json", encoding="utf-8")
+
+        result = self.run_context(
+            "invalid-cache-needle", "--config", str(self.config), "--target", "alpha"
+        )
+        data = self.payload(result)
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(data["selected_bases"][0]["index"]["status"], "invalid")
+        self.assertIsNone(data["selected_bases"][0]["index"]["hierarchy"])
+        self.assertEqual(data["managed_matches"][0]["path"], str(match.resolve()))
+        self.assertEqual(data["search_stats"]["managed_files_scanned"], 1)
+        self.assertEqual(index.read_text(encoding="utf-8"), "{not valid json")
+
+    def test_read_only_managed_root_still_returns_normal_document_matches(self) -> None:
+        managed = self.alpha_root / "notes"
+        match = managed / "durable.md"
+        match.write_text("read-only-build-failure-needle\n", encoding="utf-8")
+        managed.chmod(0o555)
+        try:
+            result = self.run_context(
+                "read-only-build-failure-needle",
+                "--config",
+                str(self.config),
+                "--target",
+                "alpha",
+            )
+            data = self.payload(result)
+
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            self.assertEqual(data["route"]["selected"]["index"]["status"], "build_failed")
+            self.assertEqual(data["selected_bases"][0]["index"]["status"], "build_failed")
+            self.assertEqual(data["managed_matches"][0]["path"], str(match.resolve()))
+            self.assertEqual(data["search_stats"]["managed_files_scanned"], 1)
+            self.assertFalse((managed / ".mem.index.json").exists())
+        finally:
+            managed.chmod(0o755)
 
     def test_repeatable_sources_are_searched_on_fallback(self) -> None:
         first = self.alpha_source / "first.py"
@@ -244,6 +317,8 @@ class ContextLookupIntegrationTests(unittest.TestCase):
         self.assertEqual(data["sources"], [str(missing_source.absolute())])
         self.assertEqual(data["selected_bases"], [])
         self.assertFalse(data["fallback_used"])
+        self.assertFalse((self.alpha_root / "notes" / ".mem.index.json").exists())
+        self.assertFalse((self.beta_root / "notes" / ".mem.index.json").exists())
 
     def test_source_path_must_exist_and_not_be_a_symlink(self) -> None:
         missing = self.root / "missing"

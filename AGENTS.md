@@ -1,5 +1,10 @@
 # AGENTS Instructions
 
+## Git Workflow
+
+- NEVER create a branch unless the user explicitly asks for one.
+- Work directly on `main` by default.
+
 ## Script Testing Rule
 
 - For any new or modified script under a `scripts/` directory, add or update automated tests in a nearby `tests/` directory.

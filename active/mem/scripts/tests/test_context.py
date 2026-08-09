@@ -78,7 +78,7 @@ class ContextLookupTests(unittest.TestCase):
         )
         chosen_root = trace_root or self.trace_root
         self.config.write_text(
-            f"version: 1\naudit:\n  enabled: {str(enabled).lower()}\n"
+            f"version: 2\naudit:\n  enabled: {str(enabled).lower()}\n"
             f"  trace_root: {chosen_root}\nbases:\n{base_yaml}\n",
             encoding="utf-8",
         )
@@ -162,6 +162,7 @@ class ContextLookupTests(unittest.TestCase):
         self.assertEqual(record["matched_paths"], [str(match.resolve())])
         self.assertEqual([op["name"] for op in record["operations"]], [
             "load_config",
+            "build_index",
             "route",
             "resolve_schemas",
             "search_managed",
@@ -297,7 +298,10 @@ class ContextLookupTests(unittest.TestCase):
         record = self.records()[0]
         self.assertEqual(record["status"], "ambiguous")
         self.assertEqual(record["hierarchy"], [])
-        self.assertEqual([op["name"] for op in record["operations"]], ["load_config", "route"])
+        self.assertEqual(
+            [op["name"] for op in record["operations"]],
+            ["load_config", "build_index", "build_index", "route"],
+        )
 
     def test_every_repeatable_source_scope_can_influence_routing(self) -> None:
         other = self.root / "other"
@@ -309,7 +313,7 @@ class ContextLookupTests(unittest.TestCase):
         self.config.write_text(
             textwrap.dedent(
                 f"""
-                version: 1
+                version: 2
                 audit:
                   enabled: true
                   trace_root: {self.trace_root}
@@ -403,6 +407,12 @@ class ContextLookupTests(unittest.TestCase):
             repeated["duration_ms"],
             sum(attempt["duration_ms"] for attempt in repeated["attempts"]),
         )
+        first_operations = [operation["name"] for operation in repeated["attempts"][0]["operation_timings"]]
+        second_operations = [operation["name"] for operation in repeated["attempts"][1]["operation_timings"]]
+        self.assertEqual(first_operations.count("build_index"), 1)
+        self.assertNotIn("load_index", first_operations)
+        self.assertEqual(second_operations.count("load_index"), 1)
+        self.assertNotIn("build_index", second_operations)
 
     def test_unwritable_trace_destination_fails_closed(self) -> None:
         bad_root = self.root / "trace-file"

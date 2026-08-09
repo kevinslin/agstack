@@ -8,7 +8,7 @@ The selected base's resolved `managed_root` is authoritative for managed knowled
 
 Use this mode when project or workspace instructions require `$mem` to orient source work, even when the user did not request a durable write.
 
-Run the first-class read-only lookup before manual search:
+Run the first-class document-preserving lookup before manual search:
 
 ```bash
 python3 ./scripts/mem.py context lookup \
@@ -17,16 +17,17 @@ python3 ./scripts/mem.py context lookup \
   --pretty
 ```
 
-Repeat `--source` to supply multiple source files or directories. Routing remains strict unless `--allow-multiple` explicitly authorizes reading every candidate in an ambiguous route; this flag does not apply to writes or materialization. A missing config returns `status: missing_config` with exit code 0.
+Repeat `--source` to supply multiple source files or directories. Routing remains strict unless `--allow-multiple` explicitly authorizes reading every candidate in an ambiguous route; this flag does not apply to knowledge writes or materialization. A missing config returns `status: missing_config` with exit code 0. Existing version-1 configuration instead requires `python3 ./scripts/mem.py doctor --migrate --pretty` after installing the updated skill.
 
 1. Inspect the resolved schemas and their node descriptions.
 2. Infer one or more likely nodes from the task intent and render their concrete paths.
-3. Search existing files at those candidate paths, then bounded filename, heading, and body matches inside each selected managed root.
-4. Use the strongest matching knowledge as context.
-5. When managed knowledge has no match, use the command's bounded fallback search under the supplied source scopes. Follow with scoped `rg` or `rg --files` only when the result remains insufficient.
-6. Widen only after the scoped search fails; avoid broad repository-root scans unless the user needs exhaustive coverage.
+3. Inspect each selected base's derived index status and two-level logical hierarchy. Routing or lookup may initialize a missing `<managed_root>/.mem.index.json`; invalid or failed indexes never prevent normal document search.
+4. Search existing files at those candidate paths, then bounded filename, heading, and body matches inside each selected managed root. Hierarchy nodes are orientation hints, not a search allowlist.
+5. Use the strongest matching knowledge as context.
+6. When managed knowledge has no match, use the command's bounded fallback search under the supplied source scopes. Follow with scoped `rg` or `rg --files` only when the result remains insufficient.
+7. Widen only after the scoped search fails; avoid broad repository-root scans unless the user needs exhaustive coverage.
 
-The JSON result reports the mode, status, query, normalized sources, config paths, route, selected bases and configured schemas, concrete managed and source matches, fallback use, and search statistics. Schema-path inference remains model judgment guided by descriptions and existing files. When the command cannot infer a full schema node deterministically, use the reported configured schemas and concrete matched paths instead of inventing one. Context lookup is read-only and never authorizes materialization or edits.
+The JSON result reports the mode, status, query, normalized sources, config paths, route, selected bases and configured schemas, derived index metadata and hierarchy, concrete managed and source matches, fallback use, and search statistics. Schema-path inference remains model judgment guided by descriptions and existing files. When the command cannot infer a full schema node deterministically, use the reported configured schemas and concrete matched paths instead of inventing one. Context lookup never authorizes materialization or document/source edits; its only permitted managed-root mutation is initializing the missing derived index. Index generation scans all eligible Markdown paths without traversal caps, while ordinary managed and source searches retain their existing limits.
 
 ## Finding knowledge
 
@@ -58,12 +59,24 @@ The JSON result reports the mode, status, query, normalized sources, config path
 - Merge duplicate findings instead of repeating them.
 - Label uncertainty; do not record speculation as fact.
 
+### Refresh the generated base index
+
+Managed `schema materialize --base NAME_OR_ALIAS` refreshes `<managed_root>/.mem.index.json` automatically after successful execution. When an agent creates a managed Markdown entity directly through file editing instead, it **must** run:
+
+```bash
+python3 ./scripts/mem.py index build --base NAME_OR_ALIAS --pretty
+```
+
+Use the selected base's actual name or alias and preserve any required original `--config`, `--cwd`, or `--home` configuration controls. Refresh after the new path exists; body-only edits do not change the path fingerprint. External edits that create, rename, or delete paths, as well as repository synchronization, are not observed automatically and require an explicit rebuild when index freshness matters.
+
+If managed materialization prints a structured `index_refresh_failed` warning, keep the created document and treat its original exit `0` as successful. Surface the warning's actual `error` and replay its `repair_argv` argument array exactly; the array preserves the original CLI entrypoint, selected base, and explicitly supplied configuration-discovery controls. Do not roll back the document or invent an alternative repair command.
+
 After a schema-derived move or rename, verify:
 
 - The expected file exists.
 - Wrong-path siblings created by the operation are absent.
 - Empty obsolete directories are removed or reported.
-- Route or index metadata points to the concrete expected path.
+- Route or index metadata points to the concrete expected path; rebuild the selected base's index explicitly after direct path creation, rename, or deletion.
 
 ## Protected sections
 
@@ -107,6 +120,9 @@ Delete only when explicitly requested. Prefer targeted removal over deleting an 
 
 - Missing config: exit the `$mem` workflow successfully and continue the underlying task without `$mem`. Do not ask for setup or report a blocker solely because neither the nearest ancestor `.mem.yaml` nor `$HOME/.mem.yaml` exists.
 - Invalid config: report the parser error and stop.
+- Legacy config: run `python3 ./scripts/mem.py doctor --migrate --pretty` to upgrade existing version-1 configuration before ordinary loading.
+- Missing, stale, or invalid index: repair the disposable cache with `python3 ./scripts/mem.py index build --base NAME_OR_ALIAS`; do not infer that managed knowledge is missing.
+- Post-creation refresh failure: report the structured warning and replay `repair_argv`; preserve the successfully created document.
 - Missing root: report the configured path and stop.
 - Missing optional base skill: report it and stop before operating in that base.
 - Missing or conflicting schemas: report them and stop before reading or writing.

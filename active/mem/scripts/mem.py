@@ -3,14 +3,26 @@
 
 from __future__ import annotations
 
+import json
 import os
+import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from load_config import load_config
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+
+
+@dataclass(frozen=True)
+class PreparedSchemaCommand:
+    args: list[str]
+    base: dict[str, Any] | None = None
+    base_name: str | None = None
+    config_controls: tuple[tuple[str, str], ...] = ()
 
 
 def fail(message: str) -> None:
@@ -93,9 +105,37 @@ def run_schema(args: list[str]) -> None:
     os.execvp("uv", ["uv", "run", "--script", str(script), *args])
 
 
-def prepare_schema_args(args: list[str]) -> list[str]:
+def run_managed_schema(command: PreparedSchemaCommand) -> int:
+    script = SCRIPT_DIR / "schema.py"
+    child = subprocess.run(["uv", "run", "--script", str(script), *command.args], check=False)
+    if child.returncode != 0:
+        return child.returncode
+
+    assert command.base is not None
+    assert command.base_name is not None
+    try:
+        from base_index import build_index
+
+        build_index(command.base)
+    except Exception as exc:
+        repair_argv = [sys.argv[0], "index", "build", "--base", command.base_name]
+        for option, value in command.config_controls:
+            repair_argv.extend([option, value])
+        warning = {
+            "level": "warning",
+            "code": "index_refresh_failed",
+            "base": command.base_name,
+            "index_path": str(command.base["index_path"]),
+            "error": str(exc),
+            "repair_argv": repair_argv,
+        }
+        print(json.dumps(warning, separators=(",", ":")), file=sys.stderr)
+    return 0
+
+
+def prepare_schema_args(args: list[str]) -> PreparedSchemaCommand:
     if not args or args[0] != "materialize":
-        return args
+        return PreparedSchemaCommand(args=args)
 
     prepared = list(args)
     base_name = extract_option(prepared, "--base")
@@ -153,7 +193,21 @@ def prepare_schema_args(args: list[str]) -> list[str]:
                 str(base["path_style"]),
             ]
         )
-        return prepared
+        controls = tuple(
+            (name, value)
+            for name, value in (
+                ("--config", config_path),
+                ("--cwd", cwd_value),
+                ("--home", home_value),
+            )
+            if value is not None
+        )
+        return PreparedSchemaCommand(
+            args=prepared,
+            base=base,
+            base_name=base_name,
+            config_controls=controls,
+        )
 
     if root_relative is not None:
         fail("--root-relative requires --base")
@@ -163,7 +217,7 @@ def prepare_schema_args(args: list[str]) -> list[str]:
         fail("explicit --out requires --unmanaged")
     if not has_out:
         fail("materialize requires --base or explicit --out with --unmanaged")
-    return prepared
+    return PreparedSchemaCommand(args=prepared)
 
 
 def usage() -> str:
@@ -172,6 +226,10 @@ def usage() -> str:
   mem.py context lookup --query <text> [context options]
   mem.py route [route options]
   mem.py context lookup [context options]
+  mem.py doctor --migrate [--config <path>] [--cwd <path>] [--home <path>]
+  mem.py index build (--base <base> | --all) [configuration options]
+  mem.py index show --base <base> [configuration options]
+  mem.py index check (--base <base> | --all) [configuration options]
   mem.py schema <list|show|describe|validate|materialize> [schema options]
 
 Managed schema materialization:
@@ -212,8 +270,19 @@ def main() -> None:
         return
     if command == "route":
         run_python("route.py", command_args)
+    if command == "doctor":
+        from doctor import main as run_doctor
+
+        raise SystemExit(run_doctor(command_args))
+    if command == "index":
+        from index_cli import main as run_index
+
+        raise SystemExit(run_index(command_args))
     if command == "schema":
-        run_schema(prepare_schema_args(command_args))
+        prepared = prepare_schema_args(command_args)
+        if prepared.base is not None:
+            raise SystemExit(run_managed_schema(prepared))
+        run_schema(prepared.args)
     fail(f"unknown command: {command}")
 
 

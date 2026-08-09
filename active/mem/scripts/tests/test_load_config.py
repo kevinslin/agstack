@@ -43,7 +43,7 @@ class LoadConfigTests(unittest.TestCase):
     def test_explicit_path_style_is_normalized(self) -> None:
         self.write_config(
             f"""
-            version: 1
+            version: 2
             bases:
               - name: docs
                 description: Durable documentation notes.
@@ -58,17 +58,22 @@ class LoadConfigTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         data = json.loads(result.stdout)
+        self.assertEqual(data["version"], 2)
         self.assertEqual(data["bases"][0]["description"], "Durable documentation notes.")
         self.assertEqual(data["bases"][0]["path_style"], "dotted")
         self.assertEqual(data["bases"][0]["schemas"], [{"name": "tool"}])
         self.assertEqual(data["bases"][0]["managed_root"], str(self.base.resolve()))
+        self.assertEqual(
+            data["bases"][0]["index_path"],
+            str((self.base / ".mem.index.json").resolve()),
+        )
 
     def test_relative_managed_root_is_resolved_beneath_base(self) -> None:
         notes = self.base / "notes"
         notes.mkdir()
         self.write_config(
             f"""
-            version: 1
+            version: 2
             bases:
               - name: dendron
                 description: General knowledge base.
@@ -82,15 +87,52 @@ class LoadConfigTests(unittest.TestCase):
         result = self.run_loader()
 
         self.assertEqual(result.returncode, 0, msg=result.stderr)
-        self.assertEqual(
-            json.loads(result.stdout)["bases"][0]["managed_root"],
-            str(notes.resolve()),
+        base = json.loads(result.stdout)["bases"][0]
+        self.assertEqual(base["managed_root"], str(notes.resolve()))
+        self.assertEqual(base["index_path"], str((notes / ".mem.index.json").resolve()))
+
+    def test_legacy_configuration_is_rejected_with_migration_hint(self) -> None:
+        self.write_config(
+            f"""
+            version: 1
+            bases:
+              - name: docs
+                description: Durable documentation notes.
+                root: {self.base}
+                schemas:
+                  - name: tool
+            """
         )
+
+        result = self.run_loader()
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("mem doctor --migrate", result.stderr)
+
+    def test_invalid_or_unsupported_configuration_versions_are_rejected(self) -> None:
+        for version in ("true", "null", "1.0", "3", "'2'"):
+            with self.subTest(version=version):
+                self.write_config(
+                    f"""
+                    version: {version}
+                    bases:
+                      - name: docs
+                        description: Durable documentation notes.
+                        root: {self.base}
+                        schemas:
+                          - name: tool
+                    """
+                )
+
+                result = self.run_loader()
+
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("version must be 2", result.stderr)
 
     def test_managed_root_escape_is_rejected(self) -> None:
         self.write_config(
             f"""
-            version: 1
+            version: 2
             bases:
               - name: dendron
                 description: General knowledge base.
@@ -109,7 +151,7 @@ class LoadConfigTests(unittest.TestCase):
     def test_absolute_managed_root_is_rejected(self) -> None:
         self.write_config(
             f"""
-            version: 1
+            version: 2
             bases:
               - name: dendron
                 description: General knowledge base.
@@ -129,7 +171,7 @@ class LoadConfigTests(unittest.TestCase):
         (self.base / "other").mkdir()
         self.write_config(
             f"""
-            version: 1
+            version: 2
             bases:
               - name: dendron
                 description: General knowledge base.
@@ -151,7 +193,7 @@ class LoadConfigTests(unittest.TestCase):
         (self.base / "notes").symlink_to(outside, target_is_directory=True)
         self.write_config(
             f"""
-            version: 1
+            version: 2
             bases:
               - name: dendron
                 description: General knowledge base.
@@ -170,7 +212,7 @@ class LoadConfigTests(unittest.TestCase):
     def test_missing_managed_root_is_rejected(self) -> None:
         self.write_config(
             f"""
-            version: 1
+            version: 2
             bases:
               - name: dendron
                 description: General knowledge base.
@@ -189,7 +231,7 @@ class LoadConfigTests(unittest.TestCase):
     def test_schema_path_is_normalized(self) -> None:
         self.write_config(
             f"""
-            version: 1
+            version: 2
             bases:
               - name: docs
                 description: Durable documentation notes.
@@ -215,7 +257,7 @@ class LoadConfigTests(unittest.TestCase):
         schema.write_text("version: 1.0\nschema: {}\n", encoding="utf-8")
         self.write_config(
             f"""
-            version: 1
+            version: 2
             bases:
               - name: docs
                 description: Workspace documentation.
@@ -240,7 +282,7 @@ class LoadConfigTests(unittest.TestCase):
         schema.write_text("version: 1.0\nschema: {}\n", encoding="utf-8")
         self.write_config(
             f"""
-            version: 1
+            version: 2
             bases:
               - name: docs
                 description: Workspace documentation.
@@ -267,7 +309,7 @@ class LoadConfigTests(unittest.TestCase):
             schema.write_text("version: 1.0\nschema: {}\n", encoding="utf-8")
         self.write_config(
             f"""
-            version: 1
+            version: 2
             bases:
               - name: docs
                 description: Workspace documentation.
@@ -288,7 +330,7 @@ class LoadConfigTests(unittest.TestCase):
     def test_scalar_schema_is_rejected(self) -> None:
         self.write_config(
             f"""
-            version: 1
+            version: 2
             bases:
               - name: docs
                 description: Durable documentation notes.
@@ -305,7 +347,7 @@ class LoadConfigTests(unittest.TestCase):
     def test_relative_schema_path_is_rejected(self) -> None:
         self.write_config(
             f"""
-            version: 1
+            version: 2
             bases:
               - name: docs
                 description: Durable documentation notes.
@@ -324,7 +366,7 @@ class LoadConfigTests(unittest.TestCase):
     def test_missing_description_is_rejected(self) -> None:
         self.write_config(
             f"""
-            version: 1
+            version: 2
             bases:
               - name: docs
                 root: {self.base}
@@ -341,7 +383,7 @@ class LoadConfigTests(unittest.TestCase):
     def test_invalid_path_style_is_rejected(self) -> None:
         self.write_config(
             f"""
-            version: 1
+            version: 2
             bases:
               - name: docs
                 description: Durable documentation notes.
@@ -361,7 +403,7 @@ class LoadConfigTests(unittest.TestCase):
         (self.base / "pkg.example.md").write_text("# Example\n", encoding="utf-8")
         self.write_config(
             f"""
-            version: 1
+            version: 2
             bases:
               - name: docs
                 description: Durable documentation notes.
@@ -383,7 +425,7 @@ class LoadConfigTests(unittest.TestCase):
         (nested / "crabbox.md").write_text("# Crabbox\n", encoding="utf-8")
         self.write_config(
             f"""
-            version: 1
+            version: 2
             bases:
               - name: docs
                 description: Durable documentation notes.
@@ -402,7 +444,7 @@ class LoadConfigTests(unittest.TestCase):
     def test_optional_routing_metadata_is_normalized(self) -> None:
         self.write_config(
             f"""
-            version: 1
+            version: 2
             bases:
               - name: docs
                 description: Durable documentation notes.
@@ -410,8 +452,6 @@ class LoadConfigTests(unittest.TestCase):
                 aliases: [documentation, durable-docs]
                 priority: 25
                 match:
-                  topics: [configuration]
-                  artifact_kinds: [guide, runbook]
                   source_globs: ["src/docs/**"]
                   cwd_globs: ["*/docs"]
                 schemas:
@@ -425,12 +465,36 @@ class LoadConfigTests(unittest.TestCase):
         base = json.loads(result.stdout)["bases"][0]
         self.assertEqual(base["aliases"], ["documentation", "durable-docs"])
         self.assertEqual(base["priority"], 25)
-        self.assertEqual(base["match"]["topics"], ["configuration"])
+        self.assertEqual(base["match"]["source_globs"], ["src/docs/**"])
+        self.assertEqual(base["match"]["cwd_globs"], ["*/docs"])
+
+    def test_retired_routing_fields_are_rejected_in_current_configuration(self) -> None:
+        for retired_field in ("topics", "artifact_kinds"):
+            with self.subTest(retired_field=retired_field):
+                self.write_config(
+                    f"""
+                    version: 2
+                    bases:
+                      - name: docs
+                        description: Durable documentation notes.
+                        root: {self.base}
+                        match:
+                          {retired_field}: [configuration]
+                          cwd_globs: ["*/docs"]
+                        schemas:
+                          - name: tool
+                    """
+                )
+
+                result = self.run_loader()
+
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(f"unsupported key(s): {retired_field}", result.stderr)
 
     def test_audit_defaults_are_exposed(self) -> None:
         self.write_config(
             f"""
-            version: 1
+            version: 2
             bases:
               - name: docs
                 description: Durable documentation notes.
@@ -456,7 +520,7 @@ class LoadConfigTests(unittest.TestCase):
     def test_audit_is_normalized_and_relative_to_its_config(self) -> None:
         self.write_config(
             f"""
-            version: 1
+            version: 2
             audit:
               enabled: true
               trace_root: traces
@@ -487,7 +551,7 @@ class LoadConfigTests(unittest.TestCase):
             with self.subTest(audit=audit):
                 self.write_config(
                     f"""
-                    version: 1
+                    version: 2
                     audit: {audit}
                     bases:
                       - name: docs
@@ -504,7 +568,7 @@ class LoadConfigTests(unittest.TestCase):
     def test_audit_trace_root_rejects_unresolved_environment_variable(self) -> None:
         self.write_config(
             f"""
-            version: 1
+            version: 2
             audit:
               trace_root: $MEM_AUDIT_ROOT_THAT_IS_NOT_SET/traces
             bases:
@@ -546,9 +610,9 @@ class LoadConfigTests(unittest.TestCase):
                   - name: tool
             """
         )
-        project_config.write_text("version: 1\n" + base_yaml, encoding="utf-8")
+        project_config.write_text("version: 2\n" + base_yaml, encoding="utf-8")
         home_config.write_text(
-            "version: 1\naudit:\n"
+            "version: 2\naudit:\n"
             f"  enabled: true\n  trace_root: {self.root / 'home-traces'}\n"
             + base_yaml,
             encoding="utf-8",
@@ -570,7 +634,7 @@ class LoadConfigTests(unittest.TestCase):
         )
 
         project_config.write_text(
-            "version: 1\naudit:\n  enabled: true\n" + base_yaml,
+            "version: 2\naudit:\n  enabled: true\n" + base_yaml,
             encoding="utf-8",
         )
         owned = subprocess.run(command, text=True, capture_output=True, check=False)
@@ -596,7 +660,7 @@ class LoadConfigTests(unittest.TestCase):
         (project / ".mem.yaml").write_text(
             textwrap.dedent(
                 f"""
-                version: 1
+                version: 2
                 bases:
                   - name: project
                     description: Project notes.
@@ -611,7 +675,7 @@ class LoadConfigTests(unittest.TestCase):
         (home / ".mem.yaml").write_text(
             textwrap.dedent(
                 f"""
-                version: 1
+                version: 2
                 bases:
                   - name: global
                     description: Global notes.
@@ -640,6 +704,7 @@ class LoadConfigTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         data = json.loads(result.stdout)
+        self.assertEqual(data["version"], 2)
         self.assertEqual([base["name"] for base in data["bases"]], ["project", "global"])
         self.assertEqual(
             data["config_paths"],
@@ -665,7 +730,7 @@ class LoadConfigTests(unittest.TestCase):
             config_path.write_text(
                 textwrap.dedent(
                     f"""
-                    version: 1
+                    version: 2
                     bases:
                       - name: docs
                         description: {description}
@@ -702,7 +767,7 @@ class LoadConfigTests(unittest.TestCase):
         second_base.mkdir()
         self.write_config(
             f"""
-            version: 1
+            version: 2
             bases:
               - name: oai
                 aliases: [openai-monorepo]

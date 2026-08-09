@@ -8,7 +8,7 @@ dependencies:
 
 # mem
 
-Use this skill as the single interface for persistent knowledge bases, read-only project context, and schema-backed file layouts. It owns base selection, root containment, schema inspection, model-inferred node selection, exact-node materialization, and durable read/write safety.
+Use this skill as the single interface for persistent knowledge bases, project context, generated base indexes, and schema-backed file layouts. It owns base selection, root containment, schema inspection, model-inferred node selection, exact-node materialization, and durable read/write safety.
 
 ## Invocation Rule
 
@@ -16,7 +16,7 @@ Invoke `$mem` whenever the user explicitly asks to save, retrieve, organize, or 
 
 Also invoke `$mem` when inspecting, validating, or materializing a bundled file schema.
 
-When project or workspace instructions require `$mem` for context lookup, invoke it even without durable-output intent. Context lookup is read-only: select the configured base, resolve its schemas, infer likely nodes from their descriptions, and search existing knowledge before inspecting source.
+When project or workspace instructions require `$mem` for context lookup, invoke it even without durable-output intent. Context lookup never changes knowledge documents or source files, but may create the selected base's missing derived `.mem.index.json`; select the configured base, resolve its schemas, infer likely nodes from their descriptions, and search existing knowledge before inspecting source.
 
 Treat configuration as optional. Before starting a managed operation, check for the nearest ancestor `.mem.yaml` and `$HOME/.mem.yaml`. If neither exists, stop the `$mem` workflow successfully and continue the underlying task without `$mem`. Do not ask the user to create configuration or report a blocker solely because configuration is absent.
 
@@ -38,11 +38,19 @@ Run commands from the directory containing this `SKILL.md`, or resolve `./script
 See [`README.md`](./README.md) for the system design and [`CLI.md`](./CLI.md) for the complete command reference.
 
 ```bash
+# Upgrade existing version-1 configuration after installing the updated skill.
+python3 ./scripts/mem.py doctor --migrate --pretty
+
 # Inspect merged configuration.
 python3 ./scripts/mem.py config show --pretty
 
 # Explain base selection.
 python3 ./scripts/mem.py route --query "{{request intent}}" --pretty
+
+# Maintain or inspect derived base indexes.
+python3 ./scripts/mem.py index build --base oai --pretty
+python3 ./scripts/mem.py index show --base oai --pretty
+python3 ./scripts/mem.py index check --all --pretty
 
 # Read managed project context, with bounded source fallback when needed.
 python3 ./scripts/mem.py context lookup \
@@ -84,7 +92,7 @@ Merge configuration from:
 
 Load both when present. The nearest config wins when both define the same base name; unique home bases remain available.
 
-Each base requires `name`, `description`, `root`, and `schemas`. It may also define a relative `managed_root`, plus `path_style`, `skill`, `aliases`, `priority`, and deterministic `match` signals for topics, artifact kinds, source globs, and working-directory globs. `root` is the workspace containment boundary; the resolved `managed_root` is the narrower knowledge read/write boundary and defaults to `root`.
+Configuration requires top-level `version: 2`. After installing the updated skill, migrate existing version-1 configuration with `python3 ./scripts/mem.py doctor --migrate --pretty`; migration discards retired `match.topics` and `match.artifact_kinds` while preserving ownership globs and other supported settings. Each base requires `name`, `description`, `root`, and `schemas`. It may also define a relative `managed_root`, plus `path_style`, `skill`, `aliases`, `priority`, and `match.cwd_globs` or `match.source_globs`. `root` is the workspace containment boundary; the resolved `managed_root` is the narrower knowledge read/write boundary and defaults to `root`.
 
 Routing has strict precedence: an explicit base or alias wins; otherwise source and cwd ownership wins; query signals are considered only when ownership does not match. Conflicting source and cwd ownership is ambiguous and requires an explicit base. Query scores and `priority` never override a higher tier.
 
@@ -94,7 +102,9 @@ An optional top-level `audit` mapping enables mandatory conversation-scoped look
 
 Use `python3 ./scripts/mem.py config show --pretty` instead of hand-parsing configuration.
 
-Use `python3 ./scripts/mem.py context lookup` for project context. Repeat `--source` for multiple file or directory scopes, pass `--target` to select one base explicitly, and use `--allow-multiple` only for read-only lookup across an otherwise ambiguous route. The command never materializes or edits files. See [the knowledge workflow](./references/knowledge-workflow.md#project-context-lookup) for its search and output contract.
+Each base owns `<managed_root>/.mem.index.json`, a disposable, path-derived cache containing generated topics, artifact kinds, and the first two logical hierarchy levels. Routing and context lookup create a missing index automatically; managed schema materialization refreshes it after successful creation. Index scans are uncapped, while normal knowledge search remains bounded; directory advisory locks leave no durable lockfile. External edits, renames, deletes, and syncs require explicit `index build` when freshness matters.
+
+Use `python3 ./scripts/mem.py context lookup` for project context. Repeat `--source` for multiple file or directory scopes, pass `--target` to select one base explicitly, and use `--allow-multiple` only for lookup across an otherwise ambiguous route. The command never materializes or edits knowledge or source files; its only permitted managed-root mutation is creating a missing derived index. See [the knowledge workflow](./references/knowledge-workflow.md#project-context-lookup) for its search and output contract.
 
 ## Managed Workflow
 
@@ -109,7 +119,8 @@ Use `python3 ./scripts/mem.py context lookup` for project context. Repeat `--sou
 9. Search candidate paths, filenames, headings, and body text before creating a near-duplicate.
 10. Materialize only that node. Do not create sibling placeholders or an entire schema tree.
 11. Read the existing target before editing and preserve user-owned sections.
-12. Verify the expected path, containment, route metadata, protected sections, and changelog.
+12. After creating a managed Markdown entity through direct file editing rather than managed materialization, run `python3 ./scripts/mem.py index build --base NAME_OR_ALIAS` for the selected base. Managed materialization performs this refresh automatically; surface any structured `index_refresh_failed` warning and its replayable `repair_argv` without reporting successful knowledge creation as failed.
+13. Verify the expected path, containment, route metadata, protected sections, changelog, and index refresh outcome.
 
 For complete knowledge read/write/delete rules, read `./references/knowledge-workflow.md`.
 For schema fields, composition, authoring, and CLI behavior, read `./references/schema-workflow.md`.
@@ -122,9 +133,9 @@ For schema fields, composition, authoring, and CLI behavior, read `./references/
 - Preserve `## Manual Notes` byte-for-byte unless the user explicitly asks to edit it.
 - Delete knowledge only when the user explicitly requests deletion.
 - Use schema descriptions as the primary placement signal and insertion policy only as a tiebreaker.
-- Keep project context lookup read-only. Search the relevant project, service, or package source with scoped `rg` only when managed knowledge is absent or insufficient.
+- Keep project context lookup read-only for knowledge documents and source files; permit only creation of the selected base's missing derived index. Search the relevant project, service, or package source with scoped `rg` only when managed knowledge is absent or insufficient.
 - When audit tracing is enabled, do not bypass a missing session ID, unsafe trace destination, lock failure, or trace write failure.
-- Create only the requested file and its parent directories.
+- Create only the requested knowledge file, its parent directories, and the selected base's derived index when index initialization or refresh requires it.
 - Use `--unmanaged` only for an explicit repo-owned or temporary destination.
 
 ## Final Response

@@ -6,50 +6,16 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import json
-import re
 import sys
 from pathlib import Path
 from typing import Any
 
+from base_index import ensure_index
 from load_config import load_config
+from routing_signals import ARTIFACT_ALIASES, ARTIFACT_WORDS, GENERIC_WORDS, normalized_words
 
 
-GENERIC_WORDS = {
-    "and",
-    "at",
-    "base",
-    "docs",
-    "for",
-    "knowledge",
-    "notes",
-    "openai",
-    "project",
-    "references",
-    "related",
-    "rooted",
-    "specifications",
-    "specs",
-    "tasks",
-    "workspace",
-}
-ARTIFACT_WORDS = {
-    "cookbook",
-    "decision",
-    "finding",
-    "findings",
-    "guide",
-    "lesson",
-    "lessons",
-    "reference",
-    "report",
-    "research",
-    "runbook",
-    "spec",
-}
-
-
-def normalized_words(value: str) -> list[str]:
-    return re.findall(r"[a-z0-9]+", value.lower())
+IndexState = tuple[str, dict[str, Any] | None, bool]
 
 
 def compact(value: str) -> str:
@@ -78,6 +44,7 @@ def score_query_signals(
     *,
     query: str,
     artifact_kind: str | None,
+    index: dict[str, Any] | None = None,
 ) -> tuple[int, list[str]]:
     score = 0
     reasons: list[str] = []
@@ -88,21 +55,22 @@ def score_query_signals(
             score += 120
             reasons.append(f"name-or-alias:{label}")
 
-    match = base.get("match", {})
-    for topic in match.get("topics", []):
+    metadata = index.get("metadata", {}) if index is not None else {}
+    for topic in metadata.get("topics", []):
         if phrase_matches(query, topic):
             score += 50
-            reasons.append(f"topic:{topic}")
+            reasons.append(f"index-topic:{topic}")
 
     requested_artifact = artifact_kind or next(
         (word for word in normalized_words(query) if word in ARTIFACT_WORDS),
         None,
     )
     if requested_artifact:
-        for configured_kind in match.get("artifact_kinds", []):
-            if phrase_matches(requested_artifact, configured_kind):
+        requested_kinds = ARTIFACT_ALIASES.get(requested_artifact.casefold(), (requested_artifact,))
+        for configured_kind in metadata.get("artifact_kinds", []):
+            if any(phrase_matches(requested_kind, configured_kind) for requested_kind in requested_kinds):
                 score += 30
-                reasons.append(f"artifact:{configured_kind}")
+                reasons.append(f"index-artifact:{configured_kind}")
 
     if phrase_matches(query, base["description"]):
         score += 80
@@ -144,7 +112,7 @@ def ownership_reasons(
 
 
 def ranked_candidate(
-    base: dict[str, Any], *, score: int, reasons: list[str]
+    base: dict[str, Any], *, score: int, reasons: list[str], index_status: str = "not_loaded"
 ) -> dict[str, Any]:
     return {
         "name": base["name"],
@@ -154,7 +122,33 @@ def ranked_candidate(
         "score": score,
         "priority": int(base.get("priority", 0)),
         "reasons": reasons,
+        "index": {"status": index_status},
     }
+
+
+def ensure_base_index(
+    base: dict[str, Any],
+    *,
+    cache: dict[str, IndexState],
+    recorder: Any | None = None,
+) -> IndexState:
+    cached = cache.get(base["name"])
+    if cached is not None:
+        return cached
+
+    span = recorder.start("load_index") if recorder is not None else None
+    try:
+        state = ensure_index(base)
+    except Exception:
+        state = ("build_failed", None, False)
+
+    status, index, generated = state
+    if span is not None and (generated or index is not None or status == "invalid"):
+        if generated:
+            span.name = "build_index"
+        recorder.finish(span)
+    cache[base["name"]] = state
+    return state
 
 
 def sort_candidates(candidates: list[dict[str, Any]]) -> None:
@@ -175,12 +169,18 @@ def route(
     source: str | list[str] | None = None,
     artifact_kind: str | None = None,
     target: str | None = None,
+    index_cache: dict[str, IndexState] | None = None,
+    index_recorder: Any | None = None,
 ) -> dict[str, Any]:
+    cache = index_cache if index_cache is not None else {}
     if target:
         for base in config["bases"]:
             aliases = base.get("aliases", [])
             if target == base["name"]:
-                candidate = ranked_candidate(base, score=10_000, reasons=["explicit base name"])
+                status, _, _ = ensure_base_index(base, cache=cache, recorder=index_recorder)
+                candidate = ranked_candidate(
+                    base, score=10_000, reasons=["explicit base name"], index_status=status
+                )
                 return {
                     "status": "selected",
                     "tier": "explicit",
@@ -189,8 +189,9 @@ def route(
                     "config_paths": config["config_paths"],
                 }
             if target in aliases:
+                status, _, _ = ensure_base_index(base, cache=cache, recorder=index_recorder)
                 candidate = ranked_candidate(
-                    base, score=9_000, reasons=[f"explicit alias:{target}"]
+                    base, score=9_000, reasons=[f"explicit alias:{target}"], index_status=status
                 )
                 return {
                     "status": "selected",
@@ -214,6 +215,10 @@ def route(
             owned.append(ranked_candidate(base, score=len(reasons), reasons=reasons))
     if owned:
         sort_candidates(owned)
+        if len(owned) == 1:
+            selected_base = next(base for base in config["bases"] if base["name"] == owned[0]["name"])
+            status, _, _ = ensure_base_index(selected_base, cache=cache, recorder=index_recorder)
+            owned[0]["index"]["status"] = status
         return {
             "status": "selected" if len(owned) == 1 else "ambiguous",
             "tier": "ownership",
@@ -224,13 +229,15 @@ def route(
 
     ranked: list[dict[str, Any]] = []
     for base in config["bases"]:
+        status, index, _ = ensure_base_index(base, cache=cache, recorder=index_recorder)
         score, reasons = score_query_signals(
             base,
             query=query,
             artifact_kind=artifact_kind,
+            index=index,
         )
         if score >= 0:
-            ranked.append(ranked_candidate(base, score=score, reasons=reasons))
+            ranked.append(ranked_candidate(base, score=score, reasons=reasons, index_status=status))
     sort_candidates(ranked)
 
     if not ranked:

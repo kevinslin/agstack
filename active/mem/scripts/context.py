@@ -28,7 +28,7 @@ from audit_trace import (
     timestamp_ms,
 )
 from load_config import load_config, nearest_config
-from route import route
+from route import IndexState, ensure_base_index, route
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -219,9 +219,14 @@ def schema_path(schema: dict[str, str]) -> Path:
 
 
 def selected_base_details(
-    config: dict[str, Any], names: list[str]
+    config: dict[str, Any],
+    names: list[str],
+    *,
+    index_cache: dict[str, IndexState] | None = None,
+    index_recorder: OperationRecorder | None = None,
 ) -> tuple[list[dict[str, Any]], str | None]:
     by_name = {base["name"]: base for base in config["bases"]}
+    cache = index_cache if index_cache is not None else {}
     selected: list[dict[str, Any]] = []
     for name in names:
         base = by_name[name]
@@ -236,6 +241,7 @@ def selected_base_details(
             if not path.is_file():
                 return [], f"schema {schema_name!r} for base {name!r} does not exist: {path}"
             schemas.append({"name": schema_name, "path": str(path)})
+        status, index, _ = ensure_base_index(base, cache=cache, recorder=index_recorder)
         selected.append(
             {
                 "name": name,
@@ -244,6 +250,13 @@ def selected_base_details(
                 "path_style": base["path_style"],
                 "config_path": base["config_path"],
                 "schemas": schemas,
+                "index": {
+                    "status": status,
+                    "generated_at": index.get("generated_at") if index is not None else None,
+                    "source_fingerprint": index.get("source_fingerprint") if index is not None else None,
+                    "metadata": index.get("metadata") if index is not None else None,
+                    "hierarchy": index.get("hierarchy") if index is not None else None,
+                },
             }
         )
     return selected, None
@@ -276,6 +289,8 @@ def iter_files(
             stats["read_errors"] += 1
             return
         for name in names:
+            if area == "managed" and name == ".mem.index.json":
+                continue
             path = directory / name
             try:
                 link_metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
@@ -623,6 +638,7 @@ def execute_lookup(
         result.update(status="invalid_query", error="query must not be empty")
         return result, 2
 
+    index_cache: dict[str, IndexState] = {}
     route_span = recorder.start("route")
     try:
         routing = route(
@@ -632,6 +648,8 @@ def execute_lookup(
             source=args.source,
             artifact_kind=args.artifact_kind,
             target=args.target,
+            index_cache=index_cache,
+            index_recorder=recorder,
         )
     finally:
         recorder.finish(route_span)
@@ -648,13 +666,20 @@ def execute_lookup(
 
     schema_span = recorder.start("resolve_schemas")
     try:
-        selected, schema_error = selected_base_details(config, selected_names)
+        selected, schema_error = selected_base_details(
+            config, selected_names, index_cache=index_cache, index_recorder=recorder
+        )
     finally:
         recorder.finish(schema_span)
     if schema_error:
         result.update(status="invalid_schema", error=schema_error)
         return result, 2
     result["selected_bases"] = selected
+    selected_by_name = {base["name"]: base for base in selected}
+    for candidate in routing.get("candidates", []):
+        selected_base = selected_by_name.get(candidate["name"])
+        if selected_base is not None:
+            candidate["index"]["status"] = selected_base["index"]["status"]
     result["selection"] = selection_from_route(routing, selected_names)
     result["hierarchy"] = hierarchy_for_selected(selected, query)
     result["candidates"] = routing.get("candidates", [])
