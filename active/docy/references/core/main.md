@@ -8,23 +8,28 @@
 
 ## Document lifecycle
 
-When a design or implementation change invalidates a nearby flow doc, spec, or
-other durable reference, update that adjacent document in the same pass or mark
+When a design or implementation change invalidates a current flow, guide,
+reference, or architecture doc, update that document in the same pass or mark
 it stale/superseded immediately.
 
-Task-specific reference docs may override this default. For feature removals,
-keep historical specs unchanged when the removal policy says to preserve them,
-and record the divergence in changelog instead.
+Do not update an old spec to match a later invariant. A spec becomes historical
+after its implementation ships or a newer spec or decision supersedes it.
+Preserve that spec as the record of the design at that time. Document the new
+invariant in the current owning reference, flow, decision, or changelog instead.
+An active spec for work that has not shipped may still change with the design.
 
-Do not leave contradictory docs side by side. A stale adjacent doc is active
-misinformation for the next agent or reader.
+Do not leave contradictory current docs side by side. A stale current doc is
+active misinformation for the next agent or reader; a historical spec is not
+current guidance.
 
 Preferred responses when a related doc is no longer accurate:
 - Update it in the same change.
 - If a full update is not practical yet, add a short stale-warning or
   superseded note that points to the newer source of truth.
-- If the old doc is purely historical, move or rename it so current guidance and
-  legacy guidance are clearly separated.
+- If a non-spec doc is purely historical, move or rename it so current guidance
+  and legacy guidance are clearly separated.
+- If an old spec differs from the new invariant, leave the spec unchanged and
+  record the difference in a current document.
 
 ## Universal technical writing
 

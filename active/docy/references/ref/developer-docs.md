@@ -138,8 +138,12 @@ canonical schema instead of copying an exhaustive generated schema into a guide.
 
 - Draft docs before or alongside implementation when they can expose unclear
   product, API, CLI, or configuration design.
-- Update docs in the same change as the behavior they describe. Update, remove,
-  redirect, or clearly mark stale guidance.
+- Update current docs in the same change as the behavior they describe. Update,
+  remove, redirect, or clearly mark stale current guidance.
+- Do not update historical specs when implementation invariants change. A spec
+  is historical after its implementation ships or a newer spec or decision
+  supersedes it. Preserve the old spec and document the new invariant in its
+  current owning reference, flow, decision, or changelog.
 - Keep docs near the code, configuration, command, protocol, or product surface
   they describe when the repository layout permits it.
 - Preserve older-version guidance only when readers still need it; otherwise
