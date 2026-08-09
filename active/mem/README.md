@@ -183,6 +183,41 @@ The scanner examines every eligible non-symlink Markdown path under `managed_roo
 
 Cooperating processes lock the existing managed-root directory with an operating-system advisory lock and atomically replace the index when it changes. No `.lock` file or second durable knowledge-base artifact is created. The cache may be synchronized or committed with its knowledge base, but managed Markdown files remain authoritative.
 
+#### How the existing index is generated
+
+1. Find every eligible Markdown document under the base's `managed_root`.
+2. Convert each relative path into logical hierarchy components using the
+   base's `directory` or `dotted` path style.
+3. Keep the first two components, count descendant documents, and derive
+   normalized topic names and recognized artifact kinds from those components.
+4. Fingerprint the complete document-path set and atomically write
+   `<managed_root>/.mem.index.json` when its contents change.
+
+Indexes are generated automatically when routing or context lookup first uses
+a base, refreshed after managed document creation, or built explicitly with
+`python3 ./scripts/mem.py index build --base NAME`.
+
+#### What the existing index contains
+
+The current index records hierarchy nodes, not semantic entity objects. For
+example, an engineering base can contain:
+
+```text
+packages
+  packages/apitool
+  packages/arcade
+pkg
+  pkg/clawcmd
+  pkg/clawgateway
+projects
+  projects/2026.03-ga-launch
+```
+
+These package and project paths appear in `hierarchy`; their names can also
+appear in generated `metadata.topics`. The current format has no `entities`
+mapping, no entity kind classification, no custom aliases, and no
+`alias_lookup`. Those capabilities belong to the proposed design below.
+
 ### Index lifecycle and explicit maintenance
 
 Use these commands to manage one base or all configured bases:
@@ -202,6 +237,49 @@ Routing and context lookup generate missing indexes automatically. Existing vali
 Successful managed schema materialization refreshes its base index automatically. If refresh fails, the created document, original stdout, and successful exit status remain intact; stderr receives exactly one machine-readable warning with `level`, `code: index_refresh_failed`, `base`, `index_path`, the actual `error`, and `repair_argv`. Replay `repair_argv` as an argument array; it preserves the original entrypoint and any explicitly supplied `--config`, `--cwd`, and `--home` options, including values containing spaces.
 
 Agents that create a managed Markdown file directly instead of using managed materialization **must** run `python3 ./scripts/mem.py index build --base NAME_OR_ALIAS` afterward. External editors, renames, deletions, and Git synchronization are not watched; run `index build` explicitly whenever their path changes need to be reflected. An explicit failed build remains an error rather than a successful-creation warning.
+
+### Entity lookup design (proposed)
+
+Packages and projects already exist in the knowledge hierarchy. A future entity
+lookup can discover them from paths such as `pkg/clawcmd`, `packages/clawcmd`,
+and `projects/claw-pilot`; dotted bases expose the same logical hierarchy.
+
+Keep user-defined names in an optional `<managed_root>/.mem.aliases.yaml`:
+
+```yaml
+aliases:
+  claw command: pkg/clawcmd
+  cc: pkg/clawcmd
+  claw pilot: projects/claw-pilot
+```
+
+Index generation combines discovered entities, aliases derived from their
+names, and these explicit aliases into `.mem.index.json`:
+
+```json
+{
+  "entities": {
+    "pkg/clawcmd": {"kind": "package", "aliases": ["clawcmd", "claw command", "cc"]},
+    "projects/claw-pilot": {"kind": "project", "aliases": ["claw pilot"]}
+  },
+  "alias_lookup": {
+    "clawcmd": ["pkg/clawcmd"],
+    "claw command": ["pkg/clawcmd"],
+    "cc": ["pkg/clawcmd"],
+    "claw pilot": ["projects/claw-pilot"]
+  }
+}
+```
+
+A conversation mentioning "claw command" resolves through `alias_lookup` to
+`pkg/clawcmd`, then uses the existing base routing and context lookup. Multiple
+matching entities remain ambiguous unless filesystem ownership or an explicit
+base resolves them. The hierarchy owns entity existence, `.mem.aliases.yaml`
+owns custom names, and the generated index owns fast lookup. Future fingerprint
+calculation must include alias-file changes so rebuilding refreshes mappings.
+
+Entity records, reverse alias lookup, and `.mem.aliases.yaml` are proposed;
+they are not implemented by the current index.
 
 ### Routing uses strict precedence
 
