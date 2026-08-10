@@ -7,6 +7,7 @@ dependencies:
 - babysit-pr
 - branch
 - dev.review
+- slack-notify
 - spec-simulate
 - specy
 ---
@@ -68,6 +69,7 @@ The file under `./references/shortcuts/[shortcut].md` remains the executable sou
 | `review-spec` | Run looped `dev.review` and `spec-simulate` passes against an existing spec. |
 | `sync-branch-push` | Rebase the current branch onto the remote default branch from `git remote show`, then force-push upstream with lease. |
 | `sync-branch` | Rebase the current branch onto the remote default branch from `git remote show` and resolve conflicts if needed. |
+| `syncmoi` | Reconcile both chezmoi sources, notify Slack on unsafe conflicts, and push both repositories. |
 
 ## Maintenance
 Keep the inline shortcut index above synchronized with the bundled shortcut files.
