@@ -63,7 +63,7 @@ The file under `./references/shortcuts/[shortcut].md` remains the executable sou
 | `precommit-process` | Run the canonical pre-commit review and validation workflow before committing. |
 | `promote-shortcut-to-skill` | Convert a shortcut into a standalone skill and replace old shortcut references. |
 | `push-code` | Commit if needed, then push the current branch using repo-specific push guardrails. |
-| `push-pr` | Commit if needed, push the branch, create a PR, then watch and fix CI as needed. |
+| `push-pr` | Commit if needed, push the branch, create a ready-for-review PR, then watch and fix CI as needed. |
 | `rebase-and-fix` | Rebase the current branch onto a provided branch, fix PR conflicts, push, and check CI. |
 | `review` | Create a new worktree for a PR link, run `dev.review`, and add a flow doc for the PR logic. |
 | `review-spec` | Run looped `dev.review` and `spec-simulate` passes against an existing spec. |
