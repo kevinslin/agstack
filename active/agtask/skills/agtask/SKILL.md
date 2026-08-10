@@ -40,6 +40,10 @@ designation never creates another task. Audit requires explicit confirmation
 before mutation. Rename coordinates the Codex app and ledger without silently
 accepting divergence. Close owns its merge lease through completion or release.
 
+Create child tasks on the invoking task's machine unless the user explicitly
+requests another destination host or saved project. A logical project label
+does not authorize switching machines.
+
 ## Usage
 
 ```text

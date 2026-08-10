@@ -15,14 +15,17 @@ designation, clean child creation, and forked child creation.
 - [Verify write results](#verify-write-results)
 - [Output](#output)
 
-Default to child kind and start a clean task in the active CWD. Select fork
-mode when the user explicitly asks to preserve or continue the current context.
-Main kind designates the invoking task itself and never creates another task.
+Default to child kind and start a clean task in the active CWD on the invoking
+task's machine. Select fork mode when the user explicitly asks to preserve or
+continue the current context. Main kind designates the invoking task itself and
+never creates another task.
 
 ## Workflow
 
-1. Resolve the invoking Codex session ID. Use the authoritative current app
-   context; use `$dev.llm-session` when the ID is not already available.
+1. Resolve the invoking Codex session ID and host ID from authoritative
+   current app context; use `$dev.llm-session` when the session ID is not
+   already available. Never infer the invoking host from its CWD, a project
+   label, or an execution-environment type.
 2. Resolve the task text, title, normalized initial-prompt description, topic,
    active CWD, creation mode, kind, and project, then pass the resolved title to
    `resolve-create` for a logical creation ID, deterministic creation inputs,
@@ -71,6 +74,10 @@ Main kind designates the invoking task itself and never creates another task.
   threads carry the invoking thread as immutable parent lineage.
 - Preserve an explicit project string. Otherwise use the basename of the active
   task's CWD.
+- Treat an explicitly requested destination host or saved project as the only
+  authorization to create a child on another machine. A logical project name
+  or resolver `--project` value labels the ledger and does not select or
+  authorize an execution host.
 - Build the exact initial prompt before registration. Derive its concise
   one-sentence description with the CLI normalization rules and a 2-5 word
   kebab-case topic. The initial prompt, not later turns, is the sole source of
@@ -170,7 +177,12 @@ python3 ./scripts/agtask resolve-create \
   context, or continue the current context.
 - Ask the user to resolve conflicting fork and clean instructions.
 - In clean mode, resolve a saved project whose root exactly equals the active
-  CWD. Ask for the target when an exact match is unavailable.
+  CWD. Unless the user explicitly requested a destination host or saved
+  project, also require its `hostId` to equal the invoking task's authoritative
+  host ID. Ask the user when that host cannot be determined, no same-host
+  exact-root project exists, or the same-host matches are ambiguous. Never
+  silently select an exact-root project on another machine or fall back to a
+  projectless target.
 
 ## Build the child prompt
 
@@ -293,7 +305,9 @@ Main designation has no child prompt or initial-rollout verification step.
 Prefer the two-phase clean API when the local Codex surface can start a thread
 without starting its first turn:
 
-1. Resolve the exact saved-project match for the active CWD.
+1. Resolve the exact saved-project match for the active CWD and, unless another
+   destination was explicitly requested, require its host to match the
+   invoking task's host.
 2. Start an empty clean thread with the resolved `worktree` environment and
    obtain its real session ID.
 3. Publish the pending commentary link.

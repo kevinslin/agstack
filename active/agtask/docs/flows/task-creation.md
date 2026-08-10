@@ -78,6 +78,15 @@ pin policy, project, and one logical creation ID before calling a Codex task
 tool. That ID is reused for every registration and bootstrap write in this
 attempt.
 
+For clean child creation, the parent first resolves the invoking task's host
+from authoritative Codex app context and selects a saved project whose root
+matches the active CWD. Unless the user explicitly requested another
+destination host or saved project, that project's host must also match the
+invoking host. A project on another machine, a ledger-only project label, and a
+projectless target cannot substitute for a matching same-host project. Missing
+or ambiguous same-host project registration requires user clarification before
+any task is created.
+
 #### 1.1 Generate the logical ID, child trailer, and optional clean plan
 
 - `skills/agtask/scripts/agtask:command_resolve_create`

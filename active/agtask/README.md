@@ -8,12 +8,15 @@ lifecycle updates. A task's description is derived once from its initial
 creation prompt and remains stable while later turns continue to update rollout
 history and lifecycle status.
 
-A bare invocation starts a clean child task in the active project. An explicit
-fork or context-preservation request creates a same-directory fork. Child tasks
-record the invoking Codex session as `parent_session_id`. Every tracked task has
-a pre-creation logical `id` and a unique Codex `session_id`. Explicit `kind=main`
-designates and pins the invoking task itself, creates no new task, stores no
-parent, and uses the default title `⭐ - <project>`.
+A bare invocation starts a clean child task in the active project on the same
+machine as the invoking task. Saved-project selection requires both the active
+workspace root and current host to match; selecting a different machine
+requires an explicit destination request. An explicit fork or
+context-preservation request creates a same-directory fork. Child tasks record
+the invoking Codex session as `parent_session_id`. Every tracked task has a
+pre-creation logical `id` and a unique Codex `session_id`. Explicit
+`kind=main` designates and pins the invoking task itself, creates no new task,
+stores no parent, and uses the default title `⭐ - <project>`.
 
 See [Architecture](docs/ARCHITECTURE.md) for system boundaries and
 [runtime flow docs](docs/flows/README.md) for task creation, session binding,

@@ -8,16 +8,22 @@ reports a partial or conflicting result.
 
 ## Fast path
 
-1. Resolve the invoking Codex session ID from authoritative current app
-   context. Use `$dev.llm-session` only when it is unavailable.
+1. Resolve the invoking Codex session ID and host ID from authoritative
+   current app context. Use `$dev.llm-session` only when the session ID is
+   unavailable. Never infer the host from a filesystem path, project label,
+   or `environment.type`.
 2. Resolve a self-contained task, a concise 2-5 word kebab-case topic, and the
    title. Preserve the user's scope, constraints, and operationally significant
    literals. Ask before creating when the scope remains materially ambiguous.
-3. Use the active CWD as the target. Call `list_projects` once and select a
-   saved project whose root exactly equals that CWD, regardless of whether its
-   host is local or remote. When multiple projects match, prefer the one on the
-   invoking task's current host. Ask for the target only when there is no exact
-   match or same-host preference does not resolve an ambiguity.
+3. Use the active CWD as the target and call `list_projects` once. Unless the
+   user explicitly requested a destination host or saved project, require a
+   project whose root exactly equals that CWD and whose `hostId` equals the
+   invoking task's host ID. Filter by host before resolving path matches; an
+   exact-root project on another machine is not a fallback. If the current
+   host is unavailable, no same-host exact-root project exists, or multiple
+   such projects remain, ask the user instead of silently switching machines.
+   A logical `--project` label is not an explicit destination. Never use a
+   projectless target to work around missing same-host project registration.
 4. Run the bundled resolver once:
 
 ```text
@@ -41,6 +47,9 @@ python3 ./scripts/agtask resolve-create \
    Here `environment.type=local` means use the saved project's existing
    checkout rather than a new worktree; it does not require the saved project
    itself to be on the local host.
+   Also verify the creation plan contains the selected saved `projectId` and,
+   absent an explicit user-requested destination, that project's `hostId`
+   matches the invoking task's host ID.
    Otherwise switch to the advanced workflow without calling the returned
    tool. Call `create_thread` once
    with `creation_plan.next_tool.arguments` unchanged. Do not reconstruct,
