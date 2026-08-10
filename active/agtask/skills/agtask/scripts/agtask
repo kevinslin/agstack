@@ -23,7 +23,9 @@ import stat
 import sys
 import tempfile
 from typing import Any, Callable, Optional
+from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qsl, quote, unquote, urlencode, urlsplit
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 import uuid
 import webbrowser
 
@@ -55,8 +57,39 @@ THINKING_LEVELS = (
 )
 CONFIG_FILENAME = ".agtask.json"
 MARKED_JS_PATH = Path(__file__).resolve().parent.parent / "assets/vendor/marked/marked.umd.js"
-CONFIG_TOP_LEVEL_KEYS = {"defaults", "hooks"}
+CONFIG_TOP_LEVEL_KEYS = {"backend", "defaults", "hooks"}
 CONFIG_DEFAULT_KEYS = {"mode", "kind", "project", "worktree", "model", "pin"}
+CONFIG_BACKEND_KEYS = {"mode", "sites"}
+CONFIG_SITES_KEYS = {"profile", "url", "project_id", "credential_ref"}
+BACKEND_MODES = ("local", "sites")
+LOCAL_ADMINISTRATIVE_COMMANDS = {
+    "config",
+    "install-hooks",
+    "section-cache",
+    "uninstall-hooks",
+}
+SITES_OPERATIONS = {
+    "add",
+    "append-rollout",
+    "dashboard",
+    "list",
+    "record-turn",
+    "register",
+    "reopen",
+    "search",
+    "show",
+    "status",
+}
+SITES_MUTATING_OPERATIONS = {
+    "add",
+    "append-rollout",
+    "record-turn",
+    "register",
+    "reopen",
+    "status",
+}
+SITES_REQUEST_TIMEOUT_SECONDS = 3.0
+SITES_HOOK_REQUEST_TIMEOUT_SECONDS = 1.25
 PROMPT_HOOK_EVENTS = {"OnCreate", "OnPreClose", "OnPostClose"}
 DEFAULT_ON_PRE_CLOSE_PROMPT = (
     "Read and follow $agtask's bundled ./references/onclose.md OnPreClose "
@@ -1384,10 +1417,56 @@ def validate_configuration(document: Any, path: Path) -> dict[str, Any]:
 
     defaults = document.get("defaults", {})
     hooks = document.get("hooks", {})
+    backend = document.get("backend")
     if not isinstance(defaults, dict):
         raise TaskError(f"configuration defaults must be an object: {path}")
     if not isinstance(hooks, dict):
         raise TaskError(f"configuration hooks must be an object: {path}")
+    if "backend" in document:
+        if not isinstance(backend, dict):
+            raise TaskError(f"configuration backend must be an object: {path}")
+        unknown_backend = sorted(set(backend) - CONFIG_BACKEND_KEYS)
+        if unknown_backend:
+            raise TaskError(
+                f"unknown configuration backend key in {path}: {unknown_backend[0]}"
+            )
+        if "mode" in backend and backend["mode"] not in BACKEND_MODES:
+            raise TaskError(f"configuration backend.mode must be local or sites: {path}")
+        if "sites" in backend:
+            sites = backend["sites"]
+            if not isinstance(sites, dict):
+                raise TaskError(f"configuration backend.sites must be an object: {path}")
+            unknown_sites = sorted(set(sites) - CONFIG_SITES_KEYS)
+            if unknown_sites:
+                raise TaskError(
+                    f"unknown configuration backend.sites key in {path}: "
+                    f"{unknown_sites[0]}"
+                )
+            for key, value in sites.items():
+                if not isinstance(value, str) or not value or value != value.strip():
+                    raise TaskError(
+                        f"configuration backend.sites.{key} must be a nonempty "
+                        f"string without surrounding whitespace: {path}"
+                    )
+            if "url" in sites:
+                try:
+                    parsed_url = urlsplit(sites["url"])
+                except ValueError as error:
+                    raise TaskError(
+                        f"configuration backend.sites.url must be an HTTPS URL: {path}"
+                    ) from error
+                if (
+                    parsed_url.scheme != "https"
+                    or not parsed_url.hostname
+                    or parsed_url.username is not None
+                    or parsed_url.password is not None
+                    or parsed_url.query
+                    or parsed_url.fragment
+                ):
+                    raise TaskError(
+                        f"configuration backend.sites.url must be an HTTPS URL "
+                        f"without credentials, query, or fragment: {path}"
+                    )
 
     unknown_defaults = sorted(set(defaults) - CONFIG_DEFAULT_KEYS)
     if unknown_defaults:
@@ -1423,14 +1502,17 @@ def validate_configuration(document: Any, path: Path) -> dict[str, Any]:
             )
         if "prompt" not in hook or not isinstance(hook["prompt"], str):
             raise TaskError(f"configuration hook {event}.prompt must be a string: {path}")
-    return {"defaults": defaults, "hooks": hooks}
+    result = {"defaults": defaults, "hooks": hooks}
+    if backend is not None:
+        result["backend"] = backend
+    return result
 
 
-def load_configuration() -> dict[str, Any]:
+def load_configuration(*, include_project: bool = True) -> dict[str, Any]:
     home_path = (Path.home() / CONFIG_FILENAME).resolve()
     project_path = (Path.cwd() / CONFIG_FILENAME).resolve()
     paths = [home_path]
-    if project_path != home_path:
+    if include_project and project_path != home_path:
         paths.append(project_path)
 
     merged: dict[str, Any] = {"defaults": {}, "hooks": {}}
@@ -1450,13 +1532,199 @@ def load_configuration() -> dict[str, Any]:
         sources.append(str(path))
         for event in validated["hooks"]:
             hook_sources[event] = str(path)
-    return {
+    result = {
         "defaults": merged["defaults"],
         "hooks": merged["hooks"],
         "sources": sources,
         "precedence": [str(path) for path in paths],
         "hook_sources": hook_sources,
     }
+    if "backend" in merged:
+        result["backend"] = merged["backend"]
+    return result
+
+
+def resolve_backend_mode(
+    configuration: dict[str, Any], explicit_mode: Optional[str] = None
+) -> str:
+    if explicit_mode is not None:
+        return explicit_mode
+    environment_mode = os.environ.get("AGTASK_BACKEND_MODE")
+    if environment_mode is not None:
+        if environment_mode not in BACKEND_MODES:
+            raise TaskError("AGTASK_BACKEND_MODE must be local or sites")
+        return environment_mode
+    return configuration.get("backend", {}).get("mode", "local")
+
+
+def sites_credentials(configuration: dict[str, Any]) -> tuple[str, str]:
+    bypass_token = os.environ.get("AGTASK_SITES_BYPASS_TOKEN")
+    app_token = os.environ.get("AGTASK_SITES_APP_TOKEN")
+    if bypass_token is not None or app_token is not None:
+        if not bypass_token or not app_token:
+            raise TaskError(
+                "Sites backend requires both AGTASK_SITES_BYPASS_TOKEN and "
+                "AGTASK_SITES_APP_TOKEN"
+            )
+        if any(character.isspace() for token in (bypass_token, app_token) for character in token):
+            raise TaskError("Sites credential environment values must not contain whitespace")
+        return bypass_token, app_token
+
+    reference = configuration.get("backend", {}).get("sites", {}).get("credential_ref")
+    if not isinstance(reference, str) or not reference.startswith("file:"):
+        raise TaskError(
+            "Sites backend requires backend.sites.credential_ref=file:<absolute-path> "
+            "or both Sites credential environment variables"
+        )
+    path = Path(reference[len("file:") :])
+    if not path.is_absolute():
+        raise TaskError("Sites credential file path must be absolute")
+    try:
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        try:
+            metadata = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(metadata.st_mode)
+                or metadata.st_uid != os.getuid()
+                or stat.S_IMODE(metadata.st_mode) != 0o600
+            ):
+                raise TaskError(
+                    "Sites credential file must be a regular file owned by the "
+                    "current user with permissions 0600"
+                )
+            raw = os.read(descriptor, 65_537)
+            if len(raw) > 65_536:
+                raise TaskError("Sites credential file exceeds the maximum size")
+        finally:
+            os.close(descriptor)
+        document = json.loads(raw)
+    except TaskError:
+        raise
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise TaskError("Sites credential file cannot be read safely") from error
+    if (
+        not isinstance(document, dict)
+        or set(document) != {"bypass_token", "app_token"}
+        or any(
+            not isinstance(value, str)
+            or not value
+            or any(character.isspace() for character in value)
+            for value in document.values()
+        )
+    ):
+        raise TaskError(
+            "Sites credential file must contain exactly nonempty bypass_token "
+            "and app_token values"
+        )
+    return document["bypass_token"], document["app_token"]
+
+
+def sites_url(configuration: dict[str, Any]) -> str:
+    url = configuration.get("backend", {}).get("sites", {}).get("url")
+    if not isinstance(url, str) or not url:
+        raise TaskError(
+            "Sites backend requires backend.sites.url and cannot use the local ledger"
+        )
+    return url.rstrip("/")
+
+
+def sites_request(
+    configuration: dict[str, Any],
+    operation: str,
+    payload: dict[str, Any],
+    *,
+    hook_mode: bool = False,
+) -> Any:
+    base_url = sites_url(configuration)
+    bypass_token, app_token = sites_credentials(configuration)
+    encoded = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    if len(encoded) > 16_384:
+        raise TaskError("Sites backend request exceeds the maximum size")
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "OAI-Sites-Authorization": f"Bearer {bypass_token}",
+        "Authorization": f"Bearer {app_token}",
+    }
+    if operation in SITES_MUTATING_OPERATIONS:
+        headers["Idempotency-Key"] = hashlib.sha256(
+            operation.encode("utf-8") + b"\x00" + encoded
+        ).hexdigest()
+    request = Request(
+        f"{base_url}/api/agtask/v1/operations/{quote(operation, safe='')}",
+        data=encoded,
+        headers=headers,
+        method="POST",
+    )
+    timeout = (
+        SITES_HOOK_REQUEST_TIMEOUT_SECONDS
+        if hook_mode
+        else SITES_REQUEST_TIMEOUT_SECONDS
+    )
+    try:
+        with build_opener(SitesNoRedirectHandler).open(request, timeout=timeout) as response:
+            body = response.read(8_388_609)
+        if len(body) > 8_388_608:
+            raise TaskError("Sites backend returned an oversized response")
+        return json.loads(body)
+    except HTTPError as error:
+        raise TaskError(f"Sites backend request failed with HTTP {error.code}") from None
+    except (URLError, TimeoutError, json.JSONDecodeError, UnicodeError) as error:
+        raise TaskError("Sites backend request failed or returned invalid JSON") from error
+
+
+class SitesNoRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(self, request: Any, response: Any, code: int, message: str,
+                         headers: Any, new_url: str) -> None:
+        return None
+
+
+def sites_payload(args: argparse.Namespace) -> dict[str, Any]:
+    if args.command == "dashboard":
+        return dashboard_state_from_args(args)
+    excluded = {"backend_mode", "command", "configuration", "handler", "json"}
+    payload = {
+        key: value
+        for key, value in vars(args).items()
+        if key not in excluded and value is not None
+    }
+    for key in ("initial_prompt", "description", "content", "summary", "message"):
+        if key in payload:
+            payload[key] = summarize(payload[key])
+    if args.command == "register" and payload.get("initial_prompt"):
+        description = payload.get("description") or payload["initial_prompt"]
+        payload["initial_prompt"] = description
+        payload["description"] = description
+    return payload
+
+
+def command_sites(args: argparse.Namespace) -> None:
+    if args.command == "dashboard":
+        if args.json and args.no_open:
+            raise TaskError("--json and --no-open cannot be used together")
+        if not args.json:
+            url = sites_url(args.configuration)
+            print(url, flush=True)
+            if not args.no_open:
+                try:
+                    if not webbrowser.open(url, new=2):
+                        print("agtask: browser did not open; use the printed URL", file=sys.stderr)
+                except Exception:
+                    print("agtask: browser did not open; use the printed URL", file=sys.stderr)
+            return
+
+    result = sites_request(args.configuration, args.command, sites_payload(args))
+    if args.command in {"record-turn", "append-rollout"} and isinstance(result, dict):
+        thread = result.get("thread")
+        if isinstance(thread, dict):
+            result = thread
+    if args.command in {"register", "add"} and isinstance(result, dict):
+        triggered = bool(result.pop("task_created", "hook_prompts" not in result))
+        if "hook_prompts" not in result:
+            result = lifecycle_result(
+                result, args.configuration, "OnCreate", triggered=triggered
+            )
+    emit(result, args.json)
 
 
 def prompt_hooks(configuration: dict[str, Any], event: str) -> list[dict[str, str]]:
@@ -3364,13 +3632,153 @@ def is_guardian_review_hook(payload: dict[str, Any]) -> bool:
     )
 
 
-def handle_hook() -> None:
+def sites_thread_context(thread: dict[str, Any]) -> str:
+    lines = [
+        f"Tracked agtask thread: {thread.get('title', '')}",
+        f"Status: {thread.get('status', '')}",
+        f"Task description: {thread.get('description', '')}",
+        "Recent rollouts:",
+    ]
+    rollouts = thread.get("rollouts", [])
+    if isinstance(rollouts, list):
+        lines.extend(
+            f"- {rollout['role']}: {rollout['message']}"
+            for rollout in rollouts[:5]
+            if isinstance(rollout, dict)
+            and isinstance(rollout.get("role"), str)
+            and isinstance(rollout.get("message"), str)
+        )
+    lines.append(OUTCOME_CONTRACT)
+    return "\n".join(lines) + "\n"
+
+
+def handle_sites_hook(configuration: dict[str, Any]) -> None:
+    payload = json.load(sys.stdin)
+    if not isinstance(payload, dict) or is_guardian_review_hook(payload):
+        return
+    event = payload.get("hook_event_name")
+    session_id = payload.get("session_id")
+    if not isinstance(event, str) or not isinstance(session_id, str):
+        return
+
+    if event == "UserPromptSubmit":
+        prompt = payload.get("prompt")
+        turn_id = payload.get("turn_id")
+        if not isinstance(prompt, str) or not isinstance(turn_id, str):
+            return
+        try:
+            envelope = parse_bootstrap_envelope(prompt)
+        except TaskError:
+            envelope = None
+        action_context = ""
+        if envelope is not None:
+            action_context = bootstrap_action_context(prompt, session_id)
+            if envelope[0] == BOOTSTRAP_VERSION:
+                arguments = envelope[1]
+                description = summarize(prompt)
+                sites_request(
+                    configuration,
+                    "register",
+                    {
+                        "id": arguments["id"],
+                        "session_id": session_id,
+                        "parent_session_id": arguments["parent_session_id"],
+                        "kind": "child",
+                        "project": arguments["project"],
+                        "title": arguments["title"],
+                        "initial_prompt": description,
+                        "description": description,
+                        "status": "active",
+                        "authoritative_session": False,
+                    },
+                    hook_mode=True,
+                )
+        thread = sites_request(
+            configuration,
+            "record-turn",
+            {
+                "session_id": session_id,
+                "role": "user",
+                "turn_id": turn_id,
+                "content": summarize(prompt),
+            },
+            hook_mode=True,
+        )
+        if isinstance(thread, dict) and isinstance(thread.get("thread"), dict):
+            thread = thread["thread"]
+        if isinstance(thread, dict):
+            print(
+                json.dumps(
+                    {
+                        "hookSpecificOutput": {
+                            "hookEventName": "UserPromptSubmit",
+                            "additionalContext": action_context
+                            + sites_thread_context(thread),
+                        }
+                    },
+                    separators=(",", ":"),
+                )
+            )
+    elif event == "Stop":
+        message = payload.get("last_assistant_message")
+        turn_id = payload.get("turn_id")
+        if isinstance(message, str) and message and isinstance(turn_id, str):
+            sites_request(
+                configuration,
+                "record-turn",
+                {
+                    "session_id": session_id,
+                    "role": "assistant",
+                    "turn_id": turn_id,
+                    "content": summarize(message),
+                },
+                hook_mode=True,
+            )
+    elif event == "PostCompact":
+        turn_id = payload.get("turn_id")
+        trigger = payload.get("trigger")
+        if isinstance(turn_id, str) and trigger in {"manual", "auto"}:
+            sites_request(
+                configuration,
+                "append-rollout",
+                {
+                    "session_id": session_id,
+                    "turn_id": f"compact:{turn_id}:{trigger}",
+                    "role": "meta",
+                    "message": f"compaction:{trigger}",
+                },
+                hook_mode=True,
+            )
+    elif event == "SessionStart" and payload.get("source") in {
+        "startup",
+        "resume",
+        "clear",
+        "compact",
+    }:
+        thread = sites_request(
+            configuration, "show", {"session_id": session_id}, hook_mode=True
+        )
+        if isinstance(thread, dict):
+            sys.stdout.write(sites_thread_context(thread))
+
+
+def handle_hook(explicit_backend_mode: Optional[str] = None) -> None:
     connection: Optional[sqlite3.Connection] = None
     event: Optional[str] = None
     user_prompt_context: list[str] = []
     registration_arguments: Optional[dict[str, Any]] = None
     deferred_v2_action_context = ""
     try:
+        configuration = load_configuration(include_project=False)
+        if resolve_backend_mode(configuration, explicit_backend_mode) == "sites":
+            handle_sites_hook(configuration)
+            return
+        if (
+            explicit_backend_mode is None
+            and os.environ.get("AGTASK_BACKEND_MODE") is None
+            and load_configuration().get("backend", {}).get("mode") == "sites"
+        ):
+            return
         payload = json.load(sys.stdin)
         if not isinstance(payload, dict):
             return
@@ -3394,7 +3802,6 @@ def handle_hook() -> None:
                         deferred_v2_action_context = action_context
                     else:
                         user_prompt_context.append(action_context)
-        load_configuration()
         connection = open_database(
             initialize=registration_arguments is not None, hook_mode=True
         )
@@ -4577,15 +4984,15 @@ def command_init(args: argparse.Namespace) -> None:
 
 
 def command_config(args: argparse.Namespace) -> None:
-    emit(
-        {
-            "defaults": args.configuration["defaults"],
-            "hooks": args.configuration["hooks"],
-            "sources": args.configuration["sources"],
-            "precedence": args.configuration["precedence"],
-        },
-        args.json,
-    )
+    result = {
+        "defaults": args.configuration["defaults"],
+        "hooks": args.configuration["hooks"],
+        "sources": args.configuration["sources"],
+        "precedence": args.configuration["precedence"],
+    }
+    if "backend" in args.configuration:
+        result["backend"] = args.configuration["backend"]
+    emit(result, args.json)
 
 
 def command_section_cache_get(args: argparse.Namespace) -> None:
@@ -5408,6 +5815,7 @@ def add_thread_selector(parser: argparse.ArgumentParser) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="agtask")
+    parser.add_argument("--mode", choices=BACKEND_MODES, dest="backend_mode")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     resolve_create = subparsers.add_parser("resolve-create")
@@ -5598,7 +6006,7 @@ def build_parser() -> argparse.ArgumentParser:
     record.set_defaults(handler=command_record_turn)
 
     hook = subparsers.add_parser("hook")
-    hook.set_defaults(handler=lambda _args: handle_hook())
+    hook.set_defaults(handler=lambda args: handle_hook(args.backend_mode))
 
     install_hooks = subparsers.add_parser("install-hooks")
     add_common_json(install_hooks)
@@ -5617,6 +6025,22 @@ def main() -> int:
     try:
         if args.command != "hook":
             args.configuration = load_configuration()
+            args.backend_mode = resolve_backend_mode(
+                args.configuration, args.backend_mode
+            )
+            if args.backend_mode == "sites":
+                if args.command in SITES_OPERATIONS:
+                    command_sites(args)
+                    return 0
+                if (
+                    args.command != "resolve-create"
+                    and args.command not in LOCAL_ADMINISTRATIVE_COMMANDS
+                ):
+                    raise TaskError(
+                        f"Sites backend is selected, but '{args.command}' is not "
+                        "supported and cannot use the local ledger. Run "
+                        "'agtask --mode local' to explicitly select the local backend."
+                    )
         args.handler(args)
         return 0
     except (TaskError, sqlite3.Error, OSError, ValueError) as error:

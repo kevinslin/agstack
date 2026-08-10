@@ -1,15 +1,19 @@
 # Data model
 
-`agtask` stores a local, searchable projection of Codex task state in
-`~/.llm/agtask/ledger.db`. Codex remains authoritative for the complete
-conversation and native rollout history. The ledger contains only current
-thread state, task kind, project identity, origin lineage, bounded turn
-summaries, lifecycle events, saved dashboard views, and short-lived project
-merge claims.
+`agtask` supports two separately authoritative task projections. In `local`
+mode, the searchable projection is stored in `~/.llm/agtask/ledger.db`. In
+`sites` mode, hosted task rows and rollout history are stored in the selected
+private Site's managed D1 database. Codex remains authoritative for the
+complete conversation and native rollout history in either mode. The local
+ledger contains current thread state, task kind, project identity, origin
+lineage, bounded turn summaries, lifecycle events, saved dashboard views, and
+short-lived project merge claims. The initial hosted schema implements a
+narrower task-and-rollout contract.
 
-The canonical schema is version 8. Its executable source of truth is `DDL` in
+The canonical **local** schema is version 8. Its executable source of truth is `DDL` in
 [`skills/agtask/scripts/agtask`](../skills/agtask/scripts/agtask).
-This document describes that schema and the application contract around it.
+Unless explicitly marked as hosted, the schema, SQL features, locking,
+permissions, and lifecycle guarantees below describe only that local database.
 
 ## Storage contract
 
@@ -26,6 +30,56 @@ This document describes that schema and the application contract around it.
   are migrated transactionally to version 8; a missing database or empty
   version-0 database may be initialized. Any other shape is rejected without
   project backfill.
+
+## Hosted Sites persistence contract
+
+When `backend.mode` resolves to `sites`, the configured private Site and its
+managed D1 binding are authoritative for hosted task registrations and rollout
+events. Local SQLite remains authoritative only when `backend.mode` resolves
+to `local`. The stores are independent: changing modes does not migrate,
+replicate, synchronize, merge, or implicitly read the other store, and a
+hosted failure never falls back to a local write.
+
+The initial hosted D1 tables are `agtask_threads` and `agtask_rollouts`. They
+persist task identity and current-state metadata,
+including the logical task ID, Codex session identity, project, title,
+description, lifecycle status, timestamps, and available parent/kind lineage.
+It separately persists summarized user/assistant turns and lifecycle rollout
+events under their owning hosted task. Registration creates its task and
+creation rollout together; repeated turn-event identities are idempotent.
+Supported hosted operations are `register`, `add`, `show`, `list`,
+`record-turn`, `append-rollout`, `status`, `reopen`, `search`, and `dashboard`;
+each operates only on those D1 records. Hosted search uses parameterized
+substring matching rather than a local FTS projection.
+
+The hosted slice is not a copy of local SQLite schema version 8. In
+particular, local FTS virtual tables and rank ordering, attachments and local
+file paths, saved dashboard views, project merge claims and fencing,
+merge-coordinated close, rename, audit reconciliation, and local WAL, filesystem
+permission, or migration guarantees must not be assumed for D1. Local `init`
+and other unsupported operations fail closed. Hosted terminal-task reopening
+is supported, but it does not imply merge-claim or full local close-workflow
+parity. The hosted dashboard synthesizes its Today view without persisting a
+saved-view table and applies browser status transitions atomically against D1;
+attachment uploads remain disabled because no object-storage binding is
+configured.
+
+Only nonsecret Site routing metadata belongs in layered `.agtask.json`
+configuration: `profile`, `url`, `project_id`, and `credential_ref`. Actual
+credentials come from `AGTASK_SITES_BYPASS_TOKEN` and
+`AGTASK_SITES_APP_TOKEN`, or a `file:/absolute/path` credential reference to an
+owner-owned, nonsymlink JSON file with mode `0600` containing `bypass_token`
+and `app_token`. Configuration never contains either bearer token. Hosted API
+requests require both `OAI-Sites-Authorization` and the separate
+`Authorization` application bearer; the browser dashboard uses the private
+Sites session gate without exposing the application token. The task API's
+runtime `AGTASK_TASKS_SECRET` is distinct from `AGTASK_PROBE_SECRET`, which
+remains limited to the existing probe endpoint. Promote a global `sites`
+default only after the Site, D1 binding, hosted task runtime, and both
+credentials are ready and the installed agtask runtime has been synchronized
+with the source. Existing local-only sessions are not migrated; after global
+promotion, independently launched hooks route to Sites and do not continue
+updating their previous local rows.
 
 ## Entity relationship
 
@@ -633,7 +687,10 @@ nor the workflow claims distributed atomicity.
 Configuration is also outside the persistence contract. The CLI loads
 `$HOME/.agtask.json` and `./.agtask.json` at invocation time, with the project
 file overlaying the home file recursively. Neither the merged defaults nor raw
-prompt hook text is copied into SQLite. `init` creates the global file with the
+prompt hook text is copied into SQLite or hosted D1 task records. Site URLs,
+profiles, project IDs, and credential references are routing metadata rather
+than task data; bearer credentials are never stored in either configuration or
+task persistence. Local `init` creates the global file with the
 bundled defaults only when it is absent and reports whether creation occurred;
 it does not overwrite an existing configuration.
 

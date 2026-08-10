@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 import datetime as dt
 import html
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
 import runpy
 import sqlite3
+import ssl
 import stat
 import subprocess
 import tempfile
+import threading
 import unittest
 from urllib.parse import quote
 import uuid
@@ -105,6 +109,74 @@ def fixture_creation_id(label: str) -> str:
     return str(uuid.UUID(bytes=seed.bytes, version=4))
 
 
+@contextmanager
+def mock_sites_server(root: Path, responder: object):
+    certificate = root / "sites-cert.pem"
+    key = root / "sites-key.pem"
+    subprocess.run(
+        [
+            "openssl",
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-keyout",
+            str(key),
+            "-out",
+            str(certificate),
+            "-days",
+            "1",
+            "-subj",
+            "/CN=localhost",
+            "-addext",
+            "subjectAltName=DNS:localhost",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    requests: list[dict[str, object]] = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            length = int(self.headers.get("Content-Length", "0"))
+            raw = self.rfile.read(length)
+            request = {
+                "path": self.path,
+                "headers": dict(self.headers.items()),
+                "payload": json.loads(raw),
+                "raw": raw.decode(),
+            }
+            requests.append(request)
+            result = responder(request)
+            status, response = result[:2]
+            extra_headers = result[2] if len(result) > 2 else {}
+            encoded = json.dumps(response).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(encoded)))
+            for name, value in extra_headers.items():
+                self.send_header(name, value)
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def log_message(self, format: str, *args: object) -> None:
+            return
+
+    server = ThreadingHTTPServer(("localhost", 0), Handler)
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(str(certificate), str(key))
+    server.socket = context.wrap_socket(server.socket, server_side=True)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"https://localhost:{server.server_address[1]}", certificate, requests
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
 class CliIntegrationTest(unittest.TestCase):
     def setUp(self) -> None:
         self.tempdir = tempfile.TemporaryDirectory()
@@ -116,6 +188,9 @@ class CliIntegrationTest(unittest.TestCase):
         self.env = os.environ.copy()
         self.env["AGTASK_DB"] = str(self.db_path)
         self.env["HOME"] = str(self.home)
+        self.env.pop("AGTASK_BACKEND_MODE", None)
+        self.env.pop("AGTASK_SITES_BYPASS_TOKEN", None)
+        self.env.pop("AGTASK_SITES_APP_TOKEN", None)
 
     def tearDown(self) -> None:
         self.tempdir.cleanup()
@@ -2159,6 +2234,627 @@ class CliIntegrationTest(unittest.TestCase):
         )
         self.assertEqual(disabled["hook_prompts"], [])
         self.assertFalse(self.db_path.exists())
+
+    def test_backend_configuration_merges_home_and_project(self) -> None:
+        project = self.root / "backend-project"
+        self.write_config(
+            self.home,
+            {
+                "defaults": {"mode": "fork"},
+                "backend": {
+                    "mode": "local",
+                    "sites": {
+                        "profile": "home-profile",
+                        "url": "https://example.openai.chatgpt.site",
+                        "project_id": "appgprj_home",
+                        "credential_ref": "keychain:agtask/home",
+                    },
+                },
+            },
+        )
+        self.write_config(
+            project,
+            {
+                "backend": {
+                    "mode": "sites",
+                    "sites": {"profile": "project-profile"},
+                }
+            },
+        )
+
+        configuration = json.loads(
+            self.run_cli("config", "--json", cwd=project).stdout
+        )
+        self.assertEqual(configuration["defaults"]["mode"], "fork")
+        self.assertEqual(
+            configuration["backend"],
+            {
+                "mode": "sites",
+                "sites": {
+                    "profile": "project-profile",
+                    "url": "https://example.openai.chatgpt.site",
+                    "project_id": "appgprj_home",
+                    "credential_ref": "keychain:agtask/home",
+                },
+            },
+        )
+        self.assertFalse(self.db_path.exists())
+
+    def test_backend_configuration_preserves_unconfigured_json_shape(self) -> None:
+        configuration = json.loads(self.run_cli("config", "--json").stdout)
+        self.assertEqual(
+            set(configuration), {"defaults", "hooks", "sources", "precedence"}
+        )
+        self.assertNotIn("backend", configuration)
+
+    def test_backend_configuration_validates_nested_sites_values(self) -> None:
+        project = self.root / "invalid-backend-project"
+        cases = [
+            ({"backend": None}, "backend must be an object"),
+            ({"backend": "sites"}, "backend must be an object"),
+            ({"backend": {"unexpected": True}}, "unknown configuration backend key"),
+            ({"backend": {"mode": "fork"}}, "backend.mode must be local or sites"),
+            ({"backend": {"mode": None}}, "backend.mode must be local or sites"),
+            ({"backend": {"sites": []}}, "backend.sites must be an object"),
+            (
+                {"backend": {"sites": {"token": "secret"}}},
+                "unknown configuration backend.sites key",
+            ),
+            (
+                {"backend": {"sites": {"profile": ""}}},
+                "backend.sites.profile must be a nonempty string",
+            ),
+            (
+                {"backend": {"sites": {"project_id": 123}}},
+                "backend.sites.project_id must be a nonempty string",
+            ),
+            (
+                {"backend": {"sites": {"credential_ref": " padded "}}},
+                "backend.sites.credential_ref must be a nonempty string",
+            ),
+            (
+                {"backend": {"sites": {"url": "http://example.com"}}},
+                "backend.sites.url must be an HTTPS URL",
+            ),
+            (
+                {"backend": {"sites": {"url": "https://token@example.com"}}},
+                "backend.sites.url must be an HTTPS URL",
+            ),
+            (
+                {"backend": {"sites": {"url": "https://example.com/?token=x"}}},
+                "backend.sites.url must be an HTTPS URL",
+            ),
+        ]
+        for document, message in cases:
+            with self.subTest(document=document):
+                self.write_config(project, document)
+                result = self.run_cli("config", "--json", cwd=project, check=False)
+                self.assertEqual(result.returncode, 1)
+                self.assertIn(message, result.stderr)
+        self.assertFalse(self.db_path.exists())
+
+    def test_backend_mode_precedence_and_creation_mode_are_independent(self) -> None:
+        self.write_config(
+            self.home,
+            {"backend": {"mode": "sites"}, "defaults": {"mode": "fork"}},
+        )
+
+        configured_sites = self.run_cli("init", "--json", check=False)
+        self.assertEqual(configured_sites.returncode, 1)
+        self.assertIn("Sites backend is selected", configured_sites.stderr)
+        self.assertFalse(self.db_path.exists())
+
+        environment_local = self.env | {"AGTASK_BACKEND_MODE": "local"}
+        initialized = json.loads(
+            self.run_cli("init", "--json", env=environment_local).stdout
+        )
+        self.assertEqual(initialized["database"], str(self.db_path))
+
+        explicit_sites = self.run_cli(
+            "--mode", "sites", "list", "--json", env=environment_local, check=False
+        )
+        self.assertEqual(explicit_sites.returncode, 1)
+        self.assertIn("cannot use the local ledger", explicit_sites.stderr)
+
+        environment_sites = self.env | {"AGTASK_BACKEND_MODE": "sites"}
+        explicit_local = json.loads(
+            self.run_cli(
+                "--mode",
+                "local",
+                "resolve-create",
+                "--mode",
+                "clean",
+                "--kind",
+                "main",
+                "--title",
+                "agtask/backend-mode",
+                "--json",
+                env=environment_sites,
+            ).stdout
+        )
+        self.assertEqual(explicit_local["mode"], "clean")
+        self.assertNotIn("backend_mode", explicit_local)
+
+        invalid_environment = self.env | {"AGTASK_BACKEND_MODE": "fork"}
+        invalid = self.run_cli("config", "--json", env=invalid_environment, check=False)
+        self.assertEqual(invalid.returncode, 1)
+        self.assertIn("AGTASK_BACKEND_MODE must be local or sites", invalid.stderr)
+
+        override_invalid_environment = self.run_cli(
+            "--mode", "local", "config", "--json", env=invalid_environment
+        )
+        self.assertEqual(override_invalid_environment.returncode, 0)
+
+    def test_sites_backend_refuses_task_operations_without_local_fallback(self) -> None:
+        self.write_config(self.home, {"backend": {"mode": "sites"}})
+        cases = [
+            ("init", "--json"),
+            ("list", "--json"),
+            ("dashboard", "--json"),
+            (
+                "register",
+                "--id",
+                "sites-task",
+                "--session-id",
+                "sites-session",
+                "--kind",
+                "main",
+                "--project",
+                "sites-project",
+                "--title",
+                "blocked",
+                "--json",
+            ),
+        ]
+        for arguments in cases:
+            with self.subTest(command=arguments[0]):
+                result = self.run_cli(*arguments, check=False)
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("cannot use the local ledger", result.stderr)
+                self.assertFalse(self.db_path.exists())
+
+        creation = json.loads(
+            self.run_cli(
+                "resolve-create", "--kind", "main", "--title", "planned", "--json"
+            ).stdout
+        )
+        self.assertEqual(creation["title"], "planned")
+        self.assertFalse(self.db_path.exists())
+
+        cache = json.loads(
+            self.run_cli("section-cache", "get", "--session-id", "sites-session", "--json").stdout
+        )
+        self.assertEqual(cache["state"], "miss")
+        self.assertFalse(self.db_path.exists())
+
+    def test_sites_backend_hook_fails_open_without_touching_local_ledger(self) -> None:
+        self.write_config(self.home, {"backend": {"mode": "sites"}})
+        project = self.root / "hook-project"
+        self.write_config(project, {"backend": {"mode": "local"}})
+        plan = json.loads(
+            self.run_cli(
+                "--mode",
+                "local",
+                "resolve-create",
+                "--parent-session-id",
+                "parent-session",
+                "--title",
+                "agtask/sites-hook",
+                "--json",
+            ).stdout
+        )
+        payload = {
+            "hook_event_name": "UserPromptSubmit",
+            "session_id": "sites-hook-session",
+            "turn_id": "sites-hook-turn",
+            "prompt": "Task:\nDo not create a local task.\n\n"
+            + plan["bootstrap_trailer"],
+        }
+
+        sites_hook = self.run_cli("hook", input_text=json.dumps(payload), cwd=project)
+        self.assertEqual(sites_hook.returncode, 0)
+        self.assertEqual(sites_hook.stdout, "")
+        self.assertEqual(sites_hook.stderr, "")
+        self.assertFalse(self.db_path.exists())
+
+        local_hook = self.run_cli(
+            "--mode", "local", "hook", input_text=json.dumps(payload), cwd=project
+        )
+        self.assertEqual(local_hook.returncode, 0)
+        self.assertTrue(self.db_path.exists())
+
+    def test_sites_client_authenticates_remote_operations_without_local_database(self) -> None:
+        thread_id = fixture_creation_id("remote-sites-task")
+        threads: dict[str, dict[str, object]] = {}
+
+        def respond(request: dict[str, object]) -> tuple[int, object]:
+            operation = str(request["path"]).rsplit("/", 1)[-1]
+            payload = request["payload"]
+            self.assertIsInstance(payload, dict)
+            if operation == "register":
+                task = {
+                    "id": payload["id"],
+                    "session_id": payload["session_id"],
+                    "parent_session_id": payload.get("parent_session_id"),
+                    "kind": payload["kind"],
+                    "project": payload["project"],
+                    "title": payload["title"],
+                    "description": payload.get("description", ""),
+                    "status": payload["status"],
+                    "rollouts": [],
+                    "files": [],
+                    "created": "2026-08-09T00:00:00Z",
+                    "updated": "2026-08-09T00:00:00Z",
+                    "closed": None,
+                    "task_created": True,
+                }
+                threads[str(task["session_id"])] = task
+                return 200, task
+            if operation == "list":
+                return 200, list(threads.values())
+            task = threads.get(str(payload.get("session_id")))
+            if task is None:
+                task = next(
+                    (entry for entry in threads.values() if entry["id"] == payload.get("id")),
+                    None,
+                )
+            if task is None:
+                return 404, {"error": "not found"}
+            if operation == "record-turn":
+                task["rollouts"].insert(
+                    0,
+                    {
+                        "role": payload["role"],
+                        "turn_id": payload["turn_id"],
+                        "message": payload["content"],
+                    },
+                )
+            return 200, task
+
+        with mock_sites_server(self.root, respond) as (url, certificate, requests):
+            credentials = self.root / "credentials.json"
+            credentials.write_text(
+                json.dumps({"bypass_token": "platform-secret", "app_token": "app-secret"})
+            )
+            credentials.chmod(0o600)
+            self.write_config(
+                self.home,
+                {
+                    "backend": {
+                        "mode": "sites",
+                        "sites": {
+                            "url": url,
+                            "credential_ref": f"file:{credentials}",
+                        },
+                    },
+                    "hooks": {"OnCreate": {"prompt": "Run hosted setup."}},
+                },
+            )
+            environment = self.env | {"SSL_CERT_FILE": str(certificate)}
+            full_prompt = "Task:\n" + "x" * 300 + " NEVER_SEND_FULL_PROMPT"
+            registered = json.loads(
+                self.run_cli(
+                    "register",
+                    "--id",
+                    thread_id,
+                    "--session-id",
+                    "sites-session",
+                    "--kind",
+                    "main",
+                    "--project",
+                    "agtask",
+                    "--title",
+                    "Hosted task",
+                    "--initial-prompt",
+                    full_prompt,
+                    "--json",
+                    env=environment,
+                ).stdout
+            )
+            self.assertEqual(registered["id"], thread_id)
+            self.assertEqual(registered["created"], "2026-08-09T00:00:00Z")
+            self.assertNotIn("task_created", registered)
+            self.assertEqual(
+                registered["hook_prompts"],
+                [
+                    {
+                        "event": "OnCreate",
+                        "prompt": "Run hosted setup.",
+                        "source": str((self.home / ".agtask.json").resolve()),
+                    }
+                ],
+            )
+            first = requests[0]
+            self.assertEqual(first["path"], "/api/agtask/v1/operations/register")
+            headers = {key.lower(): value for key, value in first["headers"].items()}
+            self.assertEqual(headers["oai-sites-authorization"], "Bearer platform-secret")
+            self.assertEqual(headers["authorization"], "Bearer app-secret")
+            self.assertRegex(headers["idempotency-key"], r"^[0-9a-f]{64}$")
+            self.assertNotIn("NEVER_SEND_FULL_PROMPT", first["raw"])
+            self.assertLessEqual(len(first["payload"]["initial_prompt"]), 240)
+            self.assertEqual(
+                first["payload"]["initial_prompt"], first["payload"]["description"]
+            )
+
+            listed = json.loads(self.run_cli("list", "--json", env=environment).stdout)
+            self.assertEqual([task["id"] for task in listed], [thread_id])
+            shown = json.loads(
+                self.run_cli(
+                    "show", "--session-id", "sites-session", "--json", env=environment
+                ).stdout
+            )
+            self.assertEqual(shown["title"], "Hosted task")
+            recorded = json.loads(
+                self.run_cli(
+                    "record-turn",
+                    "--session-id",
+                    "sites-session",
+                    "--role",
+                    "assistant",
+                    "--turn-id",
+                    "turn-1",
+                    "--content",
+                    "Blocked: " + "y" * 300 + " NEVER_SEND_ASSISTANT",
+                    "--json",
+                    env=environment,
+                ).stdout
+            )
+            self.assertEqual(recorded["rollouts"][0]["role"], "assistant")
+            self.assertNotIn("NEVER_SEND_ASSISTANT", requests[-1]["raw"])
+            self.assertLessEqual(len(requests[-1]["payload"]["content"]), 240)
+            first_key = {
+                key.lower(): value for key, value in requests[-1]["headers"].items()
+            }["idempotency-key"]
+            self.run_cli(
+                "record-turn",
+                "--session-id",
+                "sites-session",
+                "--role",
+                "assistant",
+                "--turn-id",
+                "turn-1",
+                "--content",
+                "Blocked: " + "y" * 300 + " NEVER_SEND_ASSISTANT",
+                "--json",
+                env=environment,
+            )
+            retry_key = {
+                key.lower(): value for key, value in requests[-1]["headers"].items()
+            }["idempotency-key"]
+            self.assertEqual(first_key, retry_key)
+            self.assertFalse(self.db_path.exists())
+
+    def test_sites_client_rejects_insecure_credentials_and_redacts_server_errors(self) -> None:
+        credentials = self.root / "credentials.json"
+        credentials.write_text(
+            json.dumps({"bypass_token": "private-bypass", "app_token": "private-app"})
+        )
+        credentials.chmod(0o644)
+        self.write_config(
+            self.home,
+            {
+                "backend": {
+                    "mode": "sites",
+                    "sites": {
+                        "url": "https://example.openai.chatgpt.site",
+                        "credential_ref": f"file:{credentials}",
+                    },
+                }
+            },
+        )
+        insecure = self.run_cli("list", "--json", check=False)
+        self.assertEqual(insecure.returncode, 1)
+        self.assertIn("permissions 0600", insecure.stderr)
+        self.assertNotIn("private-bypass", insecure.stderr)
+        self.assertFalse(self.db_path.exists())
+
+        credentials.chmod(0o600)
+        link = self.root / "credentials-link.json"
+        link.symlink_to(credentials)
+        self.write_config(
+            self.home,
+            {
+                "backend": {
+                    "mode": "sites",
+                    "sites": {
+                        "url": "https://example.openai.chatgpt.site",
+                        "credential_ref": f"file:{link}",
+                    },
+                }
+            },
+        )
+        symlink = self.run_cli("list", "--json", check=False)
+        self.assertEqual(symlink.returncode, 1)
+        self.assertIn("cannot be read safely", symlink.stderr)
+
+        def reject(request: dict[str, object]) -> tuple[int, object]:
+            return 403, {"error": "private-bypass private-app confidential-server-error"}
+
+        with mock_sites_server(self.root, reject) as (url, certificate, requests):
+            self.write_config(
+                self.home,
+                {
+                    "backend": {
+                        "mode": "sites",
+                        "sites": {
+                            "url": url,
+                            "credential_ref": f"file:{credentials}",
+                        },
+                    }
+                },
+            )
+            result = self.run_cli(
+                "list",
+                "--json",
+                env=self.env | {"SSL_CERT_FILE": str(certificate)},
+                check=False,
+            )
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("HTTP 403", result.stderr)
+            for secret in ("private-bypass", "private-app", "confidential-server-error"):
+                self.assertNotIn(secret, result.stderr)
+            self.assertEqual(len(requests), 1)
+            self.assertFalse(self.db_path.exists())
+
+    def test_sites_client_remote_hooks_register_and_record_without_local_database(self) -> None:
+        task_id = fixture_creation_id("sites-hook-task")
+
+        def respond(request: dict[str, object]) -> tuple[int, object]:
+            payload = request["payload"]
+            task = {
+                "id": task_id,
+                "session_id": "remote-hook-session",
+                "title": "agtask/remote-hook",
+                "description": "Track a hosted task.",
+                "status": "active",
+                "rollouts": [],
+                "files": [],
+            }
+            if str(request["path"]).endswith("/record-turn"):
+                task["rollouts"] = [
+                    {
+                        "role": payload["role"],
+                        "turn_id": payload["turn_id"],
+                        "message": payload["content"],
+                    }
+                ]
+            return 200, task
+
+        with mock_sites_server(self.root, respond) as (url, certificate, requests):
+            self.write_config(
+                self.home, {"backend": {"mode": "sites", "sites": {"url": url}}}
+            )
+            environment = self.env | {
+                "SSL_CERT_FILE": str(certificate),
+                "AGTASK_SITES_BYPASS_TOKEN": "environment-bypass",
+                "AGTASK_SITES_APP_TOKEN": "environment-app",
+            }
+            prompt = bootstrap_prompt(
+                task_id,
+                parent_session_id="remote-parent",
+                title="agtask/remote-hook",
+                prompt="Task:\nTrack a hosted task.",
+            )
+            hook = self.run_cli(
+                "hook",
+                input_text=json.dumps(
+                    {
+                        "hook_event_name": "UserPromptSubmit",
+                        "session_id": "remote-hook-session",
+                        "turn_id": "hook-turn-1",
+                        "prompt": prompt,
+                    }
+                ),
+                env=environment,
+            )
+            self.assertIn("Tracked agtask thread: agtask/remote-hook", self.hook_context(hook))
+            self.assertEqual(
+                [str(request["path"]).rsplit("/", 1)[-1] for request in requests],
+                ["register", "record-turn"],
+            )
+            self.assertNotIn("<agtask-bootstrap", requests[0]["raw"])
+            self.assertNotIn("<agtask-bootstrap", requests[1]["raw"])
+
+            stop = self.run_cli(
+                "hook",
+                input_text=json.dumps(
+                    {
+                        "hook_event_name": "Stop",
+                        "session_id": "remote-hook-session",
+                        "turn_id": "hook-turn-1",
+                        "last_assistant_message": "Blocked: awaiting hosted review.",
+                    }
+                ),
+                env=environment,
+            )
+            self.assertEqual(stop.stdout, "")
+            self.assertEqual(requests[-1]["payload"]["role"], "assistant")
+            self.assertFalse(self.db_path.exists())
+
+    def test_sites_client_never_follows_authenticated_redirects(self) -> None:
+        def redirect(request: dict[str, object]) -> tuple[int, object, dict[str, str]]:
+            return 302, {"error": "redirect"}, {"Location": "https://localhost/stolen"}
+
+        with mock_sites_server(self.root, redirect) as (url, certificate, requests):
+            self.write_config(
+                self.home, {"backend": {"mode": "sites", "sites": {"url": url}}}
+            )
+            environment = self.env | {
+                "SSL_CERT_FILE": str(certificate),
+                "AGTASK_SITES_BYPASS_TOKEN": "redirect-bypass-secret",
+                "AGTASK_SITES_APP_TOKEN": "redirect-app-secret",
+            }
+            result = self.run_cli("list", "--json", env=environment, check=False)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("HTTP 302", result.stderr)
+            self.assertEqual(len(requests), 1)
+            self.assertNotIn("redirect-bypass-secret", result.stderr)
+            self.assertNotIn("redirect-app-secret", result.stderr)
+            self.assertFalse(self.db_path.exists())
+
+    def test_sites_client_dashboard_opens_hosted_url_without_local_server(self) -> None:
+        url = "https://agtask.example.openai.chatgpt.site"
+        self.write_config(
+            self.home, {"backend": {"mode": "sites", "sites": {"url": url}}}
+        )
+        result = self.run_cli("dashboard", "--no-open")
+        self.assertEqual(result.stdout.strip(), url)
+        self.assertFalse(self.db_path.exists())
+
+        invalid = self.run_cli("dashboard", "--json", "--no-open", check=False)
+        self.assertEqual(invalid.returncode, 1)
+        self.assertIn("cannot be used together", invalid.stderr)
+
+        missing_secret = self.run_cli(
+            "list",
+            "--json",
+            env=self.env | {"AGTASK_SITES_BYPASS_TOKEN": "missing-app-token"},
+            check=False,
+        )
+        self.assertEqual(missing_secret.returncode, 1)
+        self.assertIn("requires both", missing_secret.stderr)
+        self.assertNotIn("missing-app-token", missing_secret.stderr)
+        self.assertFalse(self.db_path.exists())
+
+    def test_hook_backend_refuses_project_sites_without_explicit_local_override(self) -> None:
+        self.write_config(self.home, {"backend": {"mode": "local"}})
+        project = self.root / "incidental-hook-project"
+        self.write_config(project, {"backend": {"mode": "sites"}})
+        plan = json.loads(
+            self.run_cli(
+                "--mode",
+                "local",
+                "resolve-create",
+                "--parent-session-id",
+                "parent-session",
+                "--title",
+                "agtask/local-hook",
+                "--json",
+                cwd=project,
+            ).stdout
+        )
+        payload = {
+            "hook_event_name": "UserPromptSubmit",
+            "session_id": "local-hook-session",
+            "turn_id": "local-hook-turn",
+            "prompt": "Task:\nCreate the local task.\n\n"
+            + plan["bootstrap_trailer"],
+        }
+
+        result = self.run_cli("hook", input_text=json.dumps(payload), cwd=project)
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, "")
+        self.assertEqual(result.stderr, "")
+        self.assertFalse(self.db_path.exists())
+
+        environment_override = self.run_cli(
+            "hook",
+            input_text=json.dumps(payload),
+            cwd=project,
+            env=self.env | {"AGTASK_BACKEND_MODE": "local"},
+        )
+        self.assertEqual(environment_override.returncode, 0)
+        self.assertTrue(self.db_path.exists())
 
     def test_lifecycle_prompts_are_structured_at_prepare_and_post_close_boundaries(self) -> None:
         project = self.root / "prompt-project"

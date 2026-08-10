@@ -1,17 +1,19 @@
 # agtask CLI reference
 
-`agtask` manages Codex task metadata and lifecycle history in a local SQLite
-ledger. The installed executable is a Python script:
+`agtask` manages Codex task metadata and lifecycle history. Its default backend
+is a local SQLite ledger; Sites is a separately selectable backend. The
+installed executable is a Python script:
 
 ```bash
 AGTASK="$HOME/.codex/skills/agtask/scripts/agtask"
-python3 "$AGTASK" <command> [flags]
+python3 "$AGTASK" [--mode local|sites] <command> [flags]
 ```
 
-Unless `AGTASK_DB` is set, commands use
-`$HOME/.llm/agtask/ledger.db`. Direct commands report errors and exit nonzero;
-the `hook` adapter deliberately fails open so bookkeeping cannot interrupt a
-Codex session.
+In `local` mode, commands use `$HOME/.llm/agtask/ledger.db` unless `AGTASK_DB`
+overrides its path. In `sites` mode, supported task commands use the selected
+private Site's managed D1 database instead. Direct commands report errors and
+exit nonzero; the `hook` adapter deliberately fails open so bookkeeping cannot
+interrupt a Codex session.
 
 ## Global flags
 
@@ -21,7 +23,89 @@ command:
 | Flag | Description |
 | --- | --- |
 | `-h`, `--help` | Show help. Place it before the command for the command list or after a command for that command's flags. |
+| `--mode local\|sites` | Select the task backend for this invocation. Place it before the command. This is distinct from `resolve-create --mode clean\|fork`, which selects how a task is created and belongs after `resolve-create`. |
 | `--json` | Emit machine-readable, indented JSON. Place it after the command. It is available on every command except `hook`. For `dashboard`, it returns one snapshot instead of starting the local server and cannot be combined with `--no-open`. |
+
+## Backend selection
+
+Direct-command backend selection uses the first configured value in this order:
+
+1. Root `--mode local|sites`, before the subcommand.
+2. The `AGTASK_BACKEND_MODE` environment variable.
+3. `backend.mode` from `./.agtask.json`, overlaid on `$HOME/.agtask.json`.
+4. The built-in `local` default.
+
+Independently launched hooks resolve their authoritative backend from the root
+flag, `AGTASK_BACKEND_MODE`, and `$HOME/.agtask.json`; they do not treat the
+process's incidental project configuration as authoritative routing. If a
+visible project sets `backend.mode=sites`, hooks conservatively suppress local
+bookkeeping to avoid cross-backend writes. An explicit root `--mode local`
+overrides this deny-only guard.
+
+For a persistent global Sites default, configure the selected deployment in
+`$HOME/.agtask.json` only after the hosted runtime and credentials are ready
+and the installed agtask runtime has been synchronized with the source:
+
+```json
+{
+  "backend": {
+    "mode": "sites",
+    "sites": {
+      "profile": "work",
+      "url": "https://example.openai.chatgpt.site",
+      "project_id": "<sites-project-id>",
+      "credential_ref": "file:/absolute/path/to/agtask-sites-credentials.json"
+    }
+  }
+}
+```
+
+The optional `backend.sites` object accepts only nonsecret `profile`, `url`,
+`project_id`, and `credential_ref` metadata. Never store Sites bypass tokens,
+application bearer tokens, or other credentials in configuration. Provide
+credentials through both `AGTASK_SITES_BYPASS_TOKEN` and
+`AGTASK_SITES_APP_TOKEN`, or use a `file:/absolute/path` credential reference
+to an owner-only regular JSON file with mode `0600`:
+
+```json
+{
+  "bypass_token": "<Sites access bearer>",
+  "app_token": "<agtask application bearer>"
+}
+```
+
+The credential file must be owned by the current user; symlinks and
+group/world-readable files are rejected. Hosted API requests send the bypass
+token as `OAI-Sites-Authorization` and the application token as
+`Authorization: Bearer ...`. The hosted browser dashboard instead uses the
+private Sites session gate and does not expose the application token. Task
+operations post to `/api/agtask/v1/operations/<operation>` and validate the
+dedicated `AGTASK_TASKS_SECRET`; the existing `AGTASK_PROBE_SECRET` remains
+limited to `/api/probe`.
+
+The first Sites slice supports `register`, `add`, `show`, `list`,
+`record-turn`, `append-rollout`, `status`, `reopen`, `search`, and `dashboard`.
+`resolve-create` remains configuration-only planning. Attachments, rename,
+audit, saved views, `init`, and merge-claim close operations are unsupported and
+fail closed; hosted search uses parameterized substring matching rather than SQLite
+FTS rank parity. `config`, `section-cache`, `install-hooks`, and
+`uninstall-hooks` remain available. Unsupported runtime hook bookkeeping fails
+open without local task writes.
+
+The selected backend alone owns each operation. There is no implicit local
+fallback, migration, synchronization, or cross-backend task lookup. Recover
+access to existing local tasks and the local dashboard by overriding the
+configured backend for that invocation:
+
+```bash
+python3 "$AGTASK" --mode local list --json
+python3 "$AGTASK" --mode local dashboard
+```
+
+Switching the global default does not move existing local-only Codex sessions.
+Subsequently launched hooks follow global Sites routing and cannot continue
+updating those existing SQLite rows; plan the transition around that session
+boundary.
 
 ## Shared concepts
 
@@ -190,6 +274,7 @@ python3 "$AGTASK" config --json
 There are no command-specific flags. The result contains:
 
 - `defaults`: the merged creation defaults;
+- `backend`: the merged backend configuration, only when explicitly configured;
 - `hooks`: the merged `OnCreate`, `OnPreClose`, and `OnPostClose` prompt configuration;
 - `sources`: existing files that were loaded, in merge order;
 - `precedence`: the deterministic home-then-project paths, including missing
@@ -415,7 +500,9 @@ The result is an array of thread rows without nested rollouts.
 
 ## `search`
 
-Run a literal full-text search over the indexed thread title and description.
+In `local` mode, run a literal full-text search over the indexed thread title
+and description. The initial hosted Sites search uses the deployed task API;
+it does not promise SQLite FTS indexing, rank values, or identical ordering.
 
 ```bash
 python3 "$AGTASK" search "configuration hooks" --limit 10 --json
@@ -426,15 +513,25 @@ python3 "$AGTASK" search "configuration hooks" --limit 10 --json
 | `<query>` | Required positional search text. It is escaped and submitted as a literal FTS phrase. |
 | `--limit <integer>` | Maximum rows returned. Default: `20`. |
 
-Results are ordered by FTS rank and then most recently updated. Each row
-includes its numeric `rank` and does not include nested rollouts.
+Local results are ordered by FTS rank and then most recently updated. Each
+local row includes its numeric `rank` and does not include nested rollouts.
 
 ## `dashboard`
 
-Build a local dashboard view. Without `--json`, the command starts a local
-HTTP server on `127.0.0.1`, prints a capability URL, opens it in the default
-browser, and runs until interrupted. With `--json`, it returns one snapshot and
-does not start a server.
+In `sites` mode, open the selected private hosted dashboard and its D1-backed
+task state. `--no-open` prints the hosted URL without launching a browser;
+`--json` returns an authenticated hosted dashboard snapshot. The hosted UI
+reuses the local dashboard's styles and client behavior, including its task
+table, filters, Today view, sorting, task details, keyboard shortcuts, and
+atomic single-task or bulk status transitions. Attachment uploads, persisted
+custom saved views, and merge coordination remain unsupported; the hosted
+attachment picker is disabled. The browser root uses the private Sites session
+gate without embedding the application bearer.
+
+In `local` mode, build a local dashboard view. Without `--json`, the command
+starts a local HTTP server on `127.0.0.1`, prints a capability URL, opens it in
+the default browser, and runs until interrupted. With `--json`, it returns one
+snapshot and does not start a server.
 
 Press `j` and `k` to move the active row down and up, clamping at the first and
 last visible task. Press `x` to toggle the active row's selection; the checkbox

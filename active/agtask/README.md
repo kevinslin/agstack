@@ -1,12 +1,13 @@
 # agtask
 
 `agtask` designates current Codex tasks as main dispatchers, creates child tasks,
-and projects their lifecycle into the local SQLite ledger at
-`~/.llm/agtask/ledger.db`. Codex owns the conversation; the ledger stores
-current thread state, task kind, project, lineage, summarized turns, and
-lifecycle updates. A task's description is derived once from its initial
-creation prompt and remains stable while later turns continue to update rollout
-history and lifecycle status.
+and, by default, projects their lifecycle into the local SQLite ledger at
+`~/.llm/agtask/ledger.db`. A separately configurable Sites backend never
+silently falls back to that local ledger. Codex owns the conversation; the
+ledger stores current thread state, task kind, project, lineage, summarized
+turns, and lifecycle updates. A task's description is derived once from its
+initial creation prompt and remains stable while later turns continue to update
+rollout history and lifecycle status.
 
 A bare invocation starts a clean child task in the active project. An explicit
 fork or context-preservation request creates a same-directory fork. Child tasks
@@ -131,6 +132,81 @@ to deliver it. Contended prepares return randomized retry hints without a
 prompt. Claimed prepares return a renewable fencing token, while idempotent
 register and committing-close retries return an empty `hook_prompts` array.
 
+### Backend selection
+
+The separate `backend.mode` setting selects `"local"` or `"sites"`; it does
+not change `defaults.mode`, which continues to select `"clean"` or `"fork"`
+for task creation. Set the backend globally in `$HOME/.agtask.json`, or
+override it for one project in that project's `.agtask.json`:
+
+```json
+{
+  "backend": {
+    "mode": "sites",
+    "sites": {
+      "profile": "work",
+      "url": "https://example.openai.chatgpt.site",
+      "project_id": "<sites-project-id>",
+      "credential_ref": "file:/absolute/path/to/agtask-sites-credentials.json"
+    }
+  }
+}
+```
+
+`backend.sites` is optional and accepts only the nonsecret `profile`, `url`,
+`project_id`, and `credential_ref` metadata. Never put bearer tokens, Sites
+bypass tokens, or other credentials in either configuration file. Supply
+`AGTASK_SITES_BYPASS_TOKEN` and `AGTASK_SITES_APP_TOKEN` through the approved
+environment, or point `credential_ref` at an owner-only regular JSON file with
+mode `0600` containing `bypass_token` and `app_token` keys. Symlinks,
+incorrect ownership, and group/world-accessible credential files are refused.
+The private hosted API requires both `OAI-Sites-Authorization` and
+`Authorization: Bearer ...`; the hosted browser dashboard uses the private
+Sites session gate and never embeds the application bearer. Hosted task
+operations use the dedicated `AGTASK_TASKS_SECRET`, not the existing probe's
+`AGTASK_PROBE_SECRET`.
+
+In `local` mode, the local SQLite ledger remains the sole task authority. In
+`sites` mode, the selected private Site's managed D1 database is the separate
+authority for its task rows and rollout history. Switching modes does not copy,
+synchronize, merge, or fall back between stores. Existing local tasks therefore
+do not automatically appear on the Site.
+
+For direct commands, backend precedence, highest first, is the root
+`--mode local|sites` flag, `AGTASK_BACKEND_MODE`, the merged project/global
+`backend.mode`, and finally `local`. Independently launched hooks instead use
+global `$HOME/.agtask.json`, the environment, or an explicit root override so
+their authoritative routing does not depend on an accidental working
+directory. A project-level `backend.mode=sites` can still suppress local hook
+bookkeeping as a conservative fail-closed guard; explicit `--mode local`
+overrides that guard. The root flag belongs before the subcommand; the existing
+`resolve-create --mode clean|fork` remains a separate subcommand option.
+
+The initial hosted slice supports `register`, `add`, `show`, `list`,
+`record-turn`, `append-rollout`, `status`, `reopen`, `search`, and `dashboard`.
+`resolve-create` remains configuration-only creation planning. Attachments,
+persisted custom saved views, rename, audit, `init`, and merge-claim close
+coordination are not hosted-parity features; unsupported commands fail closed.
+The private hosted dashboard reuses the local dashboard's styles, JavaScript,
+filters, task-detail pages, Today view, and atomic single-task or bulk status
+transitions. Its disabled attachment picker does not upload local files.
+Configuration and hook administration remain available, and unsupported runtime
+hook bookkeeping fails open without writing local task state.
+
+Select a global `sites` default only after the Site, its D1 binding, both
+credentials, the hosted task API, and the synchronized installed agtask skill
+runtime are ready. Existing Codex sessions registered only in local SQLite are
+not migrated: after the global switch, subsequently launched hooks follow
+Sites routing and cannot continue updating those local rows. A missing or rejected
+credential, unavailable runtime, or unsupported operation fails without
+reading or writing the local ledger. Existing local tasks and the local
+dashboard remain available with an explicit override:
+
+```bash
+python3 "$AGTASK" --mode local list --json
+python3 "$AGTASK" --mode local dashboard
+```
+
 ## Sidebar placement
 
 Pin-enabled children inherit the invoking task's custom sidebar section; tasks
@@ -230,7 +306,16 @@ Use `config --json` to inspect the merged document and loaded paths. Set
 
 ### HTML dashboard
 
-`agtask dashboard` validates the ledger, prints a tokenized loopback URL, opens
+In `sites` mode, `agtask dashboard` opens the selected private Site and reads
+its D1-backed task state; `--no-open` prints its URL without opening a browser,
+and `--json` requests an authenticated hosted dashboard snapshot. The browser
+root requires the private Sites session gate without exposing the application
+bearer; API snapshot requests require both bearers. The hosted UI is a separate,
+narrower surface without local-only saved views, attachments, merge
+coordination, or local FTS ranking.
+
+In `local` mode, `agtask dashboard` validates the ledger, prints a tokenized
+loopback URL, opens
 it in the default browser, and serves a local HTML dashboard until you press
 `Ctrl-C`. The table covers every project and is grouped in lifecycle order. Use
 the right-side **Add filter** menu to choose a project, parent task, or status.
