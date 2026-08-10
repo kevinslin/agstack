@@ -50,6 +50,7 @@ The file under `./references/shortcuts/[shortcut].md` remains the executable sou
 | `close` | Close the tracked task, then archive its Codex thread. |
 | `commit-code` | Run the canonical precommit flow, commit cleanly, and update the PR if one exists. |
 | `create-spec` | Create a spec with `specy`, then run looped `dev.review` and `spec-simulate` passes on it. |
+| `doit` | Implement the requested change, verify it, commit scoped changes, and push the current branch. |
 | `fix-pr-conflict` | Rebase the current PR branch onto its base branch, resolve conflicts, and force-push. |
 | `fix-pr` | Check out a PR, address review feedback, resolve review threads, and rerun CI. |
 | `inline-shortcut` | Inline one or more shortcut definitions into another skill. |
