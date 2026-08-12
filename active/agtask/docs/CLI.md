@@ -489,11 +489,15 @@ List threads ordered by most recently updated, then most recently created.
 
 ```bash
 python3 "$AGTASK" list --status active --limit 25 --json
+python3 "$AGTASK" list --filter created=today --json
+python3 "$AGTASK" list --filter updated=2026-08-12 --json
+python3 "$AGTASK" list --filter created=yesterday --filter updated=today --json
 ```
 
 | Flag | Values and behavior |
 | --- | --- |
 | `--status <status>` | Optional filter: `todo`, `active`, `blocked`, `merging`, `done`, or `drop`. |
+| `--filter <field>=<date>` | Filter `created` or `updated` by `today`, `yesterday`, or a `YYYY-MM-DD` date in the caller's local timezone. Repeat to combine filters with AND. Applied before `--limit` in both local and Sites modes. |
 | `--limit <integer>` | Maximum rows returned. Default: `50`. |
 
 The result is an array of thread rows without nested rollouts.

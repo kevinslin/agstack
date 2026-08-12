@@ -4085,8 +4085,11 @@ def dashboard_query(state: dict[str, Any]) -> str:
     return urlencode(pairs)
 
 
-def dashboard_local_day_bounds_utc() -> tuple[str, str]:
-    local_date = dt.datetime.now().astimezone().date()
+def dashboard_local_day_bounds_utc(
+    local_date: dt.date | None = None,
+) -> tuple[str, str]:
+    if local_date is None:
+        local_date = dt.datetime.now().astimezone().date()
     local_start = dt.datetime.combine(local_date, dt.time.min).astimezone()
     local_end = dt.datetime.combine(
         local_date + dt.timedelta(days=1), dt.time.min
@@ -4100,6 +4103,33 @@ def dashboard_local_day_bounds_utc() -> tuple[str, str]:
         )
 
     return render(local_start), render(local_end)
+
+
+def parse_list_filter(value: str) -> dict[str, str]:
+    field, separator, selected_date = value.partition("=")
+    if not separator or field not in {"created", "updated"}:
+        raise argparse.ArgumentTypeError(
+            "filters must use created=DATE or updated=DATE"
+        )
+
+    if selected_date in {"today", "yesterday"}:
+        local_date = dt.datetime.now().astimezone().date()
+        if selected_date == "yesterday":
+            local_date -= dt.timedelta(days=1)
+    elif re.fullmatch(r"\d{4}-\d{2}-\d{2}", selected_date):
+        try:
+            local_date = dt.date.fromisoformat(selected_date)
+        except ValueError as error:
+            raise argparse.ArgumentTypeError(
+                "filter dates must be today, yesterday, or YYYY-MM-DD"
+            ) from error
+    else:
+        raise argparse.ArgumentTypeError(
+            "filter dates must be today, yesterday, or YYYY-MM-DD"
+        )
+
+    start, end = dashboard_local_day_bounds_utc(local_date)
+    return {"field": field, "start": start, "end": end}
 
 
 def dashboard_view_filters(value: str) -> dict[str, Any]:
@@ -5376,10 +5406,17 @@ def command_list(args: argparse.Namespace) -> None:
     connection = open_database(initialize=False)
     try:
         sql = "SELECT * FROM thread"
+        conditions: list[str] = []
         params: list[Any] = []
         if args.status:
-            sql += " WHERE status=?"
+            conditions.append("status=?")
             params.append(args.status)
+        for selected_filter in args.filters or []:
+            field = selected_filter["field"]
+            conditions.extend((f"{field} >= ?", f"{field} < ?"))
+            params.extend((selected_filter["start"], selected_filter["end"]))
+        if conditions:
+            sql += " WHERE " + " AND ".join(conditions)
         sql += " ORDER BY updated DESC, created DESC LIMIT ?"
         params.append(args.limit)
         emit([dict(row) for row in connection.execute(sql, params)], args.json)
@@ -5912,6 +5949,14 @@ def build_parser() -> argparse.ArgumentParser:
     list_parser = subparsers.add_parser("list")
     list_parser.add_argument(
         "--status", choices=DASHBOARD_STATUSES
+    )
+    list_parser.add_argument(
+        "--filter",
+        dest="filters",
+        action="append",
+        type=parse_list_filter,
+        metavar="FIELD=DATE",
+        help="filter created or updated by today, yesterday, or YYYY-MM-DD; repeat to combine",
     )
     list_parser.add_argument("--limit", type=int, default=50)
     add_common_json(list_parser)
