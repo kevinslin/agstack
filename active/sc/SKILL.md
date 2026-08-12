@@ -31,6 +31,17 @@ When creating or updating a skill - ALWAYS restrict all edits to the following w
 
 NEVER directly make updates to runtime-installed skill mirrors. Edit the source tree instead.
 
+## Git Workflow
+
+- Work directly on the skill repository's `main` branch by default.
+- NEVER create a branch, branch-backed worktree, or pull request for skill work
+  unless the user explicitly requests that exception.
+- Verify the current branch before editing. If it is not `main` and the user has
+  not explicitly requested another branch, stop and resolve the mismatch
+  without creating a branch or overwriting unrelated work.
+- When the user requests a commit or push, use the existing `main` branch unless
+  their instructions explicitly specify another branch.
+
 ## Usage
 Always ask the user where they want the new skill to be created if they haven't already mentioned it.
 
