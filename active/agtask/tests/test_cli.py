@@ -582,7 +582,7 @@ class CliIntegrationTest(unittest.TestCase):
                     "--json",
                 ),
                 {
-                    "environment": {"type": "local"},
+                    "environment": {"type": "same-directory"},
                     "bootstrap_args": {
                         "parent_session_id": "parent-thread",
                         "pin": True,
@@ -594,7 +594,7 @@ class CliIntegrationTest(unittest.TestCase):
                     "include_model": False,
                     "hook_prompts": [],
                     "kind": "child",
-                    "mode": "clean",
+                    "mode": "fork",
                     "model": "inherit",
                     "pin": True,
                     "project": "agtask",
@@ -716,7 +716,7 @@ class CliIntegrationTest(unittest.TestCase):
                     "--json",
                 ),
                 {
-                    "environment": {"type": "local"},
+                    "environment": {"type": "same-directory"},
                     "bootstrap_args": {
                         "parent_session_id": "parent-thread",
                         "pin": False,
@@ -727,7 +727,7 @@ class CliIntegrationTest(unittest.TestCase):
                     "include_model": False,
                     "hook_prompts": [],
                     "kind": "child",
-                    "mode": "clean",
+                    "mode": "fork",
                     "model": "inherit",
                     "pin": False,
                     "project": "agtask",
@@ -754,6 +754,8 @@ class CliIntegrationTest(unittest.TestCase):
         result = json.loads(
             self.run_cli(
                 "resolve-create",
+                "--mode",
+                "clean",
                 "--title",
                 "agtask/database-proof",
                 "--parent-session-id",
@@ -801,6 +803,8 @@ class CliIntegrationTest(unittest.TestCase):
         result = json.loads(
             self.run_cli(
                 "resolve-create",
+                "--mode",
+                "clean",
                 "--title",
                 "agtask/database-proof",
                 "--parent-session-id",
@@ -831,6 +835,8 @@ class CliIntegrationTest(unittest.TestCase):
         result = json.loads(
             self.run_cli(
                 "resolve-create",
+                "--mode",
+                "clean",
                 "--title",
                 "agtask/database-proof",
                 "--parent-session-id",
@@ -1994,6 +2000,8 @@ class CliIntegrationTest(unittest.TestCase):
         cases = [
             (
                 (
+                    "--mode",
+                    "clean",
                     "--parent-session-id",
                     "parent-thread",
                     "--task",
@@ -2003,6 +2011,8 @@ class CliIntegrationTest(unittest.TestCase):
             ),
             (
                 (
+                    "--mode",
+                    "clean",
                     "--parent-session-id",
                     "parent-thread",
                     "--task",
@@ -3201,6 +3211,59 @@ class CliIntegrationTest(unittest.TestCase):
                     "INSERT INTO rollout(created,thread_id,turn_id,role,message) "
                     "VALUES ('now','thread-1','bad','system','bad')"
                 )
+
+    def test_attach_markdown_task_targets_new_child_instead_of_parent(self) -> None:
+        self.run_cli("init")
+        self.register(
+            "parent",
+            session_id="parent-session",
+            parent_session_id=None,
+            kind="main",
+            title="Pilot coordination",
+        )
+        child = self.register(
+            "note-child",
+            session_id="child-session",
+            parent_session_id="parent-session",
+            title="Pilot coordination/investigate-claw",
+            initial_prompt="Investigate the instructions in the Markdown note.",
+            description="Investigate the instructions in the Markdown note.",
+        )
+        notes = self.root / "notes"
+        notes.mkdir()
+        note = notes / "pilot task.md"
+        note.write_text(
+            "---\n"
+            "title: Investigate claw\n"
+            "---\n"
+            "Inspect the live tenant and report evidence.\n"
+        )
+
+        attached = json.loads(
+            self.run_cli(
+                "attach",
+                note.name,
+                "--session-id",
+                "child-session",
+                "--json",
+                cwd=notes,
+            ).stdout
+        )
+
+        self.assertEqual(attached["id"], child["id"])
+        self.assertEqual(attached["session_id"], "child-session")
+        self.assertEqual(attached["attachment"]["path"], str(note.resolve()))
+        self.assertEqual(len(attached["files"]), 1)
+        self.assertEqual(self.show("parent")["files"], [])
+        self.assertEqual(
+            note.read_text(),
+            "---\n"
+            "title: Investigate claw\n"
+            "status: active\n"
+            "source: codex://threads/child-session\n"
+            "---\n"
+            "Inspect the live tenant and report evidence.\n",
+        )
 
     def test_attach_updates_frontmatter_and_tracks_file_idempotently(self) -> None:
         self.run_cli("init")

@@ -30,6 +30,13 @@ does not duplicate the relationship or event, but repairs those two managed
 frontmatter fields. Attached files are not continuously synchronized when a
 task later changes status.
 
+`$agtask <file.md>` composes child creation with this same attachment flow. It
+first reads the Markdown task and relevant context through `$dendron`, creates
+and verifies exactly one tracked child, then selects that child's real session
+ID for `attach`. The invoking parent never receives the attachment. A queued
+child without a real session ID is reported with attachment pending until its
+session materializes and is registered.
+
 Dashboard JSON derives each attachment's basename and `vscode://file` URL.
 List and detail pages render those URLs as `file` badges without changing the
 row-click behavior for the rest of the task row.

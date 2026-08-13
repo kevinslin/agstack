@@ -1,7 +1,8 @@
 ---
 name: agtask
-description: Create, rename, audit, or close a tracked Codex task whose turns and status are persisted in the local thread ledger. Only use when directly invoked.
+description: Create, fork, rename, audit, or close tracked Codex tasks. Always use when the user asks to spawn, create, or fork a new task, thread, chat, or conversation.
 dependencies:
+- dendron
 - dev.llm-session
 ---
 
@@ -9,6 +10,8 @@ dependencies:
 
 Track Codex tasks in `~/.llm/agtask/ledger.db`. Route each invocation to
 exactly one workflow below and read that reference completely before acting.
+Always use this skill when the user asks to spawn, create, or fork a new Codex
+task, thread, chat, or conversation, even without an explicit `$agtask` invocation.
 
 ## Workflow routes
 
@@ -16,12 +19,18 @@ exactly one workflow below and read that reference completely before acting.
   [`./references/add.md`](./references/add.md).
 - **Attach a file:** For `$agtask attach <file>`, follow
   [`./references/attach.md`](./references/attach.md).
-- **Create a clean child (default):** For a task prompt, `new`, model or
-  reasoning settings, or `nopin`, follow
+- **Create from a Markdown task:** For `$agtask <file.md>`, read the note and
+  relevant context with `$dendron`, then follow
+  [`./references/create-from-markdown.md`](./references/create-from-markdown.md).
+- **Fork a child (default):** For a task prompt, model or reasoning settings,
+  or `nopin`, follow
+  [`./references/create-advanced.md`](./references/create-advanced.md).
+- **Create a clean child:** For explicit `new`, `clean`, `fresh`, or
+  history-free requests, follow
   [`./references/create.md`](./references/create.md).
 - **Advanced creation or designation:** Read
   [`./references/create-advanced.md`](./references/create-advanced.md) when
-  the request uses `kind=main`, forks history, uses a worktree, or needs
+  the request uses `kind=main`, explicitly forks, uses a worktree, or needs
   recovery after a partial result.
 - **Audit archived tasks:** For `$agtask audit`, follow
   [`./references/audit.md`](./references/audit.md).
@@ -33,8 +42,10 @@ exactly one workflow below and read that reference completely before acting.
   [`./references/onclose.md`](./references/onclose.md) only when the close
   workflow returns the configured default `OnPreClose` instruction.
 
-Do not combine routes. Add registers the current task without changing it in
-the Codex app. Attach updates one local text file and links it to the current
+Do not combine independent routes. Markdown-backed creation is one composite
+workflow: it creates exactly one child and attaches the note to that child.
+Add registers the current task without changing it in the Codex app.
+Standalone attach updates one local text file and links it to the current
 ledger task. A create/designate invocation creates at most one child; main
 designation never creates another task. Audit requires explicit confirmation
 before mutation. Rename coordinates the Codex app and ledger without silently
@@ -52,6 +63,7 @@ caller after the overall tracked work reaches a genuine final state.
 
 ```text
 $agtask [task]
+$agtask <file.md>
 $agtask add <project>
 $agtask attach <file>
 $agtask kind=main [summary]

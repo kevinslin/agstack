@@ -1,10 +1,15 @@
 # Create a tracked task
 
-Use this fast path for default clean, non-worktree child creation on local or
-remote saved projects. Read
+Use this fast path only for explicitly requested clean, non-worktree child
+creation on local or remote saved projects. Read
 [`./create-advanced.md`](./create-advanced.md) completely instead when the
 request is for `kind=main`, fork mode, a worktree, or when the fast path
 reports a partial or conflicting result.
+
+When the task input is a Markdown file, first follow
+[`./create-from-markdown.md`](./create-from-markdown.md). That route derives
+the task from the note and uses this creation workflow before attaching the
+note to the newly created child.
 
 ## Fast path
 
@@ -31,7 +36,7 @@ python3 ./scripts/agtask resolve-create \
   --title <resolved-title> \
   --task <resolved-task> \
   --project-id <saved-project-id> \
-  [--mode clean] \
+  --mode clean \
   [--kind child] \
   [--project <explicit-project-name>] \
   [--worktree <true|false>] \
@@ -146,8 +151,9 @@ cache reads and writes, section moves, and legacy pinning entirely.
 
 ## Resolution rules
 
-- Default to `kind=child`, `mode=clean`, `worktree=false`, inherited model and
-  thinking, and pinning enabled.
+- Default to `kind=child`, `worktree=false`, inherited model and thinking, and
+  pinning enabled. Always pass `--mode clean` for this explicitly selected route;
+  the general resolver default is `fork`.
 - Omit unspecified resolver settings so project and user configuration remain
   authoritative. If configured defaults resolve to main, fork, or worktree,
   stop the fast path and follow the advanced workflow.

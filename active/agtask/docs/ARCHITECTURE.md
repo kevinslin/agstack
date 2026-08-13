@@ -430,10 +430,11 @@ validated `section_id` supplied by `resolve-create --section-id`; older
 envelopes omit it and resolve to `pinned`, while `pin=false` omits placement
 metadata. Each resolver call creates a new ID; orchestration reuses it for the
 whole creation attempt.
-For the default clean-child path, opt-in `--task` and `--project-id` inputs
-also return a versioned `creation_plan` with byte-exact prompt assembly and
-directly executable `create_thread` arguments. Calls without `--task` retain
-the legacy result shape used by advanced creation routes.
+For the explicitly selected clean-child path, opt-in `--task` and
+`--project-id` inputs also return a versioned `creation_plan` with byte-exact
+prompt assembly and directly executable `create_thread` arguments. Calls
+without `--task` retain the legacy result shape used by advanced creation
+routes.
 Validation requires the envelope to be final, the JSON to be canonical and
 duplicate-free, every key to exist in the typed handler registry, and every
 value's exact Python type to match. The hook does not evaluate input, dispatch

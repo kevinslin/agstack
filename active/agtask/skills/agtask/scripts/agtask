@@ -5098,7 +5098,7 @@ def command_resolve_create(args: argparse.Namespace) -> None:
     creation_id = str(uuid.uuid4())
     defaults = args.configuration["defaults"]
     mode_value = resolve_repeated_input(
-        args.mode, label="mode", default=defaults.get("mode", "clean")
+        args.mode, label="mode", default=defaults.get("mode", "fork")
     )
     kind = resolve_repeated_input(
         args.kind, label="kind", default=defaults.get("kind", "child")

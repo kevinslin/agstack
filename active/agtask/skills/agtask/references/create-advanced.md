@@ -16,8 +16,9 @@ designation, clean child creation, and forked child creation.
 - [Verify write results](#verify-write-results)
 - [Output](#output)
 
-Default to child kind and start a clean task in the active CWD. Select fork
-mode when the user explicitly asks to preserve or continue the current context.
+Default to child kind and fork the invoking task in the active CWD, preserving
+its conversation context. Select clean mode only when the user explicitly asks
+for a new, fresh, clean, or history-free task.
 Main kind designates the invoking task itself and never creates another task.
 
 ## Workflow
@@ -133,7 +134,7 @@ Run the bundled resolver once before designation or creation:
 
 ```text
 python3 ./scripts/agtask resolve-create \
-  --mode <clean|fork> \
+  [--mode <clean|fork>] \
   --title <resolved-title> \
   [--kind <main|child>] \
   [--project <project>] \
@@ -211,10 +212,9 @@ python3 ./scripts/agtask resolve-create \
   `current`; do not call `create_thread`, `fork_thread`, or
   `send_message_to_thread`.
 - The remaining mode rules apply only to child kind.
-- Use clean mode for a bare invocation and for explicit new, fresh, clean, or
-  history-free requests.
-- Use fork mode when the user explicitly asks to fork, preserve history, copy
-  context, or continue the current context.
+- Use fork mode for a bare invocation and when the user explicitly asks to
+  fork, preserve history, copy context, or continue the current context.
+- Use clean mode only for explicit new, fresh, clean, or history-free requests.
 - Ask the user to resolve conflicting fork and clean instructions.
 - In clean mode, resolve a saved project whose root exactly equals the active
   CWD. Ask for the target when an exact match is unavailable.
