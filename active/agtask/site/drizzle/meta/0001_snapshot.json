@@ -1,0 +1,283 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "1b7fe621-c889-4ddf-878a-e15ba3faa5e9",
+  "prevId": "9ad72bd8-f3a0-43d2-ba37-708b2a4dc8eb",
+  "tables": {
+    "agtask_rollouts": {
+      "name": "agtask_rollouts",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "created": {
+          "name": "created",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "thread_id": {
+          "name": "thread_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "turn_id": {
+          "name": "turn_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "message": {
+          "name": "message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "agtask_rollouts_thread_order_idx": {
+          "name": "agtask_rollouts_thread_order_idx",
+          "columns": [
+            "thread_id",
+            "created",
+            "id"
+          ],
+          "isUnique": false
+        },
+        "agtask_rollouts_event_idx": {
+          "name": "agtask_rollouts_event_idx",
+          "columns": [
+            "thread_id",
+            "role",
+            "turn_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "agtask_rollouts_thread_id_agtask_threads_id_fk": {
+          "name": "agtask_rollouts_thread_id_agtask_threads_id_fk",
+          "tableFrom": "agtask_rollouts",
+          "tableTo": "agtask_threads",
+          "columnsFrom": [
+            "thread_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "agtask_rollouts_role_check": {
+          "name": "agtask_rollouts_role_check",
+          "value": "\"agtask_rollouts\".\"role\" in ('user', 'assistant', 'meta')"
+        },
+        "agtask_rollouts_message_check": {
+          "name": "agtask_rollouts_message_check",
+          "value": "length(\"agtask_rollouts\".\"message\") between 1 and 240"
+        }
+      }
+    },
+    "agtask_threads": {
+      "name": "agtask_threads",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "session_id": {
+          "name": "session_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "parent_session_id": {
+          "name": "parent_session_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "project": {
+          "name": "project",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
+        },
+        "created": {
+          "name": "created",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated": {
+          "name": "updated",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "closed": {
+          "name": "closed",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "agtask_threads_session_id_idx": {
+          "name": "agtask_threads_session_id_idx",
+          "columns": [
+            "session_id"
+          ],
+          "isUnique": true
+        },
+        "agtask_threads_status_updated_idx": {
+          "name": "agtask_threads_status_updated_idx",
+          "columns": [
+            "status",
+            "updated"
+          ],
+          "isUnique": false
+        },
+        "agtask_threads_parent_session_idx": {
+          "name": "agtask_threads_parent_session_idx",
+          "columns": [
+            "parent_session_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "agtask_threads_id_check": {
+          "name": "agtask_threads_id_check",
+          "value": "length(\"agtask_threads\".\"id\") > 0"
+        },
+        "agtask_threads_session_id_check": {
+          "name": "agtask_threads_session_id_check",
+          "value": "length(\"agtask_threads\".\"session_id\") > 0"
+        },
+        "agtask_threads_project_check": {
+          "name": "agtask_threads_project_check",
+          "value": "length(trim(\"agtask_threads\".\"project\")) > 0"
+        },
+        "agtask_threads_status_check": {
+          "name": "agtask_threads_status_check",
+          "value": "\"agtask_threads\".\"status\" in ('todo', 'active', 'blocked', 'merging', 'done', 'drop')"
+        },
+        "agtask_threads_closed_check": {
+          "name": "agtask_threads_closed_check",
+          "value": "(\"agtask_threads\".\"status\" in ('done', 'drop') and \"agtask_threads\".\"closed\" is not null) or (\"agtask_threads\".\"status\" not in ('done', 'drop') and \"agtask_threads\".\"closed\" is null)"
+        },
+        "agtask_threads_parent_check": {
+          "name": "agtask_threads_parent_check",
+          "value": "(\"agtask_threads\".\"kind\" = 'main' and \"agtask_threads\".\"parent_session_id\" is null) or (\"agtask_threads\".\"kind\" = 'child' and \"agtask_threads\".\"parent_session_id\" is not null and \"agtask_threads\".\"parent_session_id\" != \"agtask_threads\".\"session_id\")"
+        },
+        "agtask_threads_description_check": {
+          "name": "agtask_threads_description_check",
+          "value": "length(\"agtask_threads\".\"description\") <= 240"
+        }
+      }
+    },
+    "probe_state": {
+      "name": "probe_state",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "message": {
+          "name": "message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

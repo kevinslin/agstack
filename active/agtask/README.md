@@ -9,16 +9,26 @@ turns, and lifecycle updates. A task's description is derived once from its
 initial creation prompt and remains stable while later turns continue to update
 rollout history and lifecycle status.
 
-A bare invocation starts a clean child task in the active project. An explicit
-fork or context-preservation request creates a same-directory fork. Child tasks
+A bare invocation forks the current task in the same directory, preserving its
+conversation context. An explicit new, clean, fresh, or history-free request
+creates a clean child task in the active project. Child tasks
 record the invoking Codex session as `parent_session_id`. Every tracked task has
 a pre-creation logical `id` and a unique Codex `session_id`. Explicit `kind=main`
 designates and pins the invoking task itself, creates no new task, stores no
 parent, and uses the default title `⭐ - <project>`.
 
+Passing an existing Markdown task note directly, for example
+`$agtask ./notes/investigation.md`, reads the note and relevant Dendron
+context, creates one tracked child from its instructions, and attaches the
+note to that new task. The attachment updates the note's managed `status` and
+`source` frontmatter to point to the child.
+
 See [Architecture](docs/ARCHITECTURE.md) for system boundaries and
 [runtime flow docs](docs/flows/README.md) for task creation, session binding,
-rollout updates, and closing.
+rollout updates, and closing. The canonical hosted dashboard, task API, D1
+schema, and Sites deployment configuration live together in [site/](site/);
+see the [hosted Site README](site/README.md) for development and deployment
+boundaries.
 
 ## Install
 
@@ -60,6 +70,8 @@ python3 "$AGTASK" show --session-id <codex-session-id> --json
 python3 "$AGTASK" attach "./notes/task note.md" \
   --session-id <codex-session-id> --json
 python3 "$AGTASK" list --status active --json
+python3 "$AGTASK" list --filter created=today --json
+python3 "$AGTASK" list --filter updated=yesterday --json
 python3 "$AGTASK" search "task text" --json
 python3 "$AGTASK" dashboard
 python3 "$AGTASK" status --id <creation-id> --status blocked --json
@@ -112,7 +124,7 @@ Supported defaults and values are:
 
 | Key | Supported values | Built-in default |
 | --- | --- | --- |
-| `mode` | `"clean"` or `"fork"` | `"clean"` |
+| `mode` | `"clean"` or `"fork"` | `"fork"` |
 | `kind` | `"main"` or `"child"` | `"child"` |
 | `project` | A non-empty string without surrounding whitespace | Current directory name |
 | `worktree` | `true` or `false` | `false` |

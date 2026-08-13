@@ -29,7 +29,7 @@ Manage values with `dotenvx`. Do not hand-edit encrypted values unless the user 
 - Do not quote command output that may include credentials. Redact first, or summarize only non-secret status.
 - Treat anything printed into the transcript as exposed. If a secret is exposed, tell the user to rotate it.
 - Keep `~/.secrets` private: create it with mode `700` and env files with mode `600`.
-- Prefer `dotenvx run --no-ops -f <file> -- <command>` so secrets are scoped to the one subprocess that needs them.
+- Prefer `dotenvx run --no-armor --no-native --no-1password --no-bitwarden -f <file> -- <command>` so secrets stay scoped to one subprocess without invoking external secret integrations.
 
 ## Commands
 
@@ -128,13 +128,13 @@ Avoid running commands inside that shell that print all environment variables.
 The helper is thin. If a command needs a custom option, call dotenvx directly:
 
 ```bash
-dotenvx run --no-ops -f ~/.secrets/.env.chat.prod -- <command>
+dotenvx run --no-armor --no-native --no-1password --no-bitwarden -f ~/.secrets/.env.chat.prod -- <command>
 ```
 
 For a non-default keys file:
 
 ```bash
-dotenvx run --no-ops -f ~/.secrets/.env.chat.prod -fk ~/.secrets/.env.keys -- <command>
+dotenvx run --no-armor --no-native --no-1password --no-bitwarden -f ~/.secrets/.env.chat.prod -fk ~/.secrets/.env.keys -- <command>
 ```
 
 ## Troubleshooting

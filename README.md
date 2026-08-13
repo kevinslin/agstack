@@ -41,7 +41,7 @@ Example:
 
 ### Agent
 
-- [agcleanup](active/agcleanup/SKILL.md): Keep Codex lean and responsive by archiving stale tasks, reconciling tracked tasks, and reaping accumulated MCP helpers and orphaned DevBox connections.
+- [agcleanup](active/agcleanup/SKILL.md): Keep Codex lean and responsive by archiving stale or Archive-section tasks, reconciling tracked tasks, and reaping accumulated MCP helpers and orphaned DevBox connections.
 - [ag-dir](active/ag-dir/SKILL.md): Define and maintain an Agent Project Directory (AGD) with clear durable docs, canonical status ownership, and isolated runtime artifacts.
 - [ag-ledger](active/ag-ledger/SKILL.md): Record, sync, and query append-only agent activity ledger entries using local JSONL daily files under META_LEDGER_ROOT (default ~/.llm/ag-ledger), with structured skill metadata and explicit settled, live-frontier, and stable blocked closeout states.
 - [ag-learn](active/ag-learn/SKILL.md): Improve skills from observed agent friction in sessions, PRs, or audits, ranking evidence-based learning candidates before routing canonical skill edits through `$sc`.

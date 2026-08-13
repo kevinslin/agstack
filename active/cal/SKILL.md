@@ -12,6 +12,7 @@ Use this skill to schedule a Google Calendar meeting end to end: resolve attende
 
 - Timezone: `America/Los_Angeles` unless the user specifies another timezone or the attendee calendars clearly require one.
 - Duration: 30 minutes unless the user specifies another duration or there is a clear precedent.
+- Start time: begin meetings 5 minutes after the hour or half-hour (for example, 09:05 or 09:35) unless the user explicitly requests a different start time.
 - Search window: the next 5 business days during normal work hours, 09:00-17:00 local time, unless the user provides a narrower window.
 - Lunch window: avoid scheduling meetings that overlap 12:00-13:00 local time. If every available option overlaps lunch, ask the user before creating the invite.
 - Title: use a concise `<Person A> / <Person B>` title for a 1:1 unless the user provides a title.
@@ -40,6 +41,7 @@ Use this skill to schedule a Google Calendar meeting end to end: resolve attende
 
 4. Check availability.
 - Use Google Calendar free/busy for all attendee calendars and any candidate resource calendars.
+- For flexible scheduling, generate candidate start times 5 minutes after the hour or half-hour and calculate the end time from the full requested duration.
 - Only offer slots that cover the full requested duration for every attendee and room resource.
 - Ignore openings shorter than the requested duration.
 - Exclude openings that overlap the lunch window. If no non-lunch opening exists in the requested or default search window, ask the user before scheduling over lunch.
