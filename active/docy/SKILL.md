@@ -1,6 +1,6 @@
 ---
 name: docy
-description: Load reusable reference docs for coding-related agent work. Always load in context at beginning of session.
+description: MANDATORY for every coding-related task, including developer docs. Invoke at session start and load core/main before analysis or edits; never defer until review.
 dependencies: []
 ---
 

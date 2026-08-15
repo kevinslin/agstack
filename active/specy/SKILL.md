@@ -1,6 +1,6 @@
 ---
 name: specy
-description: Create structured specs and code exploration docs.
+description: Create structured specs, code exploration docs, flow docs, and concise logic trace cheatsheets.
 version: 2.0.0
 dependencies:
 - dev.diagram
@@ -31,6 +31,14 @@ Use this skill when:
 - Drafting implementation-focused feature design docs for new capabilities or migrations
 - Capturing reproducible change recipes from a current conversation or PR
 
+## Hard Trigger Rule (Trace Docs)
+
+If the request mentions `logic trace`, `trace doc`, `execution trace cheatsheet`,
+or a `*.trace.md` document, use the `trace-doc` workflow. A trace doc is a
+compact, single-function cheatsheet for the main execution path. Do not expand
+it into a flow doc unless the user asks for diagrams, phase-by-phase detail,
+ownership boundaries, or debugging guidance.
+
 ## Hard Trigger Rule (Flow Docs)
 
 If the request mentions any flow-doc intent (for example: `flow doc`, `flow docs`, `flowdoc`, `call path doc`, or `execution flow doc`), you must run this skill and follow the `flow-doc` workflow before drafting or revising content.
@@ -51,6 +59,7 @@ Document types are listed here. Use the parenthesized doc-type key with the comm
 - Architecture Docs (`architecture`): System-level architecture docs covering boundaries, components, interfaces, and key decisions.
 - Research Briefs (`research-brief`): Structured technology/approach research with comparisons and recommendations.
 - Flow Docs (`flow-doc`): Balanced flow documentation for specified code logic, combining a general-flow diagram, an execution trace, and targeted implementation details.
+- Logic Trace Docs (`trace-doc`): Concise human cheatsheets that flatten the main execution path into one grepable function, with brief exception and state notes.
 - State Docs (`state-doc`): Terminal-output mapping with predicates, required state, and derivation paths.
 - Service Design Docs (`service-design-doc`): Staff-level service/system proposals covering architecture, APIs, reliability, and risks.
 - Feature Design Docs (`design-spec`): Implementation-ready feature or migration designs with rollout/rollback planning.
@@ -111,10 +120,17 @@ ownership boundaries, meaningful decisions, and verification signals. Follow
 revision, and validation contract. Use `./references/flow-doc/template.md` as
 the document scaffold.
 
+### Logic Trace Docs
+
+Use `trace-doc` for a deliberately sparse cheatsheet of the main execution
+path. Follow `./references/trace-doc/workflow.md` for the authoring and revision
+contract, and use `./references/trace-doc/template.md` as the scaffold. Bias
+toward too little detail: traces should be expanded only when the user asks.
+
 ## Shared References
 
-- Use `$sudocode` only when compact logic clarifies a non-obvious decision,
-  state transition, or ownership boundary.
+- Use `$sudocode` for trace-doc logic and when compact logic clarifies a
+  non-obvious decision, state transition, or ownership boundary elsewhere.
 - Use `$dev.diagram` to draft or revise flow diagrams.
 - Use `$docy` `ref/execution-trace` before writing flow-doc execution traces.
 
@@ -162,6 +178,10 @@ When invoked, follow the mapped workflow section exactly.
 ### new-flow-doc
 
 - Follow `./references/flow-doc/workflow.md` section `Instructions`.
+
+### new-trace-doc
+
+- Follow `./references/trace-doc/workflow.md` section `Instructions`.
 
 ### new-state-doc
 
@@ -238,6 +258,7 @@ $DOCS_ROOT/
     core.exit.md
     topic.{name}.md
     ref.{name}.md
+    {trace-name}.trace.md
   reports/           # Concise report notes
     {report-name}.md
   state/             # State docs
@@ -271,6 +292,8 @@ Throughout this skill, bundled paths prefixed with `./` are relative to this ski
 - `./references/research-brief/template.md` -> `./references/research-brief/template.md`
 - `./references/flow-doc/workflow.md` -> `./references/flow-doc/workflow.md`
 - `./references/flow-doc/template.md` -> `./references/flow-doc/template.md`
+- `./references/trace-doc/workflow.md` -> `./references/trace-doc/workflow.md`
+- `./references/trace-doc/template.md` -> `./references/trace-doc/template.md`
 - `./references/state-doc/workflow.md` -> `./references/state-doc/workflow.md`
 - `./references/state-doc/template.md` -> `./references/state-doc/template.md`
 - `./references/service-design-doc/workflow.md` -> `./references/service-design-doc/workflow.md`

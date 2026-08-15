@@ -9,7 +9,7 @@ This used to be called `skills` but my claw thought it was a boring name so we'v
 ## Top Skills
 
 - [cal](active/cal/SKILL.md): Preview mutual availability and verified room options, confirm the selected time, and create the Google Calendar invite.
-- [specy](active/specy/SKILL.md): Write focused specs and flow docs with a compact ownership, invariant, scope, and implementation-cost checkpoint.
+- [specy](active/specy/SKILL.md): Write focused specs, flow docs, and concise logic trace cheatsheets with a compact ownership, invariant, scope, and implementation-cost checkpoint.
 - [dev.review](active/dev.review/SKILL.md): Review code and specs against current decisions and ownership, with consumer-backed, contract-preserving simplification, decision-ready recommendations, mandatory evidence-backed simplicity and test audits, explicit keep/merge/delete test decisions, ordinary user-path proof, and removal of useless tests.
 - [sw-loop](active/sw-loop/SKILL.md): Deliver settled designs with explicit simplification review, a final post-fix simplicity gate, and separate verification/push tracks.
 - [dev.shortcuts](active/dev.shortcuts/SKILL.md): Route focused workflows and make material duplicate ownership or parallel implementations actionable major review-loop findings.
@@ -91,7 +91,7 @@ Example:
 - [find-links](active/find-links/SKILL.md): This skill should be used when the user wants to fill in TODO links, placeholder links, or missing links in markdown files. Invoke when the user mentions "fill links", "TODO links", "find links", or asks to add appropriate links to concepts in a document.
 - [proofread](active/proofread/SKILL.md): Review publish-ready writing for meaningful clarity or agreement issues, useful terminology corrections, internal contradictions, and broken links while preserving informal style, capitalization, factual claims, numerical examples, and intentional hyperbole.
 - [spec-template](active/spec-template/SKILL.md): Turn an existing concrete spec into a reusable generic spec template, extracting invariant contracts, replacing implementation-specific details with slots, and preserving the source spec or PR as a worked example.
-- [specy](active/specy/SKILL.md): Create research documentation, source-backed flow docs, and focused feature specs with a mandatory compact scope, ownership, invariant, and operational-cost checkpoint; preserve concrete contracts, outcome-to-proof verification, and link-safe archival without adding boilerplate sections. Route durable artifacts through `$mem` and use `$docy` `ref/spec` when writing specifications.
+- [specy](active/specy/SKILL.md): Create research documentation, source-backed flow docs, sparse logic trace cheatsheets, and focused feature specs with a mandatory compact scope, ownership, invariant, and operational-cost checkpoint; preserve concrete contracts, outcome-to-proof verification, and link-safe archival without adding boilerplate sections. Route durable artifacts through `$mem` and use `$docy` `ref/spec` when writing specifications.
 
 ### Utils
 
