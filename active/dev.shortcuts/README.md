@@ -5,3 +5,8 @@ The shortcut set also includes repo maintenance flows such as `sync-branch` for 
 Use `trigger:doit` to implement a requested change, verify it, commit the scoped changes, and push the current branch.
 
 Use `trigger:syncmoi` to reconcile local and upstream changes for the agents and Mackup chezmoi sources, notify Kevin on unsafe conflicts, and push both repositories after successful reconciliation.
+
+`trigger:loop` always runs a reviewer pass and parent classification. It runs
+fixer passes only when the user explicitly invoked `trigger:loop`, requested a
+review-and-fix workflow, or otherwise authorized edits; automatic routing from
+a plain review stops with unresolved findings instead of changing files.

@@ -1,6 +1,6 @@
 ---
 name: loop
-description: Run provided instructions with a reviewer subagent and a fixer subagent until major findings are cleared or a blocker stops progress.
+description: Run provided instructions with a reviewer subagent and, when fixes are authorized, a fixer subagent until major findings are cleared or a blocker stops progress.
 ---
 
 Shortcut: Loop
@@ -16,19 +16,24 @@ Examples:
 
 Instructions:
 
-Create a to-do list for repeated passes, then perform them in order. Each pass has three roles:
+Create a to-do list for repeated passes, then perform them in order. Each pass has these roles:
 
 - Reviewer subagent: run `instructions` and report findings.
-- Fixer subagent: apply the accepted fixes for blocker or major findings.
+- Fixer subagent, when fixes are authorized: apply the accepted fixes for blocker or major findings.
 - Parent agent: decide which findings are major, scope the fixes, and decide whether another pass is needed.
 
 Shortcut compliance rules:
 
 - When the user explicitly invokes `trigger:loop`, follow this shortcut
   literally. Do not approximate it with a custom parent-thread workflow.
-- The reviewer subagent and fixer subagent are both mandatory parts of this
-  shortcut. The parent agent must not silently replace either role by doing the
-  review or the fix work itself.
+- The reviewer subagent and parent classification are mandatory parts of every
+  use of this shortcut. A fixer subagent is mandatory for every accepted fix
+  pass when the user authorized edits. The parent agent must not silently
+  replace either subagent role by doing the review or fix work itself.
+- An explicit `trigger:loop` invocation authorizes the documented review/fix
+  loop. An explicit review-and-fix request or an edit task that invokes the loop
+  also authorizes scoped fixes. Automatic routing from a review-only skill does
+  not authorize edits by itself.
 - If the required subagent topology, waiting pattern, or pass structure cannot
   be executed, stop and report the blocker instead of substituting a manual
   process.
@@ -36,8 +41,9 @@ Shortcut compliance rules:
   pass was skipped, merged, or approximated.
 - When the looped instruction is itself a review skill such as `$dev.review`,
   the shortcut contract still governs execution: reviewer subagent first,
-  fixer subagent second, parent agent only for classification, scoping, and
-  loop control.
+  parent classification second, and an authorized fixer subagent for each
+  accepted fix pass. The parent agent is only responsible for classification,
+  scoping, and loop control.
 
 For each pass:
 
@@ -56,6 +62,10 @@ For each pass:
 
 4. If blocker or major findings remain, the parent agent scopes the accepted fix list before another review pass.
    - Keep fixes scoped to the reviewed task.
+   - Confirm that the user authorized edits before starting a fix pass. If this
+     is a plain review-only request routed here automatically, stop after
+     classification and report the unresolved findings and needed approval.
+     Do not spawn a fixer or claim that a fix loop completed.
    - Do not continue looping on a finding that needs user input; stop and ask for that input.
    - Drop minor-only feedback from the auto-fix list unless the user explicitly asked for all findings to be addressed.
 
