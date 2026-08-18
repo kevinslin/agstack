@@ -2,9 +2,9 @@
 name: sw-ctrl
 description: Coordinate explicitly requested subagent work as a manager.
 dependencies:
-- specy
-- dev.loop
 - ag-learn
+- dev.loop
+- specy
 ---
 
 # sw-ctrl
@@ -51,6 +51,8 @@ Mixed tasks should be split by surface area. For example:
 - Restate the goal in one sentence.
 - Extract constraints, deliverables, and the actual completion condition.
 - Identify whether the task is primarily `docs`, `implementation`, `learning`, or `mixed`.
+- Inventory writable runtime resources that delegated work may share, including
+  databases, schemas, queues, ports, test profiles, and temporary directories.
 
 ### 2. Decompose
 
@@ -68,9 +70,17 @@ Each subagent task must be:
 - concrete and bounded
 - owned by one agent
 - non-overlapping with other agents' write scope
+- isolated from other agents' mutable runtime resources or explicitly serialized
 - explicit about the deliverable you expect back
 
 When delegating code changes, assign file or module ownership and remind the subagent that it is not alone in the codebase and must avoid reverting others' work.
+
+File ownership alone does not isolate integration tests. Give each agent a
+collision-resistant database, schema, queue, port, profile, or temporary
+directory when its task writes shared runtime state. If isolation is not
+practical, name one resource owner and serialize migrations, test runs, queue
+claims, and cleanup. Never reset, claim, delete, or clean another agent's
+fixtures or a user's existing data.
 
 Good delegation examples:
 
@@ -137,6 +147,7 @@ Before handoff, confirm:
 - no required agent is still running
 - stale or unnecessary agents were closed
 - verification appropriate to the task was completed
+- only explicitly owned temporary resources were cleaned up
 
 ## Parallelization Rules
 
@@ -144,7 +155,7 @@ Parallelize when all of the following are true:
 
 1. the tasks are independent
 2. the result is not needed for your immediate next local action
-3. write scopes are disjoint or read-only
+3. file and mutable-runtime write scopes are disjoint or read-only
 4. you can clearly evaluate the returned work
 
 Good parallel examples:
@@ -153,7 +164,9 @@ Good parallel examples:
 - implementation plus read-only codebase exploration
 - CI monitoring plus review after a branch is pushed
 
-Do not parallelize tightly coupled implementation edits that will collide in the same files unless you have very clear ownership boundaries.
+Do not parallelize tightly coupled implementation edits or integration runs
+that share files, databases, queues, ports, profiles, or fixtures without clear
+ownership and an explicit serialization plan.
 
 ## Output Expectations
 

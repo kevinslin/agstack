@@ -1,6 +1,8 @@
 ---
 name: dev.code
 description: Implement, fix, refactor, or otherwise modify source code.
+dependencies:
+- docy
 version: 1.0.0
 ---
 
@@ -35,6 +37,8 @@ For non-trivial tasks:
 - Identify files that need to be modified
 - Consider the order of operations (e.g., tests before implementation, or vice versa)
 - Plan for both happy path and error handling
+- Identify new components that need user-facing documentation and temporary
+  implementation paths that need an explicit removal condition
 
 ### 3. Write Quality Code
 
@@ -47,6 +51,18 @@ Follow these principles:
 - Keep functions focused and single-purpose
 - Add comments for complex logic, but prefer self-documenting code
 
+**Documentation and Deferred Work:**
+- When introducing a component, load `$docy` guidance and add or update its
+  user-facing guide in the same change. Cover its purpose, setup, configuration,
+  supported boundaries, verification, and troubleshooting.
+- Update relevant README links, navigation, and adjacent documents that would
+  otherwise describe outdated behavior.
+- Mark temporary placeholders, compatibility drains, feature filters, or
+  deferred behavior with a nearby concise `TODO` naming the missing capability,
+  responsible milestone or owner, and replacement or removal condition.
+- Keep permanent security boundaries and intentional architecture free of
+  misleading temporary markers.
+
 **Security Considerations:**
 - NEVER introduce security vulnerabilities
 - Watch for: command injection, XSS, SQL injection, path traversal, insecure deserialization
@@ -54,7 +70,7 @@ Follow these principles:
 - Use parameterized queries for database operations
 - Avoid hardcoding secrets or credentials
 - Use secure defaults and principle of least privilege
-- For detailed security guidance, consult `references/security-guidelines.md`
+- For detailed security guidance, consult `./references/security-guidelines.md`
 
 **Error Handling:**
 - Handle errors gracefully with appropriate error messages
@@ -94,7 +110,7 @@ Test-driven development approach:
 3. Refactor while keeping tests green
 4. Add unit tests only if needed for complex logic
 
-For detailed testing guidance, consult `references/testing-guidelines.md`
+For detailed testing guidance, consult `./references/testing-guidelines.md`
 
 ### 5. Review Your Work
 
@@ -103,6 +119,8 @@ Before marking a task complete:
 - Check for introduced bugs or regressions
 - Verify security considerations are addressed
 - Ensure tests pass
+- Verify new component documentation, its links and examples, and explanations
+  for every intentionally temporary implementation path
 - Look for opportunities to simplify
 - Remove debug code, console.logs, or temporary changes
 
@@ -187,5 +205,5 @@ When working in different languages, adapt to their idioms and best practices:
 7. **Iterate on feedback** - Fix problems until tests pass
 
 For more detailed information on specific topics:
-- Security best practices: `references/security-guidelines.md`
-- Testing strategies: `references/testing-guidelines.md`
+- Security best practices: `./references/security-guidelines.md`
+- Testing strategies: `./references/testing-guidelines.md`
