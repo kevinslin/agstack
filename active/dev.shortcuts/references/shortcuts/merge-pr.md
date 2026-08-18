@@ -17,7 +17,8 @@ If the user says to keep the current worktree, branch, or checkout for post-merg
 - You may `git fetch origin main` after the merge to refresh `origin/main`, but leave the current checkout in place.
 
 1. Determine whether the current branch has an open remote PR.
-   - If a remote PR exists, run `trigger:merge-pr-basic`.
+   - If a remote PR exists, run `trigger:merge-pr-basic`, including its mandatory exact-base downstream-PR and repository automatic-deletion checks.
+   - Preserve the remote head branch whenever an open downstream PR still uses it as its base; local branch/worktree cleanup does not authorize remote deletion.
    - If no remote PR exists, merge the current local branch into local `main` instead.
    - Before a local-only merge, make sure the current branch is committed and clean. If it is not, use `trigger:commit-code` first.
    - Perform the local-only merge from the non-worktree main checkout when possible, not from an attached feature worktree.
@@ -37,5 +38,6 @@ If the user says to keep the current worktree, branch, or checkout for post-merg
    - If the current session is still on the merged branch worktree, still remove that worktree as part of cleanup; do not treat the active attachment as a reason to keep the branch.
    - After removing worktrees, run `git worktree prune`.
    - Delete the local branch once no worktree still points at it.
-   - After local cleanup, verify whether the remote branch still exists and delete it explicitly if needed.
+   - After local cleanup, verify whether the remote branch still exists. Immediately before any explicit deletion, repeat `gh pr list --repo <owner/repo> --state open --base <head-branch> --limit 1000 --json number,url,headRefName,baseRefName`.
+   - Delete the remote branch only when that fresh exact-base query succeeds and returns zero open downstream PRs. If any remain, or dependency discovery fails, retain the branch and report its dependent PR numbers or the lookup blocker.
    - If step 1 used the local-only merge fallback and there is no remote PR, do not fail branch cleanup just because there was nothing remote to delete.

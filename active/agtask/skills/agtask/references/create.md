@@ -15,6 +15,17 @@ note to the newly created child.
 
 1. Resolve the invoking Codex session ID from authoritative current app
    context. Use `$dev.llm-session` only when it is unavailable.
+   Also resolve the invoking task's actual effective model and reasoning level
+   from authoritative current-session metadata, such as its latest
+   `turn_context`. Never substitute global Codex defaults, a saved project's
+   defaults, or the literal `inherit`: omitted `create_thread` settings select
+   destination defaults and do not copy parent settings. A user-specified model
+   or reasoning override takes precedence over the corresponding parent value.
+   When no supported API accepts a named profile, preserve its effective model
+   and reasoning values explicitly; do not invent a `profile` argument or
+   claim unsupported profile-only settings were inherited. If an effective
+   required setting cannot be determined, stop and ask instead of silently
+   creating a differently configured child.
 2. Resolve a self-contained task, a concise 2-5 word kebab-case topic, and the
    title. Preserve the user's scope, constraints, and operationally significant
    literals. Ask before creating when the scope remains materially ambiguous.
@@ -40,17 +51,23 @@ python3 ./scripts/agtask resolve-create \
   [--kind child] \
   [--project <explicit-project-name>] \
   [--worktree <true|false>] \
-  [--model <model-id|inherit>] \
-  [--thinking <level|inherit>] \
+  --model <effective-parent-model-or-explicit-user-override> \
+  --thinking <effective-parent-reasoning-or-explicit-user-override> \
   [--pin <true|false> | --nopin] \
   [--section-id <resolved-section-id>] \
   --json
 ```
 
-   Pass `--section-id` only for pin-enabled children. Never append a section
-   instruction to, or otherwise reconstruct, the returned creation prompt.
+   Pass both resolved execution settings explicitly so the creation plan
+   contains `model` and `thinking`; the resolver's `inherit` sentinel omits
+   those fields and therefore does not inherit the parent. Pass `--section-id`
+   only for pin-enabled children. Never append a section instruction to, or
+   otherwise reconstruct, the returned creation prompt.
 6. Validate that `kind=child`, `mode=clean`, `worktree=false`,
    `environment.type=local`, and `creation_plan.next_tool.name=create_thread`.
+   Require `include_model=true`, `include_thinking=true`, and creation-tool
+   arguments whose `model` and `thinking` equal the resolved effective parent
+   settings or the user's explicit overrides.
    Here `environment.type=local` means use the saved project's existing
    checkout rather than a new worktree; it does not require the saved project
    itself to be on the local host.
@@ -151,11 +168,12 @@ cache reads and writes, section moves, and legacy pinning entirely.
 
 ## Resolution rules
 
-- Default to `kind=child`, `mode=clean`, `worktree=false`, inherited model and
-  thinking, and pinning enabled.
-- Omit unspecified resolver settings so project and user configuration remain
-  authoritative. If configured defaults resolve to main, fork, or worktree,
-  stop the fast path and follow the advanced workflow.
+- Default to `kind=child`, `mode=clean`, `worktree=false`, the parent's actual
+  effective model and reasoning level, and pinning enabled. Pass model and
+  reasoning explicitly even when the user does not mention them.
+- Omit other unspecified resolver settings so project and user configuration
+  remain authoritative. If configured defaults resolve to main, fork, or
+  worktree, stop the fast path and follow the advanced workflow.
 - An explicit title wins. Otherwise use `<clean-parent-title>/<topic>`, or
   `agtask/<topic>` when no parent title is available. Remove leading emoji and
   one optional leading ASCII hyphen from the parent title before composing the

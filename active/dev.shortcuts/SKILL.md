@@ -56,8 +56,8 @@ The file under `./references/shortcuts/[shortcut].md` remains the executable sou
 | `fix-pr` | Check out a PR, address review feedback, resolve review threads, and rerun CI. |
 | `inline-shortcut` | Inline one or more shortcut definitions into another skill. |
 | `loop` | Run review instructions with a reviewer subagent and a fixer subagent until major findings are cleared or a blocker stops progress. |
-| `merge-pr-basic` | Merge the current remote PR after confirming the branch is committed and checks passed. |
-| `merge-pr` | Merge the remote PR when one exists, otherwise merge the local branch into `main`, then reconcile `main` and clean up the merged branch. |
+| `merge-pr-basic` | Merge the current remote PR after passing checks while preserving branches used by open downstream PRs. |
+| `merge-pr` | Merge a remote PR or local branch, reconcile `main`, and clean up only branches not needed by downstream PRs. |
 | `plan-and-review` | Draft a feature spec with `specy`, review it with `dev.review`, then fold accepted feedback back into the spec. |
 | `prepare` | Stash local changes, switch to local `master` or `main`, and pull latest from `origin`. |
 | `precommit-process` | Run the canonical pre-commit review and validation workflow before committing. |

@@ -12,6 +12,9 @@ Track Codex tasks in `~/.llm/agtask/ledger.db`. Route each invocation to
 exactly one workflow below and read that reference completely before acting.
 Always use this skill when the user asks to spawn, create, or fork a new Codex
 task, thread, chat, or conversation, even without an explicit `$agtask` invocation.
+When creating a child, preserve the invoking task's effective model and
+reasoning settings by default; pass their resolved values explicitly instead of
+treating omitted creation arguments as parent-setting inheritance.
 
 ## Workflow routes
 

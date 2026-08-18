@@ -11,7 +11,7 @@ Use this workflow to review `SKILL.md` files, skill directories, and bundled ski
 ## Steps
 
 1. Resolve the real skill source.
-   - Use `../sc/SKILL.md` for the local skill-authoring contract.
+   - Invoke `$sc` for the local skill-authoring contract.
    - Confirm the reviewed path is an editable source tree, not a runtime mirror under `~/.codex/skills`.
    - If the user gave only an installed-skill path, find the canonical source before treating the review as complete.
 2. Check invocation metadata.
@@ -29,7 +29,9 @@ Use this workflow to review `SKILL.md` files, skill directories, and bundled ski
    - Flag duplicated content between `SKILL.md` and references.
 5. Check packaging and portability.
    - Require bundled file links to be relative to the `SKILL.md` directory, such as `./scripts/...`, `./references/...`, and `./assets/...`.
-   - Require sibling skill links to use `../<skill-name>/SKILL.md` so dependency sync can detect them.
+   - Require cross-skill references to use `$skill-name` and list the referenced
+     skill in frontmatter `dependencies`; do not link directly to sibling skill
+     paths.
    - Flag extra documentation files such as `README.md`, changelogs, setup guides, or quick references unless the skill explicitly consumes them.
 6. Check validation evidence.
    - For changed skills, expect dependency sync when explicit skill references changed.

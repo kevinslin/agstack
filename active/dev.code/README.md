@@ -22,13 +22,21 @@ This skill is automatically invoked when you're performing any coding task, incl
 5. **Review Your Work** - Catch issues before completion
 6. **Iterate and Improve** - Debug and fix until tests pass
 
+### Documentation and Deferred Work
+- Create or update user-facing documentation when introducing a component.
+- Keep README navigation and adjacent existing documentation accurate.
+- Use `$docy` for the relevant documentation-writing guidance.
+- Add concise TODOs beside temporary or deferred code, including the missing
+  capability and replacement or removal condition.
+- Do not describe permanent safeguards as temporary.
+
 ### Security by Default
 - Comprehensive coverage of OWASP Top 10 vulnerabilities
 - Input validation and sanitization patterns
 - Authentication and authorization best practices
 - Cryptography guidelines
 - Security checklist for every code change
-- See `references/security-guidelines.md` for detailed examples
+- See `./references/security-guidelines.md` for detailed examples
 
 ### Testing Excellence
 - **Integration-first testing philosophy** - Test the full application as users would
@@ -36,7 +44,7 @@ This skill is automatically invoked when you're performing any coding task, incl
 - Jest as the recommended framework for TypeScript/JavaScript
 - Test structure patterns (AAA, Given-When-Then)
 - Coverage guidelines naturally achieved through integration tests
-- See `references/testing-guidelines.md` for comprehensive guide
+- See `./references/testing-guidelines.md` for comprehensive guide
 
 ### Best Practices
 - Code style and conventions
@@ -65,6 +73,8 @@ code/
 - **Follow Conventions**: Match existing codebase style and patterns
 - **Handle Errors**: Don't let exceptions crash the system
 - **Review Before Completing**: Catch issues early
+- **Document Components**: Ship user-facing guides and current adjacent docs
+- **Explain Deferred Work**: Mark temporary code with actionable TODOs
 - **Iterate on Failures**: Don't mark tasks complete when tests fail
 
 ## Usage
