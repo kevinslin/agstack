@@ -69,6 +69,7 @@ Run `fin [context] [target]`.
 - After converting detached `HEAD` into a named branch, lock that branch identity for the rest of the run. Do not continue finalization from anonymous detached state.
 - When the user omitted the context, lock the detected context once and use it for the rest of the run. Do not re-detect after archiving or mid-landing.
 - When the user provided, or the heartbeat handoff or active task context implied, an explicit PR target, lock that PR number, head branch, and target source once. Do not replace it with the current checkout's PR because the current checkout is different or easier to operate from.
+- In `gh` mode, apply the downstream pull request protection below to the locked repository and exact PR head branch before merging, enabling auto-merge, or deleting its remote branch.
 - Do not silently switch contexts after selection. If the user requested `gh`, do not fall back to local-only landing. If the user requested `local`, do not silently land via PR merge just because a PR exists.
 - For `gh` without an explicit target, identify the current PR and check its state before testing mergeability or attempting any merge command.
 - For `gh` with an explicit target, identify that target PR directly with GitHub before consulting current-branch PR state. If the current checkout points at another PR, report the mismatch in the target identity line and ignore the other PR unless it blocks local cleanup.
@@ -92,6 +93,17 @@ Run `fin [context] [target]`.
 - Keep incomplete specs and milestones active and unarchived. Do not mark them complete merely to satisfy the normal archival-before-landing order. Record the spec exception in the final report.
 - In `gh` context, re-confirm the exact PR head identity and require no positive evidence of conflicts or unmergeability, then use a repository-supported administrator or maintainer override merge. If merge commits are disallowed, retry once with the supported squash method. An indeterminate mergeability value alone does not prohibit the override; never use the override to merge a conflicting or explicitly unmergeable head.
 - Preserve the waived state in the final report: who authorized it, which blockers were ignored, whether an administrator merge was used, and which spec artifacts intentionally remained active.
+
+### Downstream Pull Request Protection
+
+- Before merging or enabling auto-merge, lock the target PR's exact repository, head branch, and base branch. Discover open PRs that depend on that head branch with `gh pr list --repo <owner/repo> --state open --base <head-branch> --limit 1000 --json number,url,headRefName,baseRefName`.
+- Read the repository's automatic branch deletion policy with `gh api repos/<owner/repo> --jq '.delete_branch_on_merge'`. Treat a failed, incomplete, or ambiguous dependent-PR or deletion-policy lookup as a blocker; never assume a branch is safe to delete.
+- If no open PR uses the locked head branch as its base, proceed with normal merge and remote branch cleanup.
+- If dependent PRs exist and `delete_branch_on_merge` is `false`, merge without `--delete-branch`, preserve the remote head branch, and report the dependent PR numbers and retained branch. The parent's local branch or worktree may still be cleaned up after normal landing proof.
+- If dependent PRs exist and `delete_branch_on_merge` is `true`, stop before merging or enabling auto-merge: repository policy would remove their base even without `--delete-branch`. Ask whether to retarget every dependent PR to the parent's verified base, or leave the parent unmerged.
+- Retarget a downstream PR only with explicit user authorization. Run `gh pr edit <dependent-number> --repo <owner/repo> --base <parent-base>` for each authorized dependent, then repeat the exact-base discovery and require zero remaining open dependents before merging or enabling auto-merge.
+- Immediately before any later explicit remote branch deletion, repeat the exact-base dependent-PR query. Delete only when it succeeds and returns zero open dependents; otherwise retain the remote branch and report the open PRs or lookup blocker.
+- Do not change repository settings, close a downstream PR, or infer retargeting approval from a general request to merge, finalize, or clean up.
 
 ### PR Automation Lookup
 
@@ -157,6 +169,7 @@ Run `fin [context] [target]`.
 
 4. Merge the PR
 - Before running a merge command, check the target PR state with GitHub. If the PR is already `MERGED`, do not run `trigger:merge-pr`; record the merge commit or merged-at details when available and proceed as an already-landed PR.
+- Before any merge command or auto-merge request for an open PR, complete Downstream Pull Request Protection using the locked repository and head branch. Pass `--delete-branch` only when its current exact-base query proves there are no open dependents.
 - If the PR is not already merged and the target PR belongs to the current branch, run `trigger:merge-pr` immediately after the matching spec has been marked complete and archived.
 - If the PR is not already merged and the explicit target PR does not belong to the current branch, use a target-aware remote merge for that PR, such as `gh pr merge <target>`, after the matching spec has been marked complete and archived. Do not use current-branch merge shortcuts for a different PR.
 - Under an explicit blocker override, skip the archival prerequisite only for incomplete matching specs, leave them active, and use the target-aware override merge defined above.
@@ -197,6 +210,7 @@ Run `fin [context] [target]`.
 - If an explicit target PR has no matching local worktree or local branch, report that local cleanup is not applicable; do not manufacture a path or delete a similarly named branch.
 - If `gh pr merge --delete-branch` already removed the remote branch but could not remove a linked local branch, do not retry the merge. The cleanup script owns the remaining local transaction.
 - Remote branch verification or deletion remains a separate GitHub/Git transport step. Do not add network mutations to the local cleanup script.
+- Preserve a remote branch that remains the base of an open downstream PR even when its local branch and worktree have been safely removed.
 
 ## `local` Context Workflow
 
@@ -252,6 +266,7 @@ Run `fin [context] [target]`.
 - State whether a spec was archived and include the source and destination paths when applicable.
 - If an explicit blocker override was used, state the authorizing user instruction, the exact waived blockers, the override merge method, and every incomplete spec or milestone intentionally left active.
 - For `gh`, state whether the PR was already merged and `merge-pr` was skipped, or whether `merge-pr` ran successfully, including whether the remote merge succeeded directly or required separate post-merge worktree cleanup because local branch deletion failed.
+- If a remote branch was retained for downstream PRs, name the branch and dependent PR numbers; if explicitly authorized retargeting was performed, report each dependent PR and its verified new base.
 - For `gh`, if auto-merge was enabled but the PR has not merged yet, report `auto-merge pending`, include the PR URL, head SHA, auto-merge method, `autoMergeRequest.enabledAt` when available, heartbeat automation id and next check when creation succeeded, and explicitly state that local cleanup requiring merged proof was deferred.
 - If the automatic foreground-watch fallback was used, state that persistent heartbeat automation was unavailable, identify the locked PR, branch, and head SHA, and report whether the watch observed verified merge or stopped on a terminal blocker. After verified merge, report the normal refresh, containment proof, cleanup, Linear, and retrospective results rather than leaving the run in `auto-merge pending`.
 - For `local`, state whether the branch landed via local merge, was already on `main`, or was blocked before landing.
@@ -279,6 +294,8 @@ Run `fin [context] [target]`.
 - Do not ask the user to choose `gh` vs `local` when the argument is omitted and branch PR state clearly determines the context.
 - Do not choose `gh` from a no-argument invocation unless the PR belongs to the current branch being finalized, or a heartbeat-derived or active-task-derived PR target has been locked after live PR verification.
 - Do not run `trigger:merge-pr` when GitHub reports the matching PR is already `MERGED`; use the existing merged state and continue finalization from there.
+- Never delete a remote branch used as the base of an open downstream PR, or merge/enable auto-merge with such dependents while repository automatic branch deletion is enabled.
+- Never silently retarget dependent PRs, alter repository deletion settings, or treat failed downstream-PR discovery as proof that branch deletion is safe.
 - If `gh` repair via `fix-pr-conflict` or `fix-pr` cannot clear positive evidence of conflicts or unmergeability, stop and report the blockage instead of continuing the finalization flow. A bounded-indeterminate state without such evidence is not a repair failure.
 - If `local` repair via branch sync or rebase cannot restore a mergeable state, stop and report the blockage instead of continuing the finalization flow.
 - Do not run `merge-pr` in `gh` mode before the matching spec is marked complete and archived, unless an explicit blocker override authorizes landing a mergeable or bounded-indeterminate PR while leaving that incomplete spec active and unarchived.
@@ -326,6 +343,7 @@ Run `fin [context] [target]`.
 - Unrelated active specs remain untouched.
 - `~/.fin.yaml` was checked, parsed or explicitly handled as malformed, and any workspace entry matching the non-worktree checkout root was applied before linked-worktree removal.
 - In `gh` mode, the matching PR was checked for an existing `MERGED` state before attempting merge; `trigger:merge-pr` has been run after archival only when the PR was not already merged, or the missing-PR condition was reported explicitly.
+- For an open `gh` target, exact-head downstream PRs and `delete_branch_on_merge` were verified before merging or enabling auto-merge; dependent remote base branches were retained, or every explicitly authorized retarget was verified before deletion.
 - An unattended auto-merge-pending handoff has exactly one active heartbeat for the locked PR. The heartbeat was not deleted on first merge observation; it was deleted only after live `MERGED`, `mergedAt`, and `mergeCommit` verification and a terminal post-merge outcome from steps 5-9.
 - Any foreground watch was entered automatically only after persistent heartbeat automation was unavailable or failed, retained the locked PR number, branch, and exact head SHA, emitted concise progress at least every 60 seconds, and continued until verified `MERGED` or a reported terminal blocker. A verified merge resumed the normal refresh, containment proof, cleanup, Linear, and retrospective steps.
 - Any explicit blocker override recorded the locked target, exact waived blockers, authorizing user instruction, override merge method, and intentionally unarchived incomplete specs.
