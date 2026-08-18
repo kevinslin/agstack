@@ -430,7 +430,7 @@ validated `section_id` supplied by `resolve-create --section-id`; older
 envelopes omit it and resolve to `pinned`, while `pin=false` omits placement
 metadata. Each resolver call creates a new ID; orchestration reuses it for the
 whole creation attempt.
-For the explicitly selected clean-child path, opt-in `--task` and
+For the default clean-child path, opt-in `--task` and
 `--project-id` inputs also return a versioned `creation_plan` with byte-exact
 prompt assembly and directly executable `create_thread` arguments. Calls
 without `--task` retain the legacy result shape used by advanced creation

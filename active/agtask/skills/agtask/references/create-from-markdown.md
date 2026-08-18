@@ -24,10 +24,10 @@ to the new child. It does not attach the note to the invoking parent.
    path so the child can reopen the original. Preserve any explicit creation
    modifiers supplied alongside the Markdown path.
 
-4. Read [`./create-advanced.md`](./create-advanced.md) completely and execute
-   the default forked-child workflow once with the resolved note-backed task.
-   For an explicitly requested clean child, follow [`./create.md`](./create.md)
-   instead.
+4. Read [`./create.md`](./create.md) completely and execute the default
+   clean-child workflow once with the resolved note-backed task. For an
+   explicitly requested fork, follow
+   [`./create-advanced.md`](./create-advanced.md) instead.
    Preserve all existing project, host, sidebar, model, hook, and registration
    behavior. Never call the selected task-spawning tool a second time.
 

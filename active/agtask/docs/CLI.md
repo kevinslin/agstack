@@ -175,7 +175,7 @@ python3 "$AGTASK" resolve-create \
 
 | Flag | Values and behavior |
 | --- | --- |
-| `--mode <mode>` | `clean` or `fork`. Built-in default: `fork`; pass `--mode clean` explicitly for clean-child creation plans. |
+| `--mode <mode>` | `clean` or `fork`. Built-in default: `clean`; pass `--mode fork` explicitly to preserve the current task's context. |
 | `--kind <kind>` | `main` or `child`. Built-in default: `child`. |
 | `--project <name>` | Non-empty project name without surrounding whitespace. Built-in default: current directory name. |
 | `--parent-session-id <id>` | Required for child creation and forbidden for main creation. Embedded as immutable Codex-session lineage in the version-2 child trailer. |

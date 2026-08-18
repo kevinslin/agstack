@@ -22,12 +22,12 @@ task, thread, chat, or conversation, even without an explicit `$agtask` invocati
 - **Create from a Markdown task:** For `$agtask <file.md>`, read the note and
   relevant context with `$dendron`, then follow
   [`./references/create-from-markdown.md`](./references/create-from-markdown.md).
-- **Fork a child (default):** For a task prompt, model or reasoning settings,
-  or `nopin`, follow
-  [`./references/create-advanced.md`](./references/create-advanced.md).
-- **Create a clean child:** For explicit `new`, `clean`, `fresh`, or
-  history-free requests, follow
+- **Create a clean child (default):** For a task prompt, `new`, `clean`,
+  `fresh`, history-free requests, model or reasoning settings, or `nopin`, follow
   [`./references/create.md`](./references/create.md).
+- **Fork a child:** For explicit requests to fork or preserve conversation
+  context, follow
+  [`./references/create-advanced.md`](./references/create-advanced.md).
 - **Advanced creation or designation:** Read
   [`./references/create-advanced.md`](./references/create-advanced.md) when
   the request uses `kind=main`, explicitly forks, uses a worktree, or needs

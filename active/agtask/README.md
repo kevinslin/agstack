@@ -9,9 +9,8 @@ turns, and lifecycle updates. A task's description is derived once from its
 initial creation prompt and remains stable while later turns continue to update
 rollout history and lifecycle status.
 
-A bare invocation forks the current task in the same directory, preserving its
-conversation context. An explicit new, clean, fresh, or history-free request
-creates a clean child task in the active project. Child tasks
+A bare invocation starts a clean child task in the active project. An explicit
+fork or context-preservation request creates a same-directory fork. Child tasks
 record the invoking Codex session as `parent_session_id`. Every tracked task has
 a pre-creation logical `id` and a unique Codex `session_id`. Explicit `kind=main`
 designates and pins the invoking task itself, creates no new task, stores no
@@ -124,7 +123,7 @@ Supported defaults and values are:
 
 | Key | Supported values | Built-in default |
 | --- | --- | --- |
-| `mode` | `"clean"` or `"fork"` | `"fork"` |
+| `mode` | `"clean"` or `"fork"` | `"clean"` |
 | `kind` | `"main"` or `"child"` | `"child"` |
 | `project` | A non-empty string without surrounding whitespace | Current directory name |
 | `worktree` | `true` or `false` | `false` |

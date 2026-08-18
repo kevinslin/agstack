@@ -582,7 +582,7 @@ class CliIntegrationTest(unittest.TestCase):
                     "--json",
                 ),
                 {
-                    "environment": {"type": "same-directory"},
+                    "environment": {"type": "local"},
                     "bootstrap_args": {
                         "parent_session_id": "parent-thread",
                         "pin": True,
@@ -594,7 +594,7 @@ class CliIntegrationTest(unittest.TestCase):
                     "include_model": False,
                     "hook_prompts": [],
                     "kind": "child",
-                    "mode": "fork",
+                    "mode": "clean",
                     "model": "inherit",
                     "pin": True,
                     "project": "agtask",
@@ -716,7 +716,7 @@ class CliIntegrationTest(unittest.TestCase):
                     "--json",
                 ),
                 {
-                    "environment": {"type": "same-directory"},
+                    "environment": {"type": "local"},
                     "bootstrap_args": {
                         "parent_session_id": "parent-thread",
                         "pin": False,
@@ -727,7 +727,7 @@ class CliIntegrationTest(unittest.TestCase):
                     "include_model": False,
                     "hook_prompts": [],
                     "kind": "child",
-                    "mode": "fork",
+                    "mode": "clean",
                     "model": "inherit",
                     "pin": False,
                     "project": "agtask",
