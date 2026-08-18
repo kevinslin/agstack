@@ -24,6 +24,10 @@ Main kind designates the invoking task itself and never creates another task.
 
 1. Resolve the invoking Codex session ID. Use the authoritative current app
    context; use `$dev.llm-session` when the ID is not already available.
+   For child creation, also resolve the parent's effective model and reasoning
+   level from authoritative current-session metadata. Preserve those exact
+   values unless the user explicitly overrides them; destination defaults and
+   the resolver's `inherit` sentinel do not inherit parent settings.
 2. Resolve the task text, title, normalized initial-prompt description, topic,
    active CWD, creation mode, kind, and project. For a pin-enabled request,
    resolve the invoking task's existing custom sidebar section or the default
@@ -51,6 +55,13 @@ Main kind designates the invoking task itself and never creates another task.
 - Preserve the supplied task's meaning and separate explicit creation
   directives such as mode, worktree, model, reasoning, pin, kind, project, and
   title as execution settings.
+- Default an unspecified child model and reasoning level to the invoking
+  session's actual effective values, not its global configuration or saved
+  project's defaults. User-specified overrides win independently. A named
+  profile cannot be passed when the thread tool does not support `profile`;
+  copy its supported effective model/reasoning settings and explicitly report
+  any profile-only behavior that cannot be preserved. Ask before creating if
+  a required effective parent setting is unavailable.
 - Treat the user's direct ask as the task's scope. Aspirational or background
   language such as "we want to implement" does not authorize implementation
   when the operative ask is to evaluate, explain, compare, recommend, or answer
@@ -139,15 +150,21 @@ python3 ./scripts/agtask resolve-create \
   [--project <project>] \
   [--parent-session-id <invoking-session-id>] \
   [--worktree <true|false>] \
-  [--model <model-id|inherit>] \
+  [--model <effective-parent-model-or-explicit-user-override>] \
   [--pin <true|false> | --nopin] \
   [--section-id <resolved-section-id>] \
   --json
 ```
 
-- Translate explicit user settings into the matching resolver arguments and
-  omit unspecified settings so the CLI applies its defaults. Treat standalone
-  `nopin` as `--nopin`. Remove execution modifiers from the task text.
+- Translate explicit user settings into the matching resolver arguments. For
+  child creation, always pass the effective parent model unless the user
+  overrides it. Pass the effective parent reasoning level through `--thinking`
+  when the resolver invocation includes `--task`; for fork or other supported
+  flows without `--task`, pass that reasoning value directly to the operation
+  that receives the child prompt. Never pass an unsupported resolver argument.
+  Omit other unspecified settings so the CLI applies its defaults. Treat
+  standalone `nopin` as `--nopin`. Remove execution modifiers from the task
+  text.
 - Pass the already-derived title through required `--title`; reject an empty,
   surrounding-whitespace, or multiline title. Use the returned `mode`, `kind`,
   `id`, `project`, `title`, `worktree`, `model`, `pin`, `bootstrap_args`,
@@ -162,10 +179,12 @@ python3 ./scripts/agtask resolve-create \
   Use the resolved section for direct placement; the version-1 main envelope
   remains unchanged.
 - For child kind, pass `environment` directly to the clean or fork creation
-  tool. Pass `model` on the operation that receives the child prompt only when
-  `include_model` is `true`. Pass a requested reasoning override on the same
-  operation as the model input. Let unspecified reasoning inherit the
-  destination profile.
+  tool. Pass the explicitly resolved model and reasoning level on the operation
+  that receives the child prompt. For clean one-shot creation, require the
+  resolver to include both values in `creation_plan.next_tool.arguments`.
+  For a fork, pass both supported values when sending the child prompt. Never
+  omit either value merely because the user did not request an override: doing
+  so selects the destination profile instead of preserving the parent.
 - For child kind, pass the invoking session ID through required
   `--parent-session-id`. The resolver places the returned creation `id`, that
   immutable lineage, plus the project in the version-2 creation envelope. A
@@ -537,8 +556,10 @@ Return:
 - `Mode: current` for main kind, otherwise `Mode: fork` or `Mode: clean`;
 - `Worktree: not applicable` for main kind, otherwise `Worktree: true` or
   `Worktree: false`;
-- `Model: current (unchanged)` for main kind, otherwise `Model: inherit` or
-  `Model: <model-id>`;
+- `Model: current (unchanged)` for main kind, otherwise the exact effective
+  parent model or explicit user override;
+- for child kind, the exact effective parent reasoning level or explicit user
+  override, and any unsupported profile-only setting that could not be copied;
 - `Kind: child` or `Kind: main`;
 - `Project: <project>`;
 - `Task: [title](codex://threads/<session-id>)`;

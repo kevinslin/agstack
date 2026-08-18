@@ -9,6 +9,9 @@ dependencies:
 
 Track Codex tasks in `~/.llm/agtask/ledger.db`. Route each invocation to
 exactly one workflow below and read that reference completely before acting.
+When creating a child, preserve the invoking task's effective model and
+reasoning settings by default; pass their resolved values explicitly instead of
+treating omitted creation arguments as parent-setting inheritance.
 
 ## Workflow routes
 
