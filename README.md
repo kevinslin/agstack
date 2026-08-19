@@ -11,7 +11,7 @@ This used to be called `skills` but my claw thought it was a boring name so we'v
 - [cal](active/cal/SKILL.md): Preview mutual availability and verified room options, confirm the selected time, and create the Google Calendar invite.
 - [specy](active/specy/SKILL.md): Write flow docs and other useful doc types.
 - [dev.review](active/dev.review/SKILL.md): Code review, slop review, spec review, and other review passes.
-- [sw-loop](active/sw-loop/SKILL.md): Devloop with subagents and loops on review.
+- [sw-loop](active/sw-loop/SKILL.md): Devloop with one-pass spec review, available coding subagents, test-quality cleanup, and separate verification/push gates.
 - [dev.shortcuts](active/dev.shortcuts/SKILL.md): Triggers for workflows like closing and archiving tasks, pushing code, loops, and PRs.
 - [ag-learn](active/ag-learn/SKILL.md): Automatically improve skills based on conversation sessions.
 
@@ -56,7 +56,7 @@ Example:
 - [secrets](active/secrets/SKILL.md): Load and manage local dotenvx credential sets for agent workflows. Use when directly invoked as `$secrets` or when a task needs credentials from `~/.secrets/.env.*`.
 - [slack-notify](active/slack-notify/SKILL.md): Send explicit Slack notifications through `slack-post` using Slack credentials loaded by `$secrets slack`.
 - [sw-ctrl](active/sw-ctrl/SKILL.md): Coordinate delegated agents with explicit ownership of both source files and mutable resources such as databases, queues, ports, profiles, and test fixtures.
-- [sw-loop](active/sw-loop/SKILL.md): Swarm-based feature delivery workflow that coordinates manager, spec, implementation, review, cleanup, verification, and required checklist tracking across multiple subagents, routing durable artifacts through `$mem` before choosing paths and turning explicit user proof/completion gates into checklist rows. Use when the user explicitly wants a swarm, parallelized feature work, or a managed loop that should use `$sw-ctrl`, `$specy`, `$dev.review`, and `$dev.loop` in that order.
+- [sw-loop](active/sw-loop/SKILL.md): Swarm-based feature delivery workflow that coordinates one-pass spec review, available coding subagents, outcome-focused test cleanup, implementation review, local verification, documentation, and a separate push gate, routing durable artifacts through `$mem` before choosing paths and turning explicit user proof/completion gates into checklist rows. Use when the user explicitly wants a swarm, parallelized feature work, or a managed loop that should use `$sw-ctrl`, `$specy`, `$dev.review`, and `$dev.loop` in that order.
 
 ### Dev
 
@@ -74,7 +74,7 @@ Example:
 - [dev.diagram](active/dev.diagram/SKILL.md): Create or update engineering diagrams in plain ASCII or Mermaid, choosing the format that matches the destination medium and surrounding document. Use when an agent needs to add, revise, convert, or simplify architecture, flow, sequence, state, dependency, or decision diagrams in docs, specs, PRs, or Markdown, especially when the user asks for box art, ASCII, or Mermaid.
 - [dev.do](active/dev.do/SKILL.md): End-to-end development task intake and execution. Use when the user gives a dev task (feature/bug/refactor) as a file path, pasted description, or git issue and wants it completed; this skill gathers context, asks clarifying questions if needed, then runs the dev.loop workflow to deliver the change.
 - [dev.llm-session](active/dev.llm-session/SKILL.md): Derive Codex CLI session IDs and resume interactive sessions. Use when asked to resume Codex sessions, find or map session IDs, inspect ~/.codex/history.jsonl or ~/.codex/sessions, or troubleshoot Codex resume behavior.
-- [dev.loop](active/dev.loop/SKILL.md): Drive a development task end-to-end from a user-stated goal through planning, context gathering, execution, verification. Use when the user asks to run a devloop, drive a task to completion, or wants a plan-gather-execute-verify workflow with phased commits and CI verification. Also use if user asks to invoke any individual phase of the devloop
+- [dev.loop](active/dev.loop/SKILL.md): Drive a development task end-to-end from a user-stated goal through planning, context gathering, execution, local verification, and a separate push/PR/CI stage. Use when the user asks to run a devloop, drive a task to completion, or invoke an individual phase without implicitly running subsequent stages.
 - [dev.review](active/dev.review/SKILL.md): Multi-type review skill for code, developer docs, design docs/specs, architecture, UX, and other reviews, including contract and complexity checks for implementation specs. Use when the user asks for a review or critique (code review, docs review, design doc review, spec review, PR review).
 - [dev.shortcuts](active/dev.shortcuts/SKILL.md): Resolve explicit `trigger:<name>` workflows, including ready-for-review `trigger:push-pr` creation, stacked-PR-safe merge and branch cleanup, and `trigger:close` task archival.
 - [dev.worktrees](active/dev.worktrees/SKILL.md): Create and inspect Git worktrees, remove already-clean targets conservatively, and transactionally clean one proven-landed worktree and local branch with exact commit identity, dry-run-first execution, resumable journaling, and strict postconditions.

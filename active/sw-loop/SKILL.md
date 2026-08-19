@@ -40,8 +40,9 @@ changes.
 - Before writing any durable spec, checklist, flow doc, proof, review artifact, runbook, or long-lived project note, invoke `$mem` to resolve the intended base, root, schemas, and file rules. Do this by artifact intent, not by path shape: `$mem` roots may be anywhere and may not contain `.mem`.
 - Store the checklist in the active spec folder when using `$mem schema` `specs`.
 - Store the checklist in a temporary folder for all other workflows.
-- Include every required gate: spec, spec review, implementation, review swarm,
-  review fixes, verification, implementation flow doc, PR push, and any
+- Include every required gate: spec, one-pass spec review, implementation,
+  test-quality cleanup, review swarm, review fixes, verification,
+  implementation flow doc, PR push, and any
   user-requested stopping condition.
 - Translate explicit user completion requirements into checklist rows before starting.
   If the user names a live proof suite, negative cases, inline screenshots, CI green,
@@ -57,17 +58,20 @@ changes.
   and integration.
 - Spec track: use `$specy` to create a feature spec with milestones, risks, and
   explicit verification targets.
-- Pre-implementation review: use `$dev.review` to critique the spec and apply straightforward
-  spec improvements before coding.
-- Implementation track: use the `cody` subagent (if available) for writing code, with `$dev.loop`
-  owning the approved plan, phase gates, and integration.
+- Pre-implementation review: run one `$dev.review` pass against the spec and
+  apply straightforward improvements before coding. Do not loop on the spec.
+- Implementation track: use an available coding subagent when bounded delegation is
+  justified; otherwise implement locally. Keep `$dev.loop` responsible for the
+  approved plan, phase gates, and integration.
+- Test-quality cleanup: after implementation, remove low-value branch tests or
+  replace them with higher-level outcome-focused coverage before review.
 - Post-implementation review swarm in parallel: trigger:loop `$dev.review` passes for
   code review, slop, documentation review, and dead code cleanup
-- Verification track: run the verify phase of `$dev.loop` in a separate subagent
-  after review fixes land.
+- Verification track: run only the local Verify phase of `$dev.loop` in a separate
+  subagent after review fixes land. Do not push or create a PR during this phase.
 - PR push track: after verification succeeds and the implementation flow doc is
-  written and validated, run `trigger:push-pr` as the final delivery step unless
-  the user explicitly said not to push.
+  written and validated, run the separate `$dev.loop` Push phase, including
+  `trigger:push-pr`, unless the user explicitly said not to push.
 
 ## Workflow
 
@@ -83,15 +87,17 @@ changes.
 ### 2. Plan and Gate
 
 - Use `$specy` to create a feature spec first unless one already exists. If the spec is durable project memory, route the artifact root through `$mem` before creating or updating the spec folder.
-- Run trigger:loop `$dev.review` against the spec
+- Run one `$dev.review` pass against the spec and incorporate actionable
+  recommendations. Do not loop on the spec.
 - Stop and return the spec to the user when ambiguity remains or the user asked
   to review the plan before implementation.
 
 ### 3. Implement
 
-- Use the `cody` subagent for code-writing work. Give it the approved plan,
-  explicit file/module ownership, expected tests, and the relevant `$dev.loop`
-  phase context.
+- Use an appropriate available coding subagent when code-writing work can be
+  delegated with bounded, non-overlapping ownership; otherwise implement locally.
+  Give each delegated agent the approved plan, explicit file/module ownership,
+  expected tests, and the relevant `$dev.loop` phase context.
 - Keep `$dev.loop` as the implementation workflow owner for plan execution,
   integration, verification planning, cleanup, and delivery gates.
 - Keep ownership clear when delegating code changes. Assign files or modules and
@@ -101,7 +107,14 @@ changes.
 - If the approved bundle has not changed, continue from the existing session context
   rather than re-describing the same orchestration stack.
 
-### 4. Review Swarm
+### 4. Clean Up Low-Value Tests
+
+- Remove low-value tests added on the branch, especially tests that verify
+  their own monkeypatched behavior. When possible, elevate them to higher-level
+  tests that verify outcomes and are not coupled to implementation.
+- Complete this cleanup after implementation and before starting review.
+
+### 5. Review Swarm
 
 trigger:loop `$dev.review` subagents with disjoint scopes:
 
@@ -115,10 +128,10 @@ If a proposed fix is straightforward and does not require user input, apply it i
 the subagent or integrate it locally. If the fix changes product direction, policy,
 or unclear ownership, bubble it up for human review instead of guessing.
 
-### 5. Verify
+### 6. Verify
 
-- After review fixes land, spawn a separate subagent to run only the verify phase
-  of `$dev.loop`.
+- After review fixes land, spawn a separate subagent to run only the local Verify
+  phase of `$dev.loop`. Do not push, create a PR, or invoke the Push phase here.
 - Require that verification covers the plan tests plus any checks added because of
   review findings.
 - For live approval/channel suites, require the verifier to report each requested
@@ -128,10 +141,10 @@ or unclear ownership, bubble it up for human review instead of guessing.
   tests, or synthetic debug helpers when the user requested live end-to-end proof.
 - Do not treat verification as implicit. It is a dedicated track with its own owner.
 
-### 6. Document Implementation Flow
+### 7. Document Implementation Flow
 
-- Before running `trigger:push-pr`, create or update a `$specy` `flow-doc` for
-  the primary logic path exercised by the implementation.
+- Before the `$dev.loop` Push phase or `trigger:push-pr`, create or update a
+  `$specy` `flow-doc` for the primary logic path exercised by the implementation.
 - Resolve the durable flow-doc target through `$mem` before writing. Store it in
   the `$mem`-resolved active spec folder when using `$mem schema` `specs`, otherwise
   use the resolved base and flow-doc route.
@@ -141,9 +154,10 @@ or unclear ownership, bubble it up for human review instead of guessing.
 - Check off the implementation-flow-doc checklist row before PR push. Do not
   push until this gate is complete.
 
-### 7. Push PR
+### 8. Push PR
 
-- After verification succeeds and review fixes are committed, run `trigger:push-pr`.
+- After verification succeeds, review fixes are committed, and the implementation
+  flow doc is validated, run the `$dev.loop` Push phase, including `trigger:push-pr`.
 - Treat PR push as required for full execution unless the user explicitly requested
   planning/review only or explicitly said not to push.
 - Include the PR URL in the final handoff. If push or PR creation fails, report
