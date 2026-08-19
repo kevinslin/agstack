@@ -788,6 +788,115 @@ class LoadConfigTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("base name/alias collision: openai-monorepo", result.stderr)
 
+    def test_root_pattern_resolves_nearest_matching_ancestor(self) -> None:
+        outer = self.root / "proj.2025"
+        project = outer / "proj.inner"
+        cwd = project / "src"
+        cwd.mkdir(parents=True)
+        (project / "notes").mkdir()
+        self.write_config(
+            """
+            version: 2
+            bases:
+              - name: project
+                description: Project notes.
+                root_pattern: proj*
+                managed_root: notes
+                schemas:
+                  - name: pkg
+                    root: packages/nested
+            """
+        )
+
+        result = self.run_loader("--cwd", str(cwd))
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        base = json.loads(result.stdout)["bases"][0]
+        self.assertEqual(base["root"], str(project.resolve()))
+        self.assertEqual(base["root_pattern"], "proj*")
+        self.assertEqual(base["managed_root"], str((project / "notes").resolve()))
+        self.assertEqual(base["schemas"][0]["root"], "packages/nested")
+
+    def test_unmatched_root_pattern_is_excluded(self) -> None:
+        self.write_config(
+            f"""
+            version: 2
+            bases:
+              - name: unmatched
+                description: Other project.
+                root_pattern: never-matches-*
+                schemas:
+                  - name: pkg
+              - name: fixed
+                description: Fixed project.
+                root: {self.base}
+                schemas:
+                  - name: pkg
+            """
+        )
+
+        result = self.run_loader("--cwd", str(self.base))
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual([base["name"] for base in json.loads(result.stdout)["bases"]], ["fixed"])
+
+    def test_base_requires_exactly_one_root_definition(self) -> None:
+        for roots in ("root: .\n    root_pattern: proj*", ""):
+            with self.subTest(roots=roots):
+                self.write_config(
+                    "version: 2\nbases:\n  - name: project\n"
+                    "    description: Project notes.\n"
+                    + (f"    {roots}\n" if roots else "")
+                    + "    schemas:\n      - name: pkg\n"
+                )
+
+                result = self.run_loader()
+
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("exactly one of root or root_pattern", result.stderr)
+
+    def test_root_pattern_rejects_path_patterns(self) -> None:
+        for pattern in ("proj/*", "../proj*", "proj\\name", ".", ".."):
+            with self.subTest(pattern=pattern):
+                self.write_config(
+                    "version: 2\nbases:\n  - name: project\n"
+                    f"    description: Project notes.\n    root_pattern: '{pattern}'\n"
+                    "    schemas:\n      - name: pkg\n"
+                )
+
+                result = self.run_loader()
+
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("must be a basename glob", result.stderr)
+
+    def test_schema_root_accepts_inline_and_nested_mounts(self) -> None:
+        for root, expected in ((".", "."), ("packages/nested", "packages/nested")):
+            with self.subTest(root=root):
+                self.write_config(
+                    f"version: 2\nbases:\n  - name: project\n"
+                    f"    description: Project notes.\n    root: {self.base}\n"
+                    f"    schemas:\n      - name: pkg\n        root: '{root}'\n"
+                )
+
+                result = self.run_loader()
+
+                self.assertEqual(result.returncode, 0, msg=result.stderr)
+                self.assertEqual(json.loads(result.stdout)["bases"][0]["schemas"][0]["root"], expected)
+
+    def test_schema_root_rejects_unsafe_mounts(self) -> None:
+        for root in ("", "/absolute", "../outside", "inside/../other", "inside\\other"):
+            with self.subTest(root=root):
+                self.write_config(
+                    f"version: 2\nbases:\n  - name: project\n"
+                    f"    description: Project notes.\n    root: {self.base}\n"
+                    f"    schemas:\n      - name: pkg\n        root: '{root}'\n"
+                )
+
+                result = self.run_loader()
+
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("schemas[0].root", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -233,6 +233,74 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(result["status"], "ambiguous")
         self.assertIsNone(result["selected"])
 
+    def test_root_pattern_owns_nested_project_cwd(self) -> None:
+        project = self.root / "proj.2025"
+        cwd = project / "src"
+        cwd.mkdir(parents=True)
+        self.config.write_text(
+            "version: 2\nbases:\n  - name: project\n"
+            "    description: Project notes.\n    root_pattern: proj*\n"
+            "    schemas:\n      - name: global-core\n",
+            encoding="utf-8",
+        )
+
+        result = self.run_router("save this", "--cwd", str(cwd))
+
+        self.assertEqual(result["status"], "selected")
+        self.assertEqual(result["tier"], "ownership")
+        self.assertEqual(result["selected"]["root"], str(project.resolve()))
+        self.assertIn("root-pattern:proj*", result["selected"]["reasons"])
+
+    def test_fixed_root_ownership_beats_matching_pattern(self) -> None:
+        project = self.root / "proj.2025"
+        cwd = project / "src"
+        cwd.mkdir(parents=True)
+        self.config.write_text(
+            "version: 2\nbases:\n  - name: pattern\n"
+            "    description: Pattern notes.\n    root_pattern: proj*\n"
+            "    schemas:\n      - name: global-core\n"
+            f"  - name: fixed\n    description: Fixed notes.\n    root: {project}\n"
+            "    schemas:\n      - name: global-core\n",
+            encoding="utf-8",
+        )
+
+        result = self.run_router("pattern notes", "--cwd", str(cwd))
+
+        self.assertEqual(result["status"], "selected")
+        self.assertEqual(result["selected"]["name"], "fixed")
+        self.assertEqual([candidate["name"] for candidate in result["candidates"]], ["fixed"])
+
+    def test_multiple_matching_patterns_are_ambiguous(self) -> None:
+        project = self.root / "proj.2025"
+        cwd = project / "src"
+        cwd.mkdir(parents=True)
+        self.config.write_text(
+            "version: 2\nbases:\n  - name: first\n"
+            "    description: First notes.\n    root_pattern: proj*\n"
+            "    schemas:\n      - name: global-core\n"
+            "  - name: second\n    description: Second notes.\n"
+            "    root_pattern: '*.2025'\n    schemas:\n      - name: global-core\n",
+            encoding="utf-8",
+        )
+
+        result = self.run_router("first notes", "--cwd", str(cwd))
+
+        self.assertEqual(result["status"], "ambiguous")
+        self.assertEqual(result["tier"], "ownership")
+        self.assertIsNone(result["selected"])
+
+    def test_unmatched_pattern_cannot_be_explicitly_selected(self) -> None:
+        self.config.write_text(
+            "version: 2\nbases:\n  - name: unmatched\n"
+            "    description: Other project.\n    root_pattern: never-matches-*\n"
+            "    schemas:\n      - name: global-core\n",
+            encoding="utf-8",
+        )
+
+        result = self.run_router("other project", "--target", "unmatched", "--cwd", str(self.root))
+
+        self.assertEqual(result["status"], "no_match")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -72,6 +72,139 @@ class MemCliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertTrue((self.base / "team" / "cook" / "configure-service.md").is_file())
 
+    def configure_pkg_schema(self, *, schema_root: str | None, path_style: str = "directory") -> None:
+        root_line = f"\n                        root: {schema_root}" if schema_root is not None else ""
+        self.config.write_text(
+            textwrap.dedent(
+                f"""
+                version: 2
+                bases:
+                  - name: docs
+                    description: Durable package documentation.
+                    root: {self.base}
+                    path_style: {path_style}
+                    schemas:
+                      - name: pkg{root_line}
+                """
+            ).strip()
+            + "\n",
+            encoding="utf-8",
+        )
+
+    def materialize_pkg(self, include: str) -> subprocess.CompletedProcess[str]:
+        return self.run_mem(
+            "schema",
+            "materialize",
+            "pkg",
+            "--config",
+            str(self.config),
+            "--base",
+            "docs",
+            "--var",
+            "package=clawcmd",
+            "--var",
+            "cook=configure-service",
+            "--include",
+            include,
+        )
+
+    def test_pkg_schema_preserves_legacy_mount_when_root_is_omitted(self) -> None:
+        self.configure_pkg_schema(schema_root=None)
+
+        result = self.materialize_pkg("pkg/clawcmd/cook/configure-service")
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertTrue((self.base / "pkg" / "clawcmd" / "cook" / "configure-service.md").is_file())
+
+    def test_pkg_schema_supports_inline_root(self) -> None:
+        self.configure_pkg_schema(schema_root=".")
+
+        result = self.materialize_pkg("clawcmd/cook/configure-service")
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertTrue((self.base / "clawcmd" / "cook" / "configure-service.md").is_file())
+        self.assertFalse((self.base / "pkg").exists())
+
+    def test_pattern_root_materializes_inline_pkg_schema_under_project(self) -> None:
+        project = self.root / "proj.2025"
+        session_directory = project / "src" / "service"
+        session_directory.mkdir(parents=True)
+        self.config.write_text(
+            textwrap.dedent(
+                """
+                version: 2
+                bases:
+                  - name: docs
+                    description: Project package documentation.
+                    root_pattern: proj*
+                    path_style: directory
+                    schemas:
+                      - name: pkg
+                        root: .
+                """
+            ).strip()
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = self.run_mem(
+            "schema",
+            "materialize",
+            "pkg",
+            "--config",
+            str(self.config),
+            "--cwd",
+            str(session_directory),
+            "--base",
+            "docs",
+            "--var",
+            "package=clawcmd",
+            "--var",
+            "cook=configure-service",
+            "--include",
+            "clawcmd/cook/configure-service",
+        )
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertTrue((project / "clawcmd" / "cook" / "configure-service.md").is_file())
+        self.assertFalse((project / "pkg").exists())
+
+    def test_pkg_schema_supports_nested_custom_root(self) -> None:
+        self.configure_pkg_schema(schema_root="projects/packages")
+
+        result = self.materialize_pkg("projects/packages/clawcmd/cook/configure-service")
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertTrue(
+            (self.base / "projects" / "packages" / "clawcmd" / "cook" / "configure-service.md").is_file()
+        )
+
+    def test_pkg_schema_custom_root_preserves_dotted_path_style(self) -> None:
+        self.configure_pkg_schema(schema_root="projects/packages", path_style="dotted")
+
+        result = self.materialize_pkg("projects.packages.clawcmd.cook.configure-service")
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertTrue((self.base / "projects.packages.clawcmd.cook.configure-service.md").is_file())
+
+    def test_managed_materialization_rejects_manual_mount_root(self) -> None:
+        result = self.run_mem(
+            "schema",
+            "materialize",
+            "global-core",
+            "--config",
+            str(self.config),
+            "--base",
+            "docs",
+            "--mount-root",
+            "outside",
+            "--include",
+            "outside/cook/example",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("derives --mount-root", result.stderr)
+
     def test_managed_materialization_uses_configured_managed_root(self) -> None:
         notes = self.base / "notes"
         notes.mkdir()

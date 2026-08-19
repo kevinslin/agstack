@@ -7,10 +7,11 @@ The script prints normalized JSON to stdout and validation errors to stderr.
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import os
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 try:
@@ -67,15 +68,26 @@ def normalize_schema(
     value: Any, field: str, *, config_dir: Path, home: Path
 ) -> dict[str, str]:
     if not isinstance(value, dict):
-        fail(f"{field} must be a mapping with name and optional path")
+        fail(f"{field} must be a mapping with name and optional path or root")
 
     name = non_empty_string(value.get("name"), f"{field}.name")
     normalized = {"name": name}
 
-    extra_keys = set(value) - {"name", "path"}
+    extra_keys = set(value) - {"name", "path", "root"}
     if extra_keys:
         joined = ", ".join(sorted(extra_keys))
         fail(f"{field} has unsupported key(s): {joined}")
+
+    if "root" in value:
+        raw_root = non_empty_string(value["root"], f"{field}.root")
+        if "\\" in raw_root:
+            fail(f"{field}.root must not contain backslashes")
+        schema_root = PurePosixPath(raw_root)
+        if schema_root.is_absolute():
+            fail(f"{field}.root must be a relative path")
+        if ".." in schema_root.parts:
+            fail(f"{field}.root must not contain '..' traversal")
+        normalized["root"] = str(schema_root)
 
     if "path" in value:
         raw_path = non_empty_string(value.get("path"), f"{field}.path")
@@ -145,6 +157,17 @@ def resolve_root(raw_root: str, config_dir: Path) -> Path:
     if not path.is_absolute():
         path = config_dir / path
     return path.resolve(strict=False)
+
+
+def resolve_root_pattern(pattern: Any, *, cwd: Path, field: str) -> Path | None:
+    value = non_empty_string(pattern, field)
+    if "/" in value or "\\" in value or value in {".", ".."}:
+        fail(f"{field} must be a basename glob without path separators or traversal")
+    current = cwd.expanduser().resolve(strict=False)
+    for directory in (current, *current.parents):
+        if fnmatch.fnmatchcase(directory.name, value):
+            return directory
+    return None
 
 
 def default_audit(home: Path) -> dict[str, Any]:
@@ -240,6 +263,7 @@ def normalize_config(
     require_roots: bool,
     *,
     home: Path,
+    cwd: Path | None = None,
     raw_data: Any = _LOAD_FROM_PATH,
 ) -> tuple[dict[str, Any], bool]:
     data = load_yaml(path) if raw_data is _LOAD_FROM_PATH else raw_data
@@ -270,8 +294,19 @@ def normalize_config(
         seen_names.add(name)
 
         description = non_empty_string(base.get("description"), f"{label}.description")
-        raw_root = non_empty_string(base.get("root"), f"{label}.root")
-        root = resolve_root(raw_root, path.parent)
+        has_root = "root" in base
+        has_root_pattern = "root_pattern" in base
+        if has_root == has_root_pattern:
+            fail(f"{label} must define exactly one of root or root_pattern")
+        if has_root_pattern:
+            root = resolve_root_pattern(
+                base["root_pattern"], cwd=cwd or Path.cwd(), field=f"{label}.root_pattern"
+            )
+            if root is None:
+                continue
+        else:
+            raw_root = non_empty_string(base["root"], f"{label}.root")
+            root = resolve_root(raw_root, path.parent)
         if require_roots and not root.is_dir():
             fail(f"{label}.root does not exist or is not a directory: {root}")
         managed_root = resolve_managed_root(
@@ -308,6 +343,8 @@ def normalize_config(
             "schemas": normalized_schemas,
             "config_path": str(path),
         }
+        if has_root_pattern:
+            normalized["root_pattern"] = base["root_pattern"].strip()
         if "skill" in base:
             normalized["skill"] = non_empty_string(base.get("skill"), f"{label}.skill")
         if "aliases" in base:
@@ -338,6 +375,7 @@ def merge_configs(
     require_roots: bool,
     *,
     home: Path,
+    cwd: Path | None = None,
     raw_configs: dict[Path, Any] | None = None,
 ) -> dict[str, Any]:
     normalized_configs = [
@@ -345,6 +383,7 @@ def merge_configs(
             path,
             require_roots,
             home=home,
+            cwd=cwd,
             raw_data=raw_configs[path] if raw_configs is not None else _LOAD_FROM_PATH,
         )
         for path in paths
@@ -390,7 +429,7 @@ def load_config(
     for path in paths:
         if not path.is_file():
             fail(f"config does not exist: {path}")
-    return merge_configs(paths, require_roots, home=home)
+    return merge_configs(paths, require_roots, home=home, cwd=cwd)
 
 
 def parse_args() -> argparse.Namespace:

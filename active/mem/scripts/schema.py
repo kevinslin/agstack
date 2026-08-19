@@ -633,17 +633,25 @@ def materialize(
     skip_existing: bool,
     includes: list[str],
     path_style: PathStyle | None,
+    mount_root: str | None = None,
 ) -> list[Path]:
     schema_path = explicit_schema_path.resolve() if explicit_schema_path else schema_path_for_name(schema_name)
     schema_dir, document = load_schema_file(schema_path)
     resolved_path_style = path_style or infer_path_style(destination, includes, document.output.file_extension)
     include_paths = parse_include_paths(includes, resolved_path_style)
     context = validate_variables(document, values)
+    effective_mount = mount_root if mount_root is not None else ("pkg" if schema_name == "pkg" else ".")
+    mount_path = Path(effective_mount)
+    if mount_path.is_absolute() or ".." in mount_path.parts or "\\" in effective_mount:
+        raise ValueError("schema mount root must remain inside the output directory")
+    mount_segments = tuple(segment for segment in mount_path.parts if segment != ".")
     files = collect_files(
         schema_dir,
         document,
         document.tree,
         context,
+        raw_path=mount_segments,
+        rendered_segments=mount_segments,
         include_paths=include_paths,
         path_style=resolved_path_style,
         schema_stack=(schema_path,),
@@ -849,6 +857,10 @@ def build_parser() -> argparse.ArgumentParser:
     materialize_parser.add_argument("schema")
     add_schema_path_argument(materialize_parser)
     materialize_parser.add_argument("--out", required=True, type=Path, help="Output directory.")
+    materialize_parser.add_argument(
+        "--mount-root",
+        help="Relative schema mount; use . to materialize without a root namespace.",
+    )
     materialize_parser.add_argument("--var", action="append", default=[], help="Template variable in key=value form.")
     materialize_parser.add_argument(
         "--include",
@@ -892,6 +904,7 @@ def main(argv: list[str] | None = None) -> int:
                 skip_existing=args.skip_existing,
                 includes=args.include,
                 path_style=args.path_style,
+                mount_root=args.mount_root,
             )
             for path in written:
                 print(path)

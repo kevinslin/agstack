@@ -152,6 +152,22 @@ class ContextLookupIntegrationTests(unittest.TestCase):
         self.assertTrue((self.alpha_root / "notes" / ".mem.index.json").is_file())
         self.assertFalse((self.beta_root / "notes" / ".mem.index.json").exists())
 
+    def test_selected_schema_reports_configured_mount_root(self) -> None:
+        self.config.write_text(
+            self.config.read_text(encoding="utf-8").replace(
+                "- name: global-core\n", "- name: global-core\n        root: projects/packages\n"
+            ),
+            encoding="utf-8",
+        )
+
+        result = self.run_context("package knowledge", "--config", str(self.config), "--target", "alpha")
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(
+            self.payload(result)["selected_bases"][0]["schemas"][0]["root"],
+            "projects/packages",
+        )
+
     def test_index_hierarchy_does_not_restrict_full_text_managed_search(self) -> None:
         nested = self.alpha_root / "notes" / "pkg" / "gateway" / "deeper"
         nested.mkdir(parents=True)

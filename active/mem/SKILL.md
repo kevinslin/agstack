@@ -10,6 +10,14 @@ dependencies:
 
 Use this skill as the single interface for persistent knowledge bases, project context, generated base indexes, and schema-backed file layouts. It owns base selection, root containment, schema inspection, model-inferred node selection, exact-node materialization, and durable read/write safety.
 
+## Concepts
+
+- **Root node:** The first node in a tree.
+- **Hierarchy:** A directed graph that describes the layout of files.
+- **Schema:** Rules defining how a hierarchy is organized.
+- **Base:** A collection of one or more schemas that make a knowledge connection.
+- **Mem config:** Global configuration that defines knowledge bases.
+
 ## Invocation Rule
 
 Invoke `$mem` whenever the user explicitly asks to save, retrieve, organize, or update durable knowledge, even when they do not name this skill. Treat requests to record, remember, capture, or document reusable guides, cookbooks, runbooks, decisions, research notes, findings, lessons, and references as `$mem` requests.
@@ -92,9 +100,11 @@ Merge configuration from:
 
 Load both when present. The nearest config wins when both define the same base name; unique home bases remain available.
 
-Configuration requires top-level `version: 2`. After installing the updated skill, migrate existing version-1 configuration with `python3 ./scripts/mem.py doctor --migrate --pretty`; migration discards retired `match.topics` and `match.artifact_kinds` while preserving ownership globs and other supported settings. Each base requires `name`, `description`, `root`, and `schemas`. It may also define a relative `managed_root`, plus `path_style`, `skill`, `aliases`, `priority`, and `match.cwd_globs` or `match.source_globs`. `root` is the workspace containment boundary; the resolved `managed_root` is the narrower knowledge read/write boundary and defaults to `root`.
+Configuration requires top-level `version: 2`. After installing the updated skill, migrate existing version-1 configuration with `python3 ./scripts/mem.py doctor --migrate --pretty`; migration discards retired `match.topics` and `match.artifact_kinds` while preserving ownership globs and other supported settings. Each base requires `name`, `description`, `schemas`, and exactly one of `root` or `root_pattern`. A fixed `root` names its workspace directly; `root_pattern` matches the session directory or an ancestor by basename glob, so `proj*` can resolve `proj.2025`. The nearest matching ancestor becomes the workspace root; unmatched pattern bases are inactive. A project has one resolved root, and fixed-root ownership takes precedence over pattern-root ownership.
 
-Routing has strict precedence: an explicit base or alias wins; otherwise source and cwd ownership wins; query signals are considered only when ownership does not match. Conflicting source and cwd ownership is ambiguous and requires an explicit base. Query scores and `priority` never override a higher tier.
+A base may also define a relative `managed_root`, plus `path_style`, `skill`, `aliases`, `priority`, and `match.cwd_globs` or `match.source_globs`. Its resolved root is the workspace containment boundary; `managed_root` is the narrower knowledge read/write boundary and defaults to that root. Each schema may set a relative `root` mount such as `packages` or `projects/packages`; `root: .` mounts it inline. Omitting the `pkg` schema root preserves its historical `pkg/` mount.
+
+Routing has strict precedence: an explicit active base or alias wins; otherwise fixed-root source/cwd ownership wins over pattern-root ownership; query signals are considered only when ownership does not match. Conflicting owners at the same precedence are ambiguous and require an explicit base. Query scores and `priority` never override a higher tier.
 
 Compatibility aliases must preserve the historical root and behavior. Do not map a retired child-root base to an aggregate parent alias because aliases carry no root-relative prefix.
 

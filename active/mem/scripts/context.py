@@ -240,7 +240,10 @@ def selected_base_details(
             path = schema_path(configured_schema)
             if not path.is_file():
                 return [], f"schema {schema_name!r} for base {name!r} does not exist: {path}"
-            schemas.append({"name": schema_name, "path": str(path)})
+            schema_details = {"name": schema_name, "path": str(path)}
+            if "root" in configured_schema:
+                schema_details["root"] = configured_schema["root"]
+            schemas.append(schema_details)
         status, index, _ = ensure_base_index(base, cache=cache, recorder=index_recorder)
         selected.append(
             {

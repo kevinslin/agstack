@@ -94,13 +94,19 @@ def ownership_reasons(
 ) -> list[str]:
     reasons: list[str] = []
     match = base.get("match", {})
-    cwd_string = str(cwd.expanduser().resolve(strict=False))
+    resolved_cwd = cwd.expanduser().resolve(strict=False)
+    cwd_string = str(resolved_cwd)
 
     for pattern in match.get("cwd_globs", []):
         if path_matches(cwd_string, pattern):
             reasons.append(f"cwd:{pattern}")
     if cwd_string in {base["root"], base.get("managed_root", base["root"])}:
         reasons.append("cwd equals base root")
+    elif resolved_cwd.is_relative_to(Path(base["root"])):
+        if "root_pattern" in base:
+            reasons.append(f"root-pattern:{base['root_pattern']}")
+        else:
+            reasons.append("cwd within base root")
 
     sources = [source] if isinstance(source, str) else (source or [])
     for source_path in sources:
@@ -214,6 +220,12 @@ def route(
         if reasons:
             owned.append(ranked_candidate(base, score=len(reasons), reasons=reasons))
     if owned:
+        fixed_names = {
+            base["name"] for base in config["bases"] if "root_pattern" not in base
+        }
+        fixed_owned = [candidate for candidate in owned if candidate["name"] in fixed_names]
+        if fixed_owned:
+            owned = fixed_owned
         sort_candidates(owned)
         if len(owned) == 1:
             selected_base = next(base for base in config["bases"] if base["name"] == owned[0]["name"])

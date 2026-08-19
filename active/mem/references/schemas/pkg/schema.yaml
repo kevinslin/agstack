@@ -4,7 +4,7 @@ output:
 variables:
   package:
     values: ["*"]
-    description: Package slug below the aggregate pkg namespace.
+    description: Package slug below the configured schema mount.
   cook: ["*"]
   reference: ["*"]
   topic: ["*"]
@@ -23,35 +23,32 @@ variables:
   proof: ["*"]
   scenario: ["*"]
 schema:
-  pkg:
-    description: Aggregate package knowledge namespace.
-    children:
-      "{{package}}":
-        description: One package knowledge boundary containing reusable guides, code documentation, and package specs.
-        dynamic_child: true
-        children_from:
-          - schema: global-core
-            vars:
-              cook: "{{cook}}"
-              reference: "{{reference}}"
-              topic: "{{topic}}"
-          - schema: code-core
-            vars:
-              flow: "{{flow}}"
-              arch: "{{arch}}"
-              num: "{{num}}"
-              slug: "{{slug}}"
-              api_name: "{{api_name}}"
-              name: "{{name}}"
-          - schema: specs
-            vars:
-              spec_number: "{{spec_number}}"
-              spec_slug: "{{spec_slug}}"
-              artifact: "{{artifact}}"
-              flow: "{{flow}}"
-              cook: "{{cook}}"
-              subspec: "{{subspec}}"
-              subspec_slug: "{{subspec_slug}}"
-              report: "{{report}}"
-              proof: "{{proof}}"
-              scenario: "{{scenario}}"
+  "{{package}}":
+    description: One package knowledge boundary containing reusable guides, code documentation, and package specs.
+    dynamic_child: true
+    children_from:
+      - schema: global-core
+        vars:
+          cook: "{{cook}}"
+          reference: "{{reference}}"
+          topic: "{{topic}}"
+      - schema: code-core
+        vars:
+          flow: "{{flow}}"
+          arch: "{{arch}}"
+          num: "{{num}}"
+          slug: "{{slug}}"
+          api_name: "{{api_name}}"
+          name: "{{name}}"
+      - schema: specs
+        vars:
+          spec_number: "{{spec_number}}"
+          spec_slug: "{{spec_slug}}"
+          artifact: "{{artifact}}"
+          flow: "{{flow}}"
+          cook: "{{cook}}"
+          subspec: "{{subspec}}"
+          subspec_slug: "{{subspec_slug}}"
+          report: "{{report}}"
+          proof: "{{proof}}"
+          scenario: "{{scenario}}"

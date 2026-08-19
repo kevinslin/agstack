@@ -55,6 +55,7 @@ bases:
     skill: example-skill
     schemas:
       - name: pkg
+        root: packages
       - name: specs
     match:
       source_globs:
@@ -63,6 +64,12 @@ bases:
       cwd_globs:
         - /absolute/path/to/workspace
         - /absolute/path/to/workspace/**
+  - name: project-family
+    description: Knowledge for the current matching project.
+    root_pattern: proj*
+    schemas:
+      - name: pkg
+        root: .
 ```
 
 ### Top-level fields
@@ -75,7 +82,10 @@ bases:
 
 - `name`: unique nonempty base identifier, such as `dendron`, `oai`, or `claw`. Use this value with `--target` and `--base`. Names and aliases must not collide after configurations are merged.
 - `description`: nonempty plain-language explanation of the base's contents. The router uses its words and phrases as query-routing signals.
-- `root`: workspace ownership and containment boundary. Absolute paths, `~`, environment variables, and paths relative to the configuration file are supported. The resolved path must be an existing directory unless `--allow-missing-roots` is explicitly supported and supplied.
+- Exactly one of `root` or `root_pattern`:
+  - `root`: fixed workspace ownership and containment boundary. Absolute paths, `~`, environment variables, and paths relative to the configuration file are supported.
+  - `root_pattern`: nonempty glob matched against the basename of the resolved session directory and its ancestors. For example, `proj*` matches `/workspace/proj.2025` even when the session starts in `/workspace/proj.2025/src`; the nearest matching ancestor becomes the concrete root. A base with no matching ancestor is inactive for that session and cannot be selected explicitly. Fixed-root ownership takes precedence when both a fixed base and a pattern base match; competing pattern owners remain ambiguous. A project resolves to one root.
+  The resolved root must be an existing directory unless `--allow-missing-roots` is explicitly supported and supplied.
 - `schemas`: nonempty list of schema mappings available to the base. Managed materialization accepts only schemas listed here.
 
 ### Optional base fields
@@ -95,26 +105,31 @@ Each item in `schemas` is a mapping with these fields:
 
 - `name`: required nonempty schema name. Without `path`, it resolves to the bundled schema at `./references/schemas/<name>/schema.yaml`.
 - `path`: optional absolute path to a custom `schema.yaml`. `~` and environment variables are expanded, but relative paths are rejected. The file must already exist, even when `--allow-missing-roots` is used.
+- `root`: optional relative hierarchy mount within the base's managed root. Use `packages` or a nested value such as `projects/packages` to prefix the schema's nodes; use `.` to mount them inline with no extra root node. Absolute paths and parent traversal are rejected. An omitted root keeps existing behavior: `pkg` mounts at `pkg`, while schemas that were already inline remain inline.
 
 For example:
 
 ```yaml
 schemas:
   - name: pkg
+    root: packages
+  - name: specs
+    root: .
   - name: custom
     path: /absolute/path/to/custom/schema.yaml
+    root: projects/packages
 ```
 
-No additional fields are accepted in a schema mapping.
+For package `example`, `root: packages` produces `packages/example/...`, `root: .` produces `example/...`, and an omitted `pkg` root preserves `pkg/example/...`. No additional fields are accepted in a schema mapping.
 
 ### Match fields
 
 Each field under `match` is a list of unique, nonempty strings:
 
 - `source_globs`: filesystem glob patterns matched against each `--source` value. A matching pattern places the base in the ownership tier. Include both the directory itself and a `/**` pattern when both must match.
-- `cwd_globs`: filesystem glob patterns matched against the resolved working directory. A matching pattern also places the base in the ownership tier. The working directory additionally matches ownership when it exactly equals the base `root` or `managed_root`.
+- `cwd_globs`: filesystem glob patterns matched against the resolved working directory. A matching pattern also places the base in the ownership tier. The working directory additionally matches ownership when it equals the base `root` or `managed_root`, or is nested beneath the resolved base root.
 
-`source_globs` and `cwd_globs` establish ownership; generated index metadata supplies topic and artifact-kind query signals. The retired `topics` and `artifact_kinds` configuration fields and all other unsupported `match` fields are rejected. If multiple bases match ownership, routing returns `ambiguous` even when one base has a higher `priority`.
+`source_globs` and `cwd_globs` establish ownership; generated index metadata supplies topic and artifact-kind query signals. The retired `topics` and `artifact_kinds` configuration fields and all other unsupported `match` fields are rejected. Fixed-root owners take precedence over pattern-root owners; multiple owners at the same precedence remain `ambiguous` even when one base has a higher `priority`.
 
 Inspect the effective, normalized configuration with:
 
@@ -143,12 +158,12 @@ Every transformed file and the merged result are validated before writes begin. 
 
 A `.mem.yaml` base has two filesystem boundaries:
 
-- `root`: the workspace a base owns for routing and containment.
+- `root`: the workspace a base owns for routing and containment, configured directly or resolved from `root_pattern` for the current session.
 - `managed_root`: the subtree where managed knowledge may be read or written. It is relative to `root` and defaults to `root`.
 
 This distinction lets a workspace own source and configuration outside its knowledge directory. For example, a Dendron base can own the workspace root while restricting managed operations to `notes/`.
 
-Each base also declares its schemas and can declare `path_style`, aliases, priority, a related skill, and deterministic ownership globs. See [Config](#config) for every supported field, default, and validation rule.
+Each base also declares its schemas and can declare schema-specific root mounts, `path_style`, aliases, priority, a related skill, and deterministic ownership globs. See [Config](#config) for every supported field, default, and validation rule.
 
 ### Generated indexes summarize paths, not document contents
 
@@ -348,7 +363,7 @@ The principal aggregate layouts are:
 - `code`: project-scoped code documentation at `packages/{{module}}`.
 - `specs`: workspace-wide numbered specifications, flows, proofs, cookbooks, and reports.
 - `global-core`: workspace-wide `cook`, `ref`, and `t` namespaces.
-- `pkg`: neutral package knowledge at `pkg/{{package}}`, composed from `global-core`, `code-core`, and `specs`.
+- `pkg`: neutral package knowledge at `<schema-root>/{{package}}`, composed from `global-core`, `code-core`, and `specs`; the legacy default mount is `pkg`.
 
 `pkg` mounts `global-core` first, so it owns overlapping `ref` and `t` nodes. `code-core` remains a reusable project-scoped component rather than becoming a workspace root. Composition passes variables only through explicit `vars` mappings.
 
@@ -356,7 +371,7 @@ The `description` field is the primary placement signal. `insertion_policy` brea
 
 ### Materialization separates managed and unmanaged writes
 
-Managed materialization requires `--base`. It derives the destination, path style, and optional custom schema path from the selected base. `--root-relative` can narrow the destination but must remain inside the resolved managed root.
+Managed materialization requires `--base`. It derives the destination, path style, configured schema root mount, and optional custom schema path from the selected base. `--root-relative` can narrow the destination but must remain inside the resolved managed root.
 
 Unmanaged materialization requires both `--out` and `--unmanaged`. It is intended for a caller-specified repository or temporary destination and never implies that the output belongs to a configured knowledge base.
 

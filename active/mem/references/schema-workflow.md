@@ -17,7 +17,7 @@ A named schema in `.mem.yaml` follows the same local-then-global discovery, so p
 - `global-core`: Reusable `cook/{{cook}}`, `ref/{{reference}}`, and `t/{{topic}}` namespaces.
 - `integ-proof`: Integration proofs with claims, scenarios, scripts, and raw artifacts.
 - `project`: Project-level specs, flows, cookbooks, and reports.
-- `pkg`: Neutral `pkg/{{package}}` wrapper composing package guides, code documentation, and specs.
+- `pkg`: Package hierarchy rooted at `{{package}}`, composing package guides, code documentation, and specs; its mount is selected by the base configuration.
 - `specs`: Numbered active specs, archives, milestones, proofs, cookbooks, and reports.
 
 ## Layout
@@ -84,11 +84,11 @@ python3 ./scripts/mem.py schema materialize pkg \
   --skip-existing
 ```
 
-Managed mode resolves the managed output root, path style, and optional custom schema path from version-2 `.mem.yaml`. Use `--root-relative <path>` for a subtree contained by the resolved managed root. Manual `--out`, `--path-style`, and `--schema-path` overrides are rejected in managed mode.
+Managed mode resolves the managed output root, path style, optional custom schema path, and schema mount from version-2 `.mem.yaml`. Each configured schema may set a relative `root`: `packages` mounts it under `packages/`, `projects/packages` nests it, and `.` mounts it inline without an additional root node. Omitting the `pkg` root preserves its historical `pkg/` mount. Include paths contain the configured mount; for example, inline `pkg` uses `--include clawcmd/cook/change-claw-config`. Use `--root-relative <path>` for a subtree contained by the resolved managed root. Manual `--out`, `--path-style`, and `--schema-path` overrides are rejected in managed mode.
 
 After successful managed materialization, the CLI refreshes `<managed_root>/.mem.index.json`; unchanged document paths leave the existing index untouched. If that refresh fails, the created knowledge, original stdout, and exit status `0` are preserved, and stderr receives one structured `index_refresh_failed` warning containing a replayable `repair_argv`. Execute that argument array exactly instead of rolling back the document. Unmanaged materialization does not refresh a managed index. If an agent creates a managed schema-backed Markdown file directly instead of using this command, run `python3 ./scripts/mem.py index build --base NAME_OR_ALIAS` afterward.
 
-The `pkg` schema mounts `global-core` before `code-core`, so `global-core` owns the overlapping `ref` and `t` namespaces. It mounts `specs` last under `pkg/{{package}}/specs`. Keep `code-core` project-scoped; configure `code`, `specs`, and `global-core` separately when an aggregate base also needs `packages/{{module}}` and workspace-wide artifacts.
+The `pkg` schema mounts `global-core` before `code-core`, so `global-core` owns the overlapping `ref` and `t` namespaces. It mounts `specs` last under `<schema-root>/{{package}}/specs`, or `{{package}}/specs` when inline. Keep `code-core` project-scoped; configure `code`, `specs`, and `global-core` separately when an aggregate base also needs `packages/{{module}}` and workspace-wide artifacts.
 
 Explicit non-memory materialization:
 

@@ -2,7 +2,7 @@
 
 Use these rules after `$mem` selects a managed base and resolves its schemas.
 
-The selected base's resolved `managed_root` is authoritative for managed knowledge. Constrain candidate-path search, filename and body search, duplicate detection, materialization, updates, and deletes to that boundary. The base `root` may be a wider workspace boundary, such as a Dendron workspace whose managed knowledge lives under `notes/`.
+The selected base's resolved `managed_root` is authoritative for managed knowledge. Constrain candidate-path search, filename and body search, duplicate detection, materialization, updates, and deletes to that boundary. The base root, whether fixed or resolved from a session-matching `root_pattern`, may be a wider workspace boundary, such as a Dendron workspace whose managed knowledge lives under `notes/`. Schema-specific `root` mounts remain inside `managed_root`; `.` adds no hierarchy prefix.
 
 ## Project context lookup
 

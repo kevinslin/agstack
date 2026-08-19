@@ -139,7 +139,9 @@ def migrate(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             }
         )
 
-    load_config.merge_configs(paths, True, home=args.home, raw_configs=transformed_configs)
+    load_config.merge_configs(
+        paths, True, home=args.home, cwd=args.cwd, raw_configs=transformed_configs
+    )
 
     results: list[dict[str, Any]] = []
     failures = False

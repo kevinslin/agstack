@@ -1,9 +1,17 @@
 # `pkg` schema
 
-Use this schema for package-scoped knowledge below an aggregate base.
+Use this schema for package-scoped knowledge below an aggregate base. Its first schema node is `{{package}}`; the base's schema entry selects where that hierarchy is mounted.
+
+```yaml
+schemas:
+  - name: pkg
+    root: packages # packages/{{package}}/...
+```
+
+Use `root: .` for inline `{{package}}/...` or a nested root such as `projects/packages`. Omitting `root` preserves the historical `pkg/{{package}}/...` layout.
 
 ```text
-pkg/
+<schema-root>/ # omitted for root: .; defaults to pkg
   {{package}}/
     cook/       # global-core
     ref/        # global-core

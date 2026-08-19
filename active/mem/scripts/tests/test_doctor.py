@@ -435,6 +435,26 @@ class DoctorMigrationTests(unittest.TestCase):
         self.assertEqual(missing_config.stdout, "")
         self.assertIn("config does not exist", missing_config.stderr)
 
+    def test_existing_pattern_root_uses_requested_cwd_during_validation(self) -> None:
+        self.write_config(
+            self.project_config,
+            """
+            version: 2
+            bases:
+              - name: project
+                description: Project knowledge.
+                root_pattern: project
+                schemas:
+                  - name: tool
+                    root: .
+            """,
+        )
+
+        result = self.run_doctor()
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(json.loads(result.stdout)["results"][0]["status"], "unchanged")
+
 
 if __name__ == "__main__":
     unittest.main()

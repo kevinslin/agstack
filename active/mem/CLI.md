@@ -36,14 +36,14 @@ Unless `--config` is present, commands load:
 1. the nearest `.mem.yaml` at or above `--cwd`;
 2. `.mem.yaml` under `--home`.
 
-The nearest configuration wins for duplicate base names. Unique home bases remain available. Base names and aliases must be globally unique after merging. Ordinary loading accepts only top-level configuration `version: 2`; after installing the updated skill, run `doctor --migrate` before using an existing version-1 configuration.
+The nearest configuration wins for duplicate base names. Unique home bases remain available. Base names and aliases must be globally unique after merging. Each base declares exactly one fixed `root` or session-relative `root_pattern`; a pattern matches the basename of `--cwd` or its nearest matching ancestor, and bases without a match are inactive. Ordinary loading accepts only top-level configuration `version: 2`; after installing the updated skill, run `doctor --migrate` before using an existing version-1 configuration.
 
 See [Config in the README](./README.md#config) for every `.mem.yaml` field, default, routing signal, and validation rule.
 
 Common configuration options:
 
 - `--config PATH`: load only this file; do not merge discovered files.
-- `--cwd PATH`: directory used to find the nearest ancestor config; defaults to the current directory.
+- `--cwd PATH`: directory used to find the nearest ancestor config and resolve base `root_pattern` values; defaults to the current directory.
 - `--home PATH`: directory used for the home config; defaults to the current user's home.
 - `--pretty`: indent JSON output.
 
@@ -63,7 +63,7 @@ Options:
 - `--allow-missing-roots`: validate and normalize without requiring `root` and `managed_root` directories to exist. Custom schema paths must still exist.
 - `--pretty`: indent JSON output.
 
-The result includes `config_path`, ordered `config_paths`, configuration `version: 2`, normalized `bases`, and the effective `audit` mapping. Each base includes absolute `root`, absolute `managed_root`, derived `index_path`, resolved `path_style`, normalized schemas, and its owning `config_path`. `audit.enabled` defaults to `false`, and `audit.trace_root` defaults to `$HOME/.config/mem/traces`.
+The result includes `config_path`, ordered `config_paths`, configuration `version: 2`, normalized active `bases`, and the effective `audit` mapping. Each base includes its absolute resolved `root`, absolute `managed_root`, derived `index_path`, resolved `path_style`, normalized schemas and their configured mounts, and its owning `config_path`. A `root_pattern: proj*` base is active when `--cwd` is `proj.2025` or a descendant; unrelated sessions omit it. `audit.enabled` defaults to `false`, and `audit.trace_root` defaults to `$HOME/.config/mem/traces`.
 
 ```bash
 python3 ./scripts/mem.py config show --pretty
@@ -184,7 +184,7 @@ Options:
 - `--allow-missing-roots`: route against valid configuration whose base roots do not yet exist.
 - `--pretty`: indent JSON output.
 
-Routing tiers are strict: `explicit` precedes `ownership`, which precedes `query`. The result has `status` (`selected`, `ambiguous`, or `no_match`), `tier`, `selected`, ranked `candidates`, and `config_paths`. Candidate records include the base name, root, managed root, score, priority, config path, index status, and reasons. Query routing may initialize multiple candidate indexes; explicit or ownership routing initializes only the selected base.
+Routing tiers are strict: `explicit` precedes `ownership`, which precedes `query`. Within ownership, fixed-root bases take precedence over pattern-root bases; multiple owners at the same precedence remain ambiguous. Inactive pattern bases cannot be selected. The result has `status` (`selected`, `ambiguous`, or `no_match`), `tier`, `selected`, ranked `candidates`, and `config_paths`. Candidate records include the base name, root, managed root, score, priority, config path, index status, and reasons. Query routing may initialize multiple candidate indexes; explicit or ownership routing initializes only the selected base.
 
 ### Query routing
 
@@ -481,7 +481,7 @@ Managed-only options:
 - `--root-relative PATH`: materialize below this relative subtree of the base's resolved managed root. Absolute paths and `..` escapes are rejected.
 - `--config PATH`, `--cwd PATH`, `--home PATH`: configuration controls used to resolve the base.
 
-Managed mode derives `--out`, `--path-style`, and a custom `--schema-path` from the base configuration. Supplying any of those options directly is an error. `--base` and `--unmanaged` are mutually exclusive.
+Managed mode derives `--out`, `--path-style`, the schema's configured `root` mount, and a custom `--schema-path` from the base configuration. Supplying output, path-style, or schema-path overrides directly is an error. A schema `root: packages` prefixes include paths with `packages/`, `root: .` leaves them inline, and an omitted `pkg` root preserves its legacy `pkg/` prefix. `--base` and `--unmanaged` are mutually exclusive.
 
 After successful managed materialization, the selected base's index is rebuilt automatically. A changed document path updates the fingerprint; overwriting or skipping existing documents without a path change preserves the existing index. A failed schema subprocess retains its original nonzero exit and does not refresh the index. Unmanaged materialization never refreshes a managed index.
 

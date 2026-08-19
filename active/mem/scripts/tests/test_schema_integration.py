@@ -812,6 +812,7 @@ class SchemaScriptIntegrationTests(unittest.TestCase):
         self.assertIn("|-- readme", show_result.stdout)
         self.assertIn("`-- specs", show_result.stdout)
         self.assertIn("|-- cook", show_result.stdout)
+        self.assertNotIn("`-- pkg\n", show_result.stdout)
 
         out = self.root / "out"
         result = self.run_schema(
@@ -868,6 +869,47 @@ class SchemaScriptIntegrationTests(unittest.TestCase):
         self.assertTrue(
             (out / "pkg" / "clawcmd" / "specs" / "1-pilot" / "artifacts" / "run-release.md").is_file()
         )
+
+    def test_pkg_schema_supports_explicit_inline_mount(self) -> None:
+        for schema_name in ("global-core", "code-core", "integ-proof", "specs", "pkg"):
+            self.install_prod_schema(schema_name)
+        out = self.root / "out"
+
+        result = self.run_schema(
+            "materialize",
+            "pkg",
+            "--out",
+            str(out),
+            "--mount-root",
+            ".",
+            "--var",
+            "package=clawcmd",
+            "--include",
+            "clawcmd/readme",
+        )
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertTrue((out / "clawcmd" / "readme.md").is_file())
+        self.assertFalse((out / "pkg").exists())
+
+    def test_schema_mount_rejects_output_escape(self) -> None:
+        self.install_prod_schema("global-core")
+
+        result = self.run_schema(
+            "materialize",
+            "global-core",
+            "--out",
+            str(self.root / "out"),
+            "--mount-root",
+            "../outside",
+            "--var",
+            "cook=example",
+            "--include",
+            "outside/cook/example",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("must remain inside the output directory", result.stderr)
 
     def test_ag_dir_schema_materializes_project_and_run_notes(self) -> None:
         self.install_prod_schema("ag-dir")

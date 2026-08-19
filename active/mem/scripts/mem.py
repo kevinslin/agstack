@@ -147,6 +147,7 @@ def prepare_schema_args(args: list[str]) -> PreparedSchemaCommand:
     has_out = has_option(prepared, "--out")
     has_path_style = has_option(prepared, "--path-style")
     has_schema_path = has_option(prepared, "--schema-path")
+    has_mount_root = has_option(prepared, "--mount-root")
 
     if base_name:
         if unmanaged:
@@ -157,6 +158,8 @@ def prepare_schema_args(args: list[str]) -> PreparedSchemaCommand:
             fail("managed materialization derives --path-style from --base")
         if has_schema_path:
             fail("managed materialization derives --schema-path from the base configuration")
+        if has_mount_root:
+            fail("managed materialization derives --mount-root from the base configuration")
         cwd = Path(cwd_value).expanduser() if cwd_value else Path.cwd()
         home = Path(home_value).expanduser() if home_value else Path.home()
         config = load_config(
@@ -185,6 +188,8 @@ def prepare_schema_args(args: list[str]) -> PreparedSchemaCommand:
         destination = managed_destination(str(base["managed_root"]), root_relative)
         if "path" in configured_schema:
             prepared.extend(["--schema-path", str(configured_schema["path"])])
+        if "root" in configured_schema:
+            prepared.extend(["--mount-root", str(configured_schema["root"])])
         prepared.extend(
             [
                 "--out",
