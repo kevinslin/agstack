@@ -47,7 +47,10 @@
 12. When editing an existing spec, preserve `## Manual Notes` unless the user
     explicitly asks to change it.
 13. Keep in-progress specs under `$DOCS_ROOT/specs/`. When the spec is complete,
-    move it to `$DOCS_ROOT/specs/.archive/` without renaming it.
+    identify Markdown links pointing to it, then move it to
+    `$DOCS_ROOT/specs/.archive/` without renaming it. Rebase relative links
+    inside the archived spec, update its inbound references, and verify every
+    affected local link resolves.
 14. Resolve the current agent session id via `dev.llm-session` and include it,
     the current Git SHA, and a `YYYY-MM-DD HH:MM` timestamp in `## Changelog`.
 

@@ -89,7 +89,9 @@ rely on them.
 
 Describe what the system does. Keep correction history and rejected alternatives
 out of normative sections. Put durable exclusions in Non-goals and useful
-comparisons in Alternatives. Do not use `V1 Decision` callouts.
+comparisons in Alternatives. Mention absent or rejected inputs only when they
+explain a meaningful security boundary, migration, or operational failure. Do
+not use `V1 Decision` callouts.
 
 **Bad**
 
@@ -334,5 +336,6 @@ style last. Apply the core self-contained finding format after these passes.
   purpose.
 - Examples and diagrams prove the prose rather than redefine it.
 - At least one denial or failure path is covered for a multi-actor lifecycle.
-- Rejected-design history is absent from normative sections.
+- Normative sections describe supported behavior; exclusions explain meaningful
+  security, migration, or operational boundaries.
 - Incidental implementation mechanics have been removed.

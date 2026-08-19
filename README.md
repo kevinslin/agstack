@@ -86,12 +86,12 @@ Example:
 ### Docs
 
 - [docs-audit-v2](active/docs-audit-v2/SKILL.md): Audit documentation rewrites with JSON-first block and line mappings, validation, Markdown reports, and a self-contained HTML viewer.
-- [docy](active/docy/SKILL.md): Manage reusable reference docs for agent work through a small CLI. Injection and durable AGENTS.md installation discover Markdown files under the bundled `references/` tree; aliases remain explicit. Use it for focused guidance including `core/main`, `ref/developer-docs`, `ref/spec`, and the `ref/openclaw-docs` product overlay.
+- [docy](active/docy/SKILL.md): Manage reusable reference docs for agent work through a small CLI. Injection and durable AGENTS.md installation discover Markdown files under the bundled `references/` tree; aliases remain explicit. Use it for focused guidance including `core/main`, `ref/developer-docs`, affirmative specification writing with `ref/spec`, and the `ref/openclaw-docs` product overlay.
 - [explain-diff](active/explain-diff/SKILL.md): Create a self-contained interactive HTML explanation of a code diff, branch, commit, or pull request, including background, intuition, a behavior-oriented walkthrough, and a five-question quiz.
 - [find-links](active/find-links/SKILL.md): This skill should be used when the user wants to fill in TODO links, placeholder links, or missing links in markdown files. Invoke when the user mentions "fill links", "TODO links", "find links", or asks to add appropriate links to concepts in a document.
 - [proofread](active/proofread/SKILL.md): Review publish-ready writing for meaningful clarity or agreement issues, useful terminology corrections, internal contradictions, and broken links while preserving informal style, capitalization, factual claims, numerical examples, and intentional hyperbole.
 - [spec-template](active/spec-template/SKILL.md): Turn an existing concrete spec into a reusable generic spec template, extracting invariant contracts, replacing implementation-specific details with slots, and preserving the source spec or PR as a worked example.
-- [specy](active/specy/SKILL.md): Create structured research documentation, concise source-backed flow docs, and focused feature specs with one implementation contract, concrete work, and outcome-to-proof verification; add phases, pseudocode, and risk detail only when the change requires them. Route durable artifacts through `$mem` and use `$docy` `ref/spec` for specification writing.
+- [specy](active/specy/SKILL.md): Create structured research documentation, concise source-backed flow docs, and focused feature specs with one implementation contract, concrete work, outcome-to-proof verification, and link-safe archival; add phases, pseudocode, and risk detail only when the change requires them. Route durable artifacts through `$mem` and use `$docy` `ref/spec` for specification writing.
 
 ### Utils
 
