@@ -12,7 +12,8 @@ dependencies:
 ## Workflow
 
 1. Identify the review type from the user's request and artifact.
-   - Examples: code, docs, design-doc, spec, architecture, ux, skills, integrator, deslop, dead-code.
+   - Examples: code, docs, design-doc, spec, simplify-spec, architecture, ux, skills, integrator, deslop, dead-code.
+   - Use `simplify-spec` when the user asks to radically simplify a spec or its proposed implementation, narrow the solution, or find an 80/20 approach.
    - If ambiguous, ask one clarifying question before reviewing.
 2. Load the matching workflow from `./references/workflow-[review-type].md`.
    - If the workflow file does not exist, ask the user for the prompt to add and pause the review.
@@ -53,6 +54,7 @@ dependencies:
 - `./references/workflow-docs.md` for developer documentation, user guides, API references, CLI references, quickstarts, READMEs, and troubleshooting docs.
 - `./references/workflow-design-doc.md` for design doc review.
 - `./references/workflow-spec.md` for product, implementation, or test spec review.
+- `./references/workflow-simplify-spec.md` for reducing a spec to the smallest complete implementation that satisfies its current goal.
 - `./references/workflow-architecture.md` for architecture and system-boundary review.
 - `./references/workflow-ux.md` for UX review.
 - `./references/workflow-skills.md` for reviewing `SKILL.md` files and bundled skill resources.
