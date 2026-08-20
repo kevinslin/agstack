@@ -39,8 +39,10 @@ NEVER directly make updates to runtime-installed skill mirrors. Edit the source 
 - Verify the current branch before editing. If it is not `main` and the user has
   not explicitly requested another branch, stop and resolve the mismatch
   without creating a branch or overwriting unrelated work.
-- When the user requests a commit or push, use the existing `main` branch unless
-  their instructions explicitly specify another branch.
+- After making and validating skill changes, commit and push the intended files
+  on the existing `main` branch by default. Skip either action only when the
+  user explicitly requests a different delivery boundary. Preserve unrelated
+  changes and use another branch only when explicitly instructed.
 
 ## Usage
 Always ask the user where they want the new skill to be created if they haven't already mentioned it.
