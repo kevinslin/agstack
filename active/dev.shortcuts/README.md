@@ -4,6 +4,9 @@ The shortcut set also includes repo maintenance flows such as `sync-branch` for 
 
 Use `trigger:doit` to implement a requested change, verify it, commit the scoped changes, and push the current branch.
 
+Use `trigger:spec` to draft a spec, simplify it into a focused 80/20 solution,
+pause for user course correction, and then run a comprehensive spec review.
+
 `trigger:merge-pr-basic` and `trigger:merge-pr` check for open stacked PRs and
 repository-level automatic branch deletion before merging. They retain any
 remote branch that remains another PR's base and require explicit approval

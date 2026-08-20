@@ -12,7 +12,7 @@ This used to be called `skills` but my claw thought it was a boring name so we'v
 - [specy](active/specy/SKILL.md): Write focused specs and flow docs with a compact ownership, invariant, scope, and implementation-cost checkpoint.
 - [dev.review](active/dev.review/SKILL.md): Review code and specs, simplify proposed implementations to focused 80/20 solutions, and separate requirement breaches from deferred improvements.
 - [sw-loop](active/sw-loop/SKILL.md): Devloop with one-pass spec review, available coding subagents, test-quality cleanup, and separate verification/push gates.
-- [dev.shortcuts](active/dev.shortcuts/SKILL.md): Triggers for workflows like closing and archiving tasks, pushing code, loops, and PRs.
+- [dev.shortcuts](active/dev.shortcuts/SKILL.md): Triggers for focused spec creation and review, closing and archiving tasks, pushing code, loops, and PRs.
 - [ag-learn](active/ag-learn/SKILL.md): Automatically improve skills based on conversation sessions.
 
 ## Drafts
@@ -76,7 +76,7 @@ Example:
 - [dev.llm-session](active/dev.llm-session/SKILL.md): Derive Codex CLI session IDs and resume interactive sessions. Use when asked to resume Codex sessions, find or map session IDs, inspect ~/.codex/history.jsonl or ~/.codex/sessions, or troubleshoot Codex resume behavior.
 - [dev.loop](active/dev.loop/SKILL.md): Drive a development task end-to-end from a user-stated goal through planning, context gathering, execution, local verification, and a separate push/PR/CI stage. Use when the user asks to run a devloop, drive a task to completion, or invoke an individual phase without implicitly running subsequent stages.
 - [dev.review](active/dev.review/SKILL.md): Review code, developer docs, design specs, architecture, and UX; radically simplify specs into narrow 80/20 implementations; classify findings by explicit requirement, existing invariant, scope-expanding product decision, or deferred improvement instead of treating hypothetical mechanisms as blockers.
-- [dev.shortcuts](active/dev.shortcuts/SKILL.md): Resolve explicit `trigger:<name>` workflows, including ready-for-review `trigger:push-pr` creation, stacked-PR-safe merge and branch cleanup, and `trigger:close` task archival.
+- [dev.shortcuts](active/dev.shortcuts/SKILL.md): Resolve explicit `trigger:<name>` workflows, including `trigger:spec` drafting, simplification, user direction, and full review; ready-for-review PR creation; stacked-PR-safe merge and branch cleanup; and task archival.
 - [dev.worktrees](active/dev.worktrees/SKILL.md): Create and inspect Git worktrees, remove already-clean targets conservatively, and transactionally clean one proven-landed worktree and local branch with exact commit identity, dry-run-first execution, resumable journaling, and strict postconditions.
 - [fin](active/fin/SKILL.md): Finalize a completed task through a selected `gh` or `local` landing flow, using a mandatory origin-main gate, stacked-PR branch protection, and a deduplicated heartbeat that resumes deferred cleanup only after live verification of a pending auto-merge.
 - [html2site](active/html2site/SKILL.md): Convert an existing static HTML application into a private Codex Site, optionally adding a persistent authenticated API and local programmatic writes when explicitly requested.

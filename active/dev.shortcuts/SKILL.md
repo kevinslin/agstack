@@ -67,6 +67,7 @@ The file under `./references/shortcuts/[shortcut].md` remains the executable sou
 | `rebase-and-fix` | Rebase the current branch onto a provided branch, fix PR conflicts, push, and check CI. |
 | `review` | Create a new worktree for a PR link, run `dev.review`, and add a flow doc for the PR logic. |
 | `review-spec` | Run looped `dev.review` and `spec-simulate` passes against an existing spec. |
+| `spec` | Draft a spec, simplify it, pause for user course correction, then run a full spec review. |
 | `sync-branch-push` | Rebase the current branch onto the remote default branch from `git remote show`, then force-push upstream with lease. |
 | `sync-branch` | Rebase the current branch onto the remote default branch from `git remote show` and resolve conflicts if needed. |
 | `syncmoi` | Reconcile both chezmoi sources, notify Slack on unsafe conflicts, and push both repositories. |
