@@ -67,6 +67,24 @@ use case, or interoperability boundary. Delete or defer speculative flexibility.
 > The scheduler selects one region from the account's allowed regions. Additional
 > placement strategies are outside this proposal.
 
+### Separate the invariant from its enforcement mechanism
+
+State the behavior that must remain true, then choose the smallest mechanism
+the current goal and existing architecture require. A stronger hypothetical
+mechanism is a separate design decision, not the invariant itself. Before adding
+persistence, migrations, workers, or lifecycle states, name their owner,
+operational cost, failure behavior, and the present requirement they satisfy.
+
+**Bad**
+
+> Reliable request processing requires a new durable journal, replay worker,
+> retention policy, and data migration.
+
+**Good**
+
+> An authorized request is processed once. The existing queue provides durable
+> delivery; additional replay and retention mechanisms require a new use case.
+
 ### Clarify before expanding the contract
 
 When a term or flow is unclear, first explain its owner, behavior, boundary, or a
@@ -154,6 +172,24 @@ side is unavailable.
 > The API authenticates the caller and stores the job. The scheduler selects a
 > worker. The worker holds the provider credential and sends the provider
 > request. If no worker is ready, the job remains pending.
+
+### Define the full shape of a meaningful resource
+
+For each resource involved in the current design, identify its authoritative
+owner, scope, stable identity, cardinality, and permitted references. State
+whether references may be shared, how ownership is validated, and which values
+are copied into an immutable snapshot when later mutation matters. Reuse the
+existing model unless changing it directly serves the current goal.
+
+**Bad**
+
+> Jobs reference shared configuration and remember their settings.
+
+**Good**
+
+> Each project owns its configurations. Multiple jobs in that project may
+> reference one configuration; admission copies its current values into the
+> immutable job record.
 
 ### Give each contract one owner and each path one route
 
@@ -327,8 +363,12 @@ style last. Apply the core self-contained finding format after these passes.
 
 - The selected design and the goal it serves are explicit.
 - Every abstraction maps to a current goal, use case, or interoperability seam.
+- Required invariants are separate from optional enforcement mechanisms and
+  their persistence, migration, lifecycle, and operational costs.
 - Each resource, decision, credential, side effect, and execution path has one
   authoritative owner.
+- Resource scope, identity, cardinality, reference sharing, and snapshot
+  behavior are explicit when they affect the contract.
 - Boundaries name what enters, what leaves, and what happens on failure.
 - Defaults, precedence, denial, failure, and deferred scope are stated where
   relevant.

@@ -21,37 +21,44 @@
 1. Review related docs under `$DOCS_ROOT/specs/`, archived specs under `$DOCS_ROOT/specs/.archive/`, and `$DOCS_ROOT/flows/` to align naming and known behavior.
 2. Choose the next feature-spec filename with a monotonic two-digit integer prefix: scan `$DOCS_ROOT/specs/` and `$DOCS_ROOT/specs/.archive/` for filenames matching `[0-9][0-9]-*.md`, choose `max(existing prefix)+1`, and start at `01` when none exist. Do not reuse gaps left by archived, deleted, or renamed specs.
 3. Choose a title slug that stays within the `{NN}-{topic}.md` filename format and includes a qualifier when needed to avoid collisions with sibling specs.
-4. Copy `./references/feature-spec/template.md` to the output location and
+4. Complete a compact pre-drafting checkpoint in working notes: name the
+   requested capabilities and explicit non-goals; each affected resource's
+   owner, scope, identity, cardinality, reference sharing, and snapshot needs;
+   existing invariants versus proposed enforcement mechanisms; persistence,
+   migration, lifecycle, and operational effects; and the current-goal reason
+   for each new mechanism. Resolve material ambiguity before drafting. This is
+   a decision checkpoint, not a required document section or boilerplate.
+5. Copy `./references/feature-spec/template.md` to the output location and
    remove optional sections that the task does not require.
-5. Fill `Problem and Decision`, `Scope`, and `Contract` from current task and
+6. Fill `Problem and Decision`, `Scope`, and `Contract` from current task and
    repository evidence. Record relevant existing behavior, ownership, interfaces,
    non-goals, authorization, and failure behavior once where it affects the
    selected contract.
-6. Before adding a field, type, status, reason, config option, or execution path,
+7. Before adding a field, type, status, reason, config option, or execution path,
    inspect the existing surface and identify the producer, consumer, and
    concrete need. Record only decisions necessary to explain the contract;
    snapshot, decision-table, and minimal-model headings are not required.
-7. Put concrete work, affected files/services, and necessary dependencies under
+8. Put concrete work, affected files/services, and necessary dependencies under
    `Implementation`. Use ordered steps by default; add named phases only for
    independently useful outcomes or material sequencing constraints.
-8. Put observable feature outcomes and their automated or manual proof together
+9. Put observable feature outcomes and their automated or manual proof together
    under `Verification`. Link a separate validation spec only when its larger
    matrix adds information the feature spec cannot represent clearly.
-9. Add `Open Decisions` only for real unresolved choices. Record the owner,
+10. Add `Open Decisions` only for real unresolved choices. Record the owner,
    next action, or task link only when needed to resolve a blocking decision.
-10. Add rollout, recovery, access, observability, or risk detail only when the
+11. Add rollout, recovery, access, observability, or risk detail only when the
     specific change requires it. Place it beside the affected implementation
     step or contract instead of creating empty boilerplate sections.
-11. If the repository uses beads for tracking, follow
+12. If the repository uses beads for tracking, follow
     `./references/feature-spec/beads.md`.
-12. When editing an existing spec, preserve `## Manual Notes` unless the user
+13. When editing an existing spec, preserve `## Manual Notes` unless the user
     explicitly asks to change it.
-13. Keep in-progress specs under `$DOCS_ROOT/specs/`. When the spec is complete,
+14. Keep in-progress specs under `$DOCS_ROOT/specs/`. When the spec is complete,
     identify Markdown links pointing to it, then move it to
     `$DOCS_ROOT/specs/.archive/` without renaming it. Rebase relative links
     inside the archived spec, update its inbound references, and verify every
     affected local link resolves.
-14. Resolve the current agent session id via `dev.llm-session` and include it,
+15. Resolve the current agent session id via `dev.llm-session` and include it,
     the current Git SHA, and a `YYYY-MM-DD HH:MM` timestamp in `## Changelog`.
 
 ## Authoring Requirements

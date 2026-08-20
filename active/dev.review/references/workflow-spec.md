@@ -137,8 +137,28 @@ small changes, a sentence that names the reused contract is enough.
 
 ## Severity Guidance
 
+Classify each substantive finding before assigning severity:
+
+- **Explicit requirement breach:** contradicts a user-approved capability,
+  stated non-goal, or acceptance criterion.
+- **Existing security or ownership invariant:** weakens a verified current
+  authorization, isolation, credential, resource-ownership, or integrity rule.
+- **Scope-expanding product decision:** introduces a new persistence model,
+  migration, lifecycle, operating responsibility, or resource contract that
+  requires product-owner approval.
+- **Deferred improvement:** strengthens behavior beyond the approved goal or
+  addresses a plausible future requirement without a demonstrated present
+  breach.
+
+Ground the first two categories in the actual requirement or source-backed
+invariant. Present scope expansion as a decision for the user, and distinguish
+optional improvements from required fixes. Do not turn the strongest imagined
+enforcement mechanism into a blocker when the existing invariant and approved
+scope do not require it.
+
 - `blocker`: the spec cannot be implemented safely because core behavior,
-  source truth, ownership, or execution contracts are missing or wrong.
+  source truth, ownership, or execution contracts violate an explicit
+  requirement or existing security/ownership invariant.
 - `major`: important edge cases, failure handling, validation, rollout,
   compatibility, or data/API contracts are incomplete.
 - `minor`: the spec is implementable but includes avoidable ambiguity,
@@ -146,8 +166,8 @@ small changes, a sentence that names the reused contract is enough.
 - `nit`: local wording or structure issues with no meaningful execution risk.
 
 Treat missing execution contracts, validation plans, rollback paths, or
-source-backed evidence as major findings unless the scope is explicitly
-exploratory.
+source-backed evidence as major findings when the approved scope, real blast
+radius, or an existing invariant requires them.
 
 Treat an unnecessary abstraction, validation layer, compatibility path, or
 operational component as `major` when it creates a durable contract, new owner,
@@ -158,8 +178,8 @@ Otherwise report it as `minor`; do not demote needless complexity to a nit.
 
 - Lead with findings ordered by severity.
 - For each finding, cite the exact section or line when possible, name the
-  failed rubric criterion, explain the implementation risk, and give the
-  smallest concrete fix.
+  finding category and failed rubric criterion, explain the implementation
+  risk, and give the smallest concrete fix or decision needed.
 - Include a short "Ready State" verdict after findings: ready, ready after
   minor edits, or not ready.
 - Include a short "Simplification Reviewed" note naming what can be deleted,

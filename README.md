@@ -9,8 +9,8 @@ This used to be called `skills` but my claw thought it was a boring name so we'v
 ## Top Skills
 
 - [cal](active/cal/SKILL.md): Preview mutual availability and verified room options, confirm the selected time, and create the Google Calendar invite.
-- [specy](active/specy/SKILL.md): Write flow docs and other useful doc types.
-- [dev.review](active/dev.review/SKILL.md): Code review, slop review, spec review, and other review passes.
+- [specy](active/specy/SKILL.md): Write focused specs and flow docs with a compact ownership, invariant, scope, and implementation-cost checkpoint.
+- [dev.review](active/dev.review/SKILL.md): Review code and specs while separating requirement breaches, existing invariants, product decisions, and deferred improvements.
 - [sw-loop](active/sw-loop/SKILL.md): Devloop with one-pass spec review, available coding subagents, test-quality cleanup, and separate verification/push gates.
 - [dev.shortcuts](active/dev.shortcuts/SKILL.md): Triggers for workflows like closing and archiving tasks, pushing code, loops, and PRs.
 - [ag-learn](active/ag-learn/SKILL.md): Automatically improve skills based on conversation sessions.
@@ -75,7 +75,7 @@ Example:
 - [dev.do](active/dev.do/SKILL.md): End-to-end development task intake and execution. Use when the user gives a dev task (feature/bug/refactor) as a file path, pasted description, or git issue and wants it completed; this skill gathers context, asks clarifying questions if needed, then runs the dev.loop workflow to deliver the change.
 - [dev.llm-session](active/dev.llm-session/SKILL.md): Derive Codex CLI session IDs and resume interactive sessions. Use when asked to resume Codex sessions, find or map session IDs, inspect ~/.codex/history.jsonl or ~/.codex/sessions, or troubleshoot Codex resume behavior.
 - [dev.loop](active/dev.loop/SKILL.md): Drive a development task end-to-end from a user-stated goal through planning, context gathering, execution, local verification, and a separate push/PR/CI stage. Use when the user asks to run a devloop, drive a task to completion, or invoke an individual phase without implicitly running subsequent stages.
-- [dev.review](active/dev.review/SKILL.md): Multi-type review skill for code, developer docs, design docs/specs, architecture, UX, and other reviews, including contract and complexity checks for implementation specs. Use when the user asks for a review or critique (code review, docs review, design doc review, spec review, PR review).
+- [dev.review](active/dev.review/SKILL.md): Review code, developer docs, design specs, architecture, and UX; classify spec findings by explicit requirement, existing security or ownership invariant, scope-expanding product decision, or deferred improvement instead of treating hypothetical mechanisms as blockers.
 - [dev.shortcuts](active/dev.shortcuts/SKILL.md): Resolve explicit `trigger:<name>` workflows, including ready-for-review `trigger:push-pr` creation, stacked-PR-safe merge and branch cleanup, and `trigger:close` task archival.
 - [dev.worktrees](active/dev.worktrees/SKILL.md): Create and inspect Git worktrees, remove already-clean targets conservatively, and transactionally clean one proven-landed worktree and local branch with exact commit identity, dry-run-first execution, resumable journaling, and strict postconditions.
 - [fin](active/fin/SKILL.md): Finalize a completed task through a selected `gh` or `local` landing flow, using a mandatory origin-main gate, stacked-PR branch protection, and a deduplicated heartbeat that resumes deferred cleanup only after live verification of a pending auto-merge.
@@ -86,12 +86,12 @@ Example:
 ### Docs
 
 - [docs-audit-v2](active/docs-audit-v2/SKILL.md): Audit documentation rewrites with JSON-first block and line mappings, validation, Markdown reports, and a self-contained HTML viewer.
-- [docy](active/docy/SKILL.md): Manage reusable reference docs for agent work through a small CLI. Injection and durable AGENTS.md installation discover Markdown files under the bundled `references/` tree; aliases remain explicit. Use it for focused guidance including `core/main`, `ref/developer-docs`, affirmative specification writing with `ref/spec`, and the `ref/openclaw-docs` product overlay.
+- [docy](active/docy/SKILL.md): Manage reusable agent reference docs through a small CLI, explicit aliases, and durable AGENTS.md installation. Its `ref/spec` guidance covers affirmative design writing, invariants versus mechanisms, resource ownership and sharing, immutable snapshots, and justified persistence or migration costs.
 - [explain-diff](active/explain-diff/SKILL.md): Create a self-contained interactive HTML explanation of a code diff, branch, commit, or pull request, including background, intuition, a behavior-oriented walkthrough, and a five-question quiz.
 - [find-links](active/find-links/SKILL.md): This skill should be used when the user wants to fill in TODO links, placeholder links, or missing links in markdown files. Invoke when the user mentions "fill links", "TODO links", "find links", or asks to add appropriate links to concepts in a document.
 - [proofread](active/proofread/SKILL.md): Review publish-ready writing for meaningful clarity or agreement issues, useful terminology corrections, internal contradictions, and broken links while preserving informal style, capitalization, factual claims, numerical examples, and intentional hyperbole.
 - [spec-template](active/spec-template/SKILL.md): Turn an existing concrete spec into a reusable generic spec template, extracting invariant contracts, replacing implementation-specific details with slots, and preserving the source spec or PR as a worked example.
-- [specy](active/specy/SKILL.md): Create structured research documentation, concise source-backed flow docs, and focused feature specs with one implementation contract, concrete work, outcome-to-proof verification, and link-safe archival; add phases, pseudocode, and risk detail only when the change requires them. Route durable artifacts through `$mem` and use `$docy` `ref/spec` for specification writing.
+- [specy](active/specy/SKILL.md): Create research documentation, source-backed flow docs, and focused feature specs with a mandatory compact scope, ownership, invariant, and operational-cost checkpoint; preserve concrete contracts, outcome-to-proof verification, and link-safe archival without adding boilerplate sections. Route durable artifacts through `$mem` and use `$docy` `ref/spec` when writing specifications.
 
 ### Utils
 
