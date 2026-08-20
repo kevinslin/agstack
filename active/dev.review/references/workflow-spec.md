@@ -3,9 +3,9 @@
 Use this workflow to review a product, implementation, or test spec for
 implementation readiness. The review should prove whether another agent can
 execute the spec without rediscovering major contracts or making unsafe
-assumptions. Treat simplification as a primary review outcome: a correct spec is
-still not ready when it preserves removable assumptions, checks, states, or
-abstractions that materially enlarge the implementation.
+assumptions. Focus on correctness, approved scope, ownership, existing
+invariants, execution, and proof. Dedicated design simplification belongs to
+the separate `simplify-spec` workflow.
 
 ## Core Rubric
 
@@ -17,19 +17,16 @@ Review against these criteria:
   modes, ownership, rollout, and validation implied by the goal.
 - Executable: names concrete files, APIs, commands, artifacts, state changes,
   and acceptance checks.
-- Simple: removes assumptions before designing around them, reuses existing
-  seams, and includes only checks, states, abstractions, and rollout machinery
-  required by a concrete risk or consumer.
 - Verifiable: includes focused automated checks and, when needed, live or
   integration proof that exercises the real behavior.
 
 Correctness is a hard gate. A spec that is detailed but based on stale source,
 wrong contracts, or invented behavior is not ready.
 
-Simplicity is also a readiness gate. Do not reward detail by default. Extra
-validation, indirection, compatibility layers, flags, phases, or observability
-are liabilities unless the spec names the real failure, boundary, or consumer
-that requires them.
+Evaluate completeness only within the approved scope. Do not introduce new
+product requirements, exhaustive edge-case coverage, compatibility paths, or
+operational machinery unless a stated requirement or existing invariant needs
+them.
 
 ## Steps
 
@@ -41,22 +38,20 @@ that requires them.
      available.
    - Flag hidden scope, vague outcomes, missing success criteria, and unverified
      claims presented as facts.
-   - List the assumptions that make the proposed design necessary. For each,
-     ask whether it is a verified constraint, a temporary choice, or removable.
-     Identify any assumption whose removal collapses multiple components or
-     phases.
+   - Distinguish verified constraints from unsupported assumptions that would
+     change the approved behavior or ownership boundary.
 2. Check target behavior.
    - Require clear before/after behavior, state transitions, permissions,
      prompts, error handling, edge cases, and user-visible output.
    - For migrations or repair flows, require source state, target state,
      idempotency, skipped/ineligible cases, and fail-closed behavior.
-   - Before adding behavior for every variant, ask whether the goal can exclude,
-     normalize, or delegate a variant and thereby eliminate the branch.
+   - Require variants and edge cases only when they affect the approved goal or
+     protect an existing correctness, security, or ownership invariant.
 3. Check data, API, and ownership contracts.
    - Review request/response shapes, persisted data, config, schemas, enums,
      reason codes, compatibility, observability, and ownership boundaries.
-   - Identify duplicated facts, parallel status fields, semantic sentinels, and
-     new abstractions that do not have a single canonical owner.
+   - Flag conflicting sources of truth and contracts without a clear canonical
+     owner when they create a concrete correctness or ownership risk.
    - If the spec changes data/API/CLI/config/migration output, require an
      existing-contract snapshot or equivalent source-backed explanation before
      approving new output fields or types.
@@ -69,10 +64,6 @@ that requires them.
      runtime, what it reads/writes, and how failure is surfaced.
    - Call out plans that require broad rewrites, unrelated refactors, or
      ownership changes not justified by the goal.
-   - Challenge every new helper, service, adapter, registry, state machine,
-     cache, queue, and framework layer. Require a named source of variation,
-     repeated behavior, or ownership boundary that cannot be handled directly
-     by an existing seam.
 5. Check validation and rollout.
    - Require focused unit/integration tests at the behavior boundary, plus
      broader changed-surface checks when shared contracts change.
@@ -80,54 +71,22 @@ that requires them.
      behavior, not only internal helper shapes.
    - Review feature flags, backfills, monitoring, rollback, data repair,
      migration safety, and proof artifacts when relevant.
-   - Require each proposed validation or runtime check to name the invalid state,
-     trust boundary, or observed failure it protects against. Remove checks that
-     duplicate type/schema guarantees, repeat an upstream invariant, defend an
-     impossible state, or only test implementation plumbing.
-   - Scale rollout machinery to blast radius and reversibility. Do not require a
-     flag, backfill, compatibility path, dashboard, or rollback system for a
-     local and safely reversible change without a concrete reason.
-6. Look for simplification.
-   - First try deleting a requirement, assumption, variant, state, validation,
-     or component. Then try reuse or direct control flow. Add a new abstraction
-     only after those options fail.
-   - Ask the radical-simplification question explicitly: "Which assumption, if
-     removed or narrowed, would eliminate the most design?" Verify whether the
-     product goal actually requires that assumption.
-   - Propose narrower milestones, smaller contracts, deletion of unnecessary
-     concepts, and use of existing seams before adding framework code.
-   - Prefer one canonical machine-readable field for a fact; derive display,
-     reports, and warnings at the boundary that emits them.
-   - For specs that add fields, types, statuses, reasons, or config, require a
-     consumer for each new durable concept. Treat a new model with no named
-     consumer, or a model that stores derived status already available from raw
-     facts, as a major finding unless the spec explains why it is needed.
+   - Require additional validation, rollout, or compatibility mechanisms only
+     when the approved scope, actual blast radius, or an existing invariant
+     makes them necessary.
 
-## Simplification and Contract Gate
+## Contract and Ownership Gate
 
 Apply this gate when the spec proposes new data shape, API output, CLI output,
 config, migration output, persistence, enums, statuses, reasons, or state
 machines.
 
-- Assumption removal: which design-driving assumptions are verified, and which
-  can be removed, narrowed, or deferred?
-- Validation budget: does every new check protect a reachable bad state or trust
-  boundary not already enforced elsewhere?
-- Abstraction budget: does every new abstraction have multiple real consumers,
-  meaningful variation, or a necessary ownership boundary? If not, inline or
-  reuse an existing seam.
-- Operational surface: can flags, jobs, caches, migrations, dashboards,
-  compatibility paths, or rollout phases be deleted without weakening the
-  stated acceptance criteria?
 - Existing contract: does the spec name the current owner/source of truth,
   shape, and consumers before proposing changes?
 - Decision table: if multiple facts drive behavior, does the spec map input
-  facts to target outputs without inventing intermediate states?
-- Canonical field: is the machine-readable outcome represented in one place?
-- Raw facts vs derived values: does the spec avoid storing derived status unless
-  a named consumer needs it?
-- Success state: is success represented once, rather than as both a boolean and
-  a separate status?
+  facts to the specified target outputs?
+- Canonical ownership: does every changed contract have an identified owner and
+  consistent source of truth?
 - Investigation handoff: if the spec came from an investigation, did it translate
   evidence into an implementation contract instead of copying diagnostic
   vocabulary into the design?
@@ -159,20 +118,16 @@ scope do not require it.
 - `blocker`: the spec cannot be implemented safely because core behavior,
   source truth, ownership, or execution contracts violate an explicit
   requirement or existing security/ownership invariant.
-- `major`: important edge cases, failure handling, validation, rollout,
-  compatibility, or data/API contracts are incomplete.
+- `major`: edge cases, failure handling, validation, rollout, compatibility,
+  or data/API contracts required by the approved scope or an existing invariant
+  are incomplete.
 - `minor`: the spec is implementable but includes avoidable ambiguity,
-  unnecessary complexity, weak proof mapping, or maintainability risk.
+  weak proof mapping, or maintainability risk.
 - `nit`: local wording or structure issues with no meaningful execution risk.
 
 Treat missing execution contracts, validation plans, rollback paths, or
 source-backed evidence as major findings when the approved scope, real blast
 radius, or an existing invariant requires them.
-
-Treat an unnecessary abstraction, validation layer, compatibility path, or
-operational component as `major` when it creates a durable contract, new owner,
-runtime failure mode, migration burden, or significant implementation work.
-Otherwise report it as `minor`; do not demote needless complexity to a nit.
 
 ## Output
 
@@ -182,10 +137,8 @@ Otherwise report it as `minor`; do not demote needless complexity to a nit.
   risk, and give the smallest concrete fix or decision needed.
 - Include a short "Ready State" verdict after findings: ready, ready after
   minor edits, or not ready.
-- Include a short "Simplification Reviewed" note naming what can be deleted,
-  combined, narrowed, or reused, plus the assumption with the highest
-  simplification leverage. If nothing can be simplified, say which alternatives
-  were tested and why the remaining complexity is necessary.
+- Include a short "Scope and Contracts Reviewed" note naming the approved
+  behavior, ownership boundaries, and existing invariants checked.
 - Include a short "Verification Reviewed" note naming the code, docs, commands,
   tests, or runtime evidence checked and what remains unverified.
 - If there are no findings, say so clearly and still name any residual proof

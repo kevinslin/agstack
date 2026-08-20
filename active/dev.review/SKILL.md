@@ -14,6 +14,7 @@ dependencies:
 1. Identify the review type from the user's request and artifact.
    - Examples: code, docs, design-doc, spec, simplify-spec, architecture, ux, skills, integrator, deslop, dead-code.
    - Use `simplify-spec` when the user asks to radically simplify a spec or its proposed implementation, narrow the solution, or find an 80/20 approach.
+   - Use `spec` for correctness, approved-scope completeness, ownership, safety, and implementation readiness; leave design minimization to `simplify-spec`.
    - If ambiguous, ask one clarifying question before reviewing.
 2. Load the matching workflow from `./references/workflow-[review-type].md`.
    - If the workflow file does not exist, ask the user for the prompt to add and pause the review.
@@ -33,6 +34,7 @@ dependencies:
      edit task authorizes the shortcut's scoped fixer passes. Follow the full
      reviewer/classifier/fixer loop for those requests.
    - When this skill is already running inside a `trigger:loop` reviewer pass, apply the workflow directly to the material and produce the review instead of nesting another loop.
+   - When this skill is already running as a read-only reviewer subagent for `trigger:spec`, apply the selected workflow directly; do not redispatch the parent shortcut or start a nested review/fixer loop.
 4. For PR or CI-backed review loops, keep going until the remote exit condition is met.
    - Completion is remote-state based, not patch based: current head SHA is known, relevant CI is green, unresolved non-outdated review threads are zero, and actionable comments are addressed or explicitly routed to the user.
    - Before saying the loop is finished, run a final PR gate query and report head SHA, failing/pending check count, unresolved thread count, and actionable comment count.
@@ -43,7 +45,7 @@ dependencies:
 - Lead with findings ordered by severity (blocker/major/minor) or by impact if severity is unclear.
 - Prefer concrete, actionable feedback over generic commentary.
 - Call out assumptions, risks, and unclear ownership/abstractions.
-- Propose simplifications when possible.
+- Propose simplifications when the selected workflow owns simplification.
 - Keep the review concise; avoid restating large sections of the input.
 - If blocker or major findings remain in a review-only request, report them as
   unresolved and state that no fixer pass ran because edits were not authorized.
