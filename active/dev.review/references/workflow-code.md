@@ -27,6 +27,8 @@ Use this workflow to review code with a bias toward simplicity and correctness.
    - Test application-defined behavior and invariants at the boundary responsible for enforcing them.
    - Do not test framework guarantees, infrastructure inventories, exact tool versions, or incidental implementation details unless the application explicitly owns that requirement.
    - Avoid repeating equivalent cases across test layers; keep comprehensive coverage where it most directly verifies application behavior.
+   - Remove low-value tests added on the branch, especially tests that verify their own monkeypatched behavior.
+   - When possible, elevate them to higher-level tests that verify outcomes and are not coupled to implementation.
    - When a test outcome is not obvious, require a short comment identifying the relevant rule, missing input, invalid value, or security boundary.
 6. Check failure modes and risk.
    - Describe how the code could fail in production through inputs, scale, or partial failure.
