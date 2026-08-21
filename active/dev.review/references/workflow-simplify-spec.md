@@ -16,9 +16,11 @@ coverage, generic extensibility, or the most comprehensive possible design.
 ## Workflow
 
 1. Identify the requested outcome, acceptance criteria, ownership boundaries,
-   existing security or correctness invariants, and explicit non-goals.
+   existing security or correctness invariants, and explicit non-goals. Keep
+   every requested capability; dropping one is not simplification.
 2. Describe the smallest end-to-end implementation that satisfies those
-   constraints using existing code, data, contracts, and control flow.
+   constraints using existing code, data, public dependency contracts, and
+   control flow, with one source of truth and lifecycle-aligned ownership.
 3. Challenge every proposed abstraction, helper, configuration option, public
    API, persistence model, state machine, compatibility path, background job,
    retry policy, migration, rollout phase, and observability mechanism. Remove

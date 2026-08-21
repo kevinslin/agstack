@@ -59,6 +59,10 @@ Run `fin [context] [target]`.
   - A mismatch blocks intermediate, stacked, release, and feature branches. Use the script's retarget-or-create-PR message in the report.
   - If the PR already merged into a non-main branch, the gate still fails: stop before archival or cleanup, report that it did not land in origin's main branch, and do not describe it as fully finalized.
 - Before archiving any spec or attempting to land the change, determine the current branch, whether it is attached to a linked worktree, and where the non-worktree `main` checkout lives.
+- Read repository guidance for ignored-file preservation and verification
+  boundaries even when no `~/.fin.yaml` exists. Treat checked-in product specs
+  as deliverables, not disposable task artifacts, unless their own workflow
+  explicitly requires archival.
 - Check `~/.fin.yaml` for repo-specific finalization instructions before landing or cleanup. If the file exists, parse entries shaped as `workspace: [{path: ..., instructions: ...}]`.
 - If `~/.fin.yaml` exists but cannot be parsed, do not treat the parse failure as "no hooks". Report the parser error separately and inspect the raw file. Continue only when the raw content is clearly non-executable, unambiguous context; if it might contain commands, hooks, destructive instructions, or ambiguous cleanup requirements, stop before spec archival, landing cleanup, or linked-worktree removal and report the malformed config as the blocker.
 - Match `workspace[].path` against the normalized non-worktree checkout root for the branch's repository, not against a transient linked worktree path. Resolve symlinks and trailing slashes before comparing.
@@ -158,8 +162,15 @@ Run `fin [context] [target]`.
 - Before invoking it:
   1. confirm the PR or local change actually landed;
   2. run every matching `~/.fin.yaml` final hook;
-  3. refresh or verify the local base ref and prove it contains the landed commit; and
-  4. record the exact target worktree path, branch or detached state, and expected pre-cleanup HEAD.
+  3. refresh or verify the local base ref and prove it contains the landed commit;
+  4. inventory ignored or untracked files required by repository guidance,
+     including `.env` files and root or nested `node_modules`; preserve them in
+     the retained checkout without exposing secrets, overwriting existing
+     content, or installing dependencies; and
+  5. record the exact target worktree path, branch or detached state, and expected pre-cleanup HEAD.
+- When checking preserved dependency graphs, invoke installed tools directly if
+  package-manager scripts might reconcile workspace state or install packages.
+  Stop before cleanup if required preservation or safe verification fails.
 - Pass the exact full commit OIDs, refreshed local base branch, target identity, and actual merge mode to `$dev.worktrees cleanup-landed`.
 - Require its dry run to report `ready` or `noop`, then rerun the exact command in execute mode.
 - Treat `blocked`, `partial`, a nonzero exit, identity drift, or failed postconditions as a finalization blocker. Preserve its journal and rerun the exact command after resolving the blocker.
@@ -349,6 +360,9 @@ Run `fin [context] [target]`.
 - Any explicit blocker override recorded the locked target, exact waived blockers, authorizing user instruction, override merge method, and intentionally unarchived incomplete specs.
 - In `local` mode, the completed branch has been merged into local `main` or verified as already landed there.
 - The local base was refreshed or verified to contain the landed commit before cleanup, and every matching final hook succeeded.
+- Repository-required ignored files and dependency directories were preserved
+  before cleanup, including when no final hook existed, and verification did
+  not reconcile or install dependencies.
 - When local cleanup was applicable, the deterministic cleanup script's dry run returned `ready` or `noop`; its execution returned `complete` or `noop` with path, registration, and local branch absent plus base-containment proof true. No global worktree prune was run, and unrelated worktrees and branches were left untouched.
 - Any ordinary PR babysit/watch automation found for the merged PR was deleted or reported as blocked; service timeouts used the exact read-only registry fallback and did not silently imply absence. Any `fin` auto-merge heartbeat followed its separate step-4 lifecycle.
 - Requested external notifications, if any, were attempted or explicitly skipped with a separate notification blocker; notification failures were not described as CI failures.

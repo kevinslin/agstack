@@ -16,6 +16,13 @@ Use this workflow to review code with a bias toward simplicity and correctness.
    - Identify unnecessary abstractions, indirection, or branching.
    - Propose concrete simplifications such as deletion, inlining, or narrower scope.
    - Prefer one canonical implementation over parallel operations, alternate representations, or fallback paths.
+   - Keep one authoritative configuration or contract per behavior, and align
+     resource ownership with its actual creator, consumer, and lifecycle.
+   - Keep independent concepts such as consumer identity, implementation
+     selection, and authorization identity in separate contracts.
+   - Inspect public dependency exports before accepting local SDK-shaped types.
+     Prefer existing concrete types or a narrowly named extension; preserve
+     wire-format compatibility and stricter application-owned validation.
    - Give each invariant one authoritative validation boundary; prefer storage constraints for persisted invariants and flag repeated checks in application layers.
 4. Check for dead code and stale surface.
    - Look for unreachable branches, obsolete compatibility shims, abandoned helpers, duplicate implementations, unused parameters, stale feature flags, and outdated docs/tests/config left behind by the change.
@@ -25,6 +32,9 @@ Use this workflow to review code with a bias toward simplicity and correctness.
    - Prefer concrete deletion follow-ups: file/symbol to remove and contracts, generated artifacts, documentation, or tests to update.
 5. Review test value and clarity.
    - Test application-defined behavior and invariants at the boundary responsible for enforcing them.
+   - Preserve every explicitly approved capability and existing security,
+     ownership, isolation, credential, and immutability invariant; removing one
+     is not a valid simplification.
    - Do not test framework guarantees, infrastructure inventories, exact tool versions, or incidental implementation details unless the application explicitly owns that requirement.
    - Avoid repeating equivalent cases across test layers; keep comprehensive coverage where it most directly verifies application behavior.
    - Remove low-value tests added on the branch, especially tests that verify their own monkeypatched behavior.

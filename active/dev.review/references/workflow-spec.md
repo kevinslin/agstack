@@ -33,6 +33,9 @@ them.
 1. Establish evidence and scope.
    - Identify the stated goal, non-goals, target users/operators, and affected
      surfaces.
+   - Treat explicit decisions in the task, parent handoff, or approved spec as
+     settled. Record conflicts with older architecture as narrow documentation
+     deltas; do not reopen the decision or edit unrelated canonical sources.
    - Verify source-backed claims against the current implementation, docs,
      schemas, generated types, command output, tests, or upstream contracts when
      available.
@@ -52,11 +55,15 @@ them.
      reason codes, compatibility, observability, and ownership boundaries.
    - Flag conflicting sources of truth and contracts without a clear canonical
      owner when they create a concrete correctness or ownership risk.
+   - Align resource ownership with the component that creates, configures,
+     deploys, and destroys it; keep consumer identity, implementation
+     selection, and authorization semantics independent.
    - If the spec changes data/API/CLI/config/migration output, require an
      existing-contract snapshot or equivalent source-backed explanation before
      approving new output fields or types.
    - For dependency-backed behavior, require the spec to name the dependency
-     contract being relied on instead of guessing defaults or errors.
+     contract being relied on instead of guessing defaults, errors, or types
+     already exported by the dependency.
 4. Check execution plan.
    - Confirm the implementation touchpoints are concrete and ordered.
    - For every new command, script, trigger, cache, background job, or generated

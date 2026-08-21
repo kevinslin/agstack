@@ -28,10 +28,14 @@ changes.
 
 1. Restate the goal, required deliverable, and completion condition.
 2. Confirm whether the user wants full execution or only planning/review.
-3. Stop after the spec-and-review phase when either of these is true:
+3. Treat explicit decisions in the current task, parent handoff, or approved spec
+   as settled. If older architecture disagrees, record the narrow approved delta
+   and update only authorized repository-owned material; do not reopen the
+   decision or change unrelated canonical sources.
+4. Stop after the spec-and-review phase when either of these is true:
    - ambiguity remains that affects implementation shape
    - the user asked to review the plan before coding
-4. Prefer `$dev.loop` alone for simple single-threaded work. Use this skill only
+5. Prefer `$dev.loop` alone for simple single-threaded work. Use this skill only
    when multiple agents materially help.
 
 ## Checklist Gate
@@ -87,6 +91,13 @@ changes.
 ### 2. Plan and Gate
 
 - Use `$specy` to create a feature spec first unless one already exists. If the spec is durable project memory, route the artifact root through `$mem` before creating or updating the spec folder.
+- Preserve every approved outcome while choosing the smallest end-to-end design:
+  one source of truth, actual lifecycle ownership, existing contracts and SDK
+  types, and distinct discriminators for distinct concepts. Defer speculative
+  resources, drivers, compatibility paths, and coordination mechanisms.
+- Keep source-backed security, isolation, authorization, and immutable-state
+  invariants intact. Simplification removes unnecessary mechanisms, not approved
+  capabilities or required protections.
 - Run one `$dev.review` pass against the spec and incorporate actionable
   recommendations. Do not loop on the spec.
 - Stop and return the spec to the user when ambiguity remains or the user asked
