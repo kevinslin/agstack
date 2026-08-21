@@ -31,6 +31,8 @@ Use this workflow to review code with a bias toward simplicity and correctness.
    - When compatibility is not required, remove superseded APIs, helpers, formats, fixtures, and error cases instead of introducing bridges or dual behavior.
    - Prefer concrete deletion follow-ups: file/symbol to remove and contracts, generated artifacts, documentation, or tests to update.
 5. Review test value and clarity.
+   - Complete the mandatory Test Audit checklist below for every added or
+     modified test before finishing the review.
    - Test application-defined behavior and invariants at the boundary responsible for enforcing them.
    - Preserve every explicitly approved capability and existing security,
      ownership, isolation, credential, and immutability invariant; removing one
@@ -54,6 +56,36 @@ Use this workflow to review code with a bias toward simplicity and correctness.
    - Inspect current checks, actionable comments/reviews, and unresolved non-outdated review threads.
    - Do not report the loop as finished while required checks are failed/pending or review items remain.
    - In the handoff, include head SHA, failing/pending check count, unresolved thread count, and any blocker that still needs user action.
+
+## Mandatory Test Audit
+
+Include a `Test Audit` section in every code-review response. Copy this
+checklist and replace `[ ]` with `[x]` only after inspecting concrete evidence;
+cite the relevant test or production file and line, command, or observed
+outcome beside each checked item.
+
+- [ ] Inspected every added or modified test and identified its production
+  behavior and observable outcome.
+- [ ] Verified the exercised route, request, ownership, lifecycle state, and
+  response exist in the actual application.
+- [ ] Identified each mock, monkeypatch, fixture, or adapter and confirmed
+  assertions exercise product behavior rather than behavior introduced by the
+  substitute.
+- [ ] Verified security, authorization, persistence, or lifecycle assertions
+  at the real boundary responsible for enforcing them.
+- [ ] Removed or flagged duplicate coverage, implementation-coupled checks,
+  and tests that merely validate their own setup.
+- [ ] Distinguished real infrastructure or runtime execution from fixtures,
+  rendering-only checks, skipped cases, and unavailable dependencies.
+- [ ] Confirmed non-obvious integration setup and assertions explain the
+  business rule or security boundary being verified.
+
+If any item cannot be verified, leave it unchecked, explain the evidence gap,
+and report the affected test by file and line. Treat a fabricated production
+path or self-validating mock as a major finding. Do not approve or describe the
+review as complete while such a finding remains. If the change contains no
+added or modified tests, write `Test Audit: no added or modified tests` instead
+of marking uninspected checklist items complete.
 
 ## Severity Guidance
 

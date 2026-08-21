@@ -47,6 +47,9 @@ dependencies:
 - Call out assumptions, risks, and unclear ownership/abstractions.
 - Propose simplifications when the selected workflow owns simplification.
 - Keep the review concise; avoid restating large sections of the input.
+- For code reviews, include the completed `Test Audit` checklist required by
+  `./references/workflow-code.md`; never check an item without inspected
+  evidence.
 - If blocker or major findings remain in a review-only request, report them as
   unresolved and state that no fixer pass ran because edits were not authorized.
 
