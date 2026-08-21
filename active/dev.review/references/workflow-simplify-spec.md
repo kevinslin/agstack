@@ -13,6 +13,22 @@ achieving the requested outcome?**
 Do not optimize for hypothetical future requirements, exhaustive edge-case
 coverage, generic extensibility, or the most comprehensive possible design.
 
+## Authorization Checklist
+
+Complete this checklist before editing a specification or starting a fixer pass:
+
+- [ ] Determine whether the user explicitly authorized changes to the artifact.
+      Treat `$dev.review simplify spec` and other review requests as review-only.
+- [ ] Present the proposed simplifications and their relevant tradeoffs first.
+- [ ] Ask whether to apply those changes and wait for the user's explicit
+      approval, unless the current request already explicitly says to edit,
+      rewrite, update, or apply the changes.
+- [ ] Confirm the approved artifact and scope before making any changes.
+- [ ] Keep automatic `trigger:loop` routing read-only until approval; it never
+      authorizes edits or a fixer pass by itself.
+
+If authorization is missing or unclear, stop after the review and ask the user.
+
 ## Workflow
 
 1. Identify the requested outcome, acceptance criteria, ownership boundaries,
