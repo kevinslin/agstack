@@ -1,6 +1,6 @@
 ---
 name: ag-learn
-description: Improve skills from observed agent friction in sessions, PRs, or audits.
+description: Improve skills from agent friction or derive steering principles from user corrections.
 dependencies:
 - ag-ledger
 - dev.llm-session
@@ -52,6 +52,7 @@ Use this skill to turn agent mistakes, repeated friction, or useful workflow dis
 ## Modes
 
 - Default/current session: use the Core Workflow, including the active rollout scan in `./references/session-forensics.md`.
+- `steering`: read `./references/steering-mode.md`; inventory user directives and corrections across the current conversation, group recurring behavioral patterns, and derive reusable steering principles.
 - `review [time interval] [path]`: read `./references/review-mode.md`.
 - `code`: read `./references/code-mode.md`.
 - Evidence-based skill optimization: use the Core Workflow to inspect evidence, rank friction, and select improvements; route canonical edits, validation, packaging, and sync through `$sc`.

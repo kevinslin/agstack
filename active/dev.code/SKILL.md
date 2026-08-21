@@ -27,8 +27,12 @@ Use this skill for any coding task including:
 Before making changes:
 - Read relevant existing code to understand current implementation
 - Identify the scope of changes needed
+- Ground requirements and invariants in the user's latest explicit decisions,
+  current authoritative contracts, and actual enforcement boundaries
 - Consider edge cases and potential side effects
 - Check for existing patterns and conventions in the codebase
+- Choose the smallest complete implementation; do not invent requirements,
+  compatibility layers, configuration knobs, or speculative abstractions
 
 ### 2. Plan the Implementation
 
@@ -37,6 +41,8 @@ For non-trivial tasks:
 - Identify files that need to be modified
 - Consider the order of operations (e.g., tests before implementation, or vice versa)
 - Plan for both happy path and error handling
+- Identify every test or end-to-end outcome the user explicitly requested and
+  the real runtime, credentials, or infrastructure needed to verify it
 - Identify new components that need user-facing documentation and temporary
   implementation paths that need an explicit removal condition
 
@@ -50,6 +56,9 @@ Follow these principles:
 - Choose descriptive variable and function names
 - Keep functions focused and single-purpose
 - Add comments for complex logic, but prefer self-documenting code
+- Reuse existing architecture and one canonical source of truth; remove
+  unnecessary helpers, state machinery, duplicate configuration, and defenses
+  not required by a real current contract
 
 **Documentation and Deferred Work:**
 - When introducing a component, load `$docy` guidance and add or update its
@@ -57,9 +66,13 @@ Follow these principles:
   supported boundaries, verification, and troubleshooting.
 - Update relevant README links, navigation, and adjacent documents that would
   otherwise describe outdated behavior.
+- Keep active specifications and user-facing documentation synchronized with
+  implemented behavior, approved limitations, and remaining verification gaps.
 - Mark temporary placeholders, compatibility drains, feature filters, or
   deferred behavior with a nearby concise `TODO` naming the missing capability,
   responsible milestone or owner, and replacement or removal condition.
+- Explicitly mark temporary authentication, credential, transport, or network
+  exceptions beside their implementation and explain their replacement path.
 - Keep permanent security boundaries and intentional architecture free of
   misleading temporary markers.
 
@@ -100,9 +113,21 @@ When changing program behavior:
 - Ensure existing tests still pass
 - Add unit tests sparingly - only for complex logic that needs isolation
 - Test error handling and boundary conditions
-- For TypeScript/JavaScript, use Jest
-- **For deterministic output, add snapshot tests** - snapshots provide excellent regression protection
-- When making changes, update snapshots if test output changes (`npm test -- -u`)
+- Use the repository's existing test runner and conventions; do not introduce
+  Jest, snapshots, dependencies, or snapshot updates unless the repository and
+  requested behavior actually require them
+- Exercise supported routes, realistic ownership and persisted state, real
+  authorization, and observable outcomes at their authoritative boundary
+- Reject tests that assert behavior invented by their own mocks, monkeypatches,
+  fixtures, adapters, nonexistent endpoints, or impossible application states
+- Add concise comments before non-obvious integration setup and assertions to
+  explain the scenario and the business or security invariant being verified
+- Distinguish real runtime or infrastructure execution from rendering-only
+  checks, substitutes, and skipped cases; report unavailable prerequisites
+  honestly instead of presenting a substitute as equivalent proof
+- Run every test the user explicitly requested. If any requested test fails,
+  skips, or cannot run, report that exact acceptance criterion as unverified
+  and do not claim the requested outcome is complete
 
 Test-driven development approach:
 1. Write failing integration test first (recommended)
@@ -119,6 +144,8 @@ Before marking a task complete:
 - Check for introduced bugs or regressions
 - Verify security considerations are addressed
 - Ensure tests pass
+- Confirm each user-requested test actually ran and passed at the requested
+  boundary; name any remaining infrastructure or acceptance-proof blocker
 - Verify new component documentation, its links and examples, and explanations
   for every intentionally temporary implementation path
 - Look for opportunities to simplify
@@ -170,7 +197,7 @@ When working in different languages, adapt to their idioms and best practices:
 - Prefer async/await over raw promises
 - Handle promise rejections
 - Use TypeScript types effectively
-- Use Jest for testing
+- Use the repository's existing test framework and scripts
 - Write integration tests that run the actual CLI/application process
 
 **Python:**

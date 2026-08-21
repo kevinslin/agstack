@@ -43,6 +43,12 @@ NEVER directly make updates to runtime-installed skill mirrors. Edit the source 
   on the existing `main` branch by default. Skip either action only when the
   user explicitly requests a different delivery boundary. Preserve unrelated
   changes and use another branch only when explicitly instructed.
+- After every successful push, resolve the pushed commit SHA and the
+  repository's canonical web URL, accounting for renamed or redirected
+  repositories. Include a direct clickable commit link in the final response,
+  for example `[commit abc1234](https://github.com/owner/repo/commit/<full-sha>)`.
+  Never report a fabricated link or claim a commit was published when its push
+  failed.
 
 ## Usage
 Always ask the user where they want the new skill to be created if they haven't already mentioned it.

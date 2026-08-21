@@ -32,10 +32,20 @@ Whenever practical - use one or more subagents to run any given phase to preserv
 - Use $specy to create a feature spec 
 - Bias toward answering plan questions yourself; only ask the user when blocked or when user tells you to check with them.
 - Ensure the plan includes explicit tests (prefer integration tests).
+- List every test or observable outcome the user explicitly requested, the real
+  execution boundary it must exercise, and its required infrastructure.
+- Honor explicit autonomy and workflow preferences. Ask substantive product
+  questions when needed, but do not introduce approval checkpoints for actions
+  already authorized; never treat autonomy as permission to exceed task scope.
 - Capture the plan prefix from the plan filename: `{YYYY-MM-DD}-{title-in-kebab-case}`.
 
 ### 2. Gather Context
 - Given the spec/plan, identify remaining ambiguities, gaps, and unresolved assumptions.
+- Preflight infrastructure needed for explicitly requested integration proof
+  before declaring the task executable. Identify unavailable clusters, runtime
+  images, credentials, services, or host capabilities early.
+- Record an acceptance-proof matrix mapping each requested outcome to its real
+  test command, production boundary, prerequisites, and current status.
 - Explicitly answer:
   - What ambiguities or gaps are still left?
   - Are there missing flow docs that, once created, would resolve those ambiguities?
@@ -70,6 +80,13 @@ Whenever practical - use one or more subagents to run any given phase to preserv
 ### 5. Verify
 - Run the tests specified in the plan and ensure they pass.
 - Check features against validation plan and ensure existing tests pass
+- Run every test the user explicitly requested and record its actual outcome.
+  A skipped, failed, unavailable, or substitute test does not satisfy that
+  acceptance criterion, even when the remaining suite is green.
+- Confirm proof exercises the requested real boundary: rendered manifests are
+  not a deployment, fixture processes are not production runtimes, and local
+  execution is not a live cluster. Report the exact blocker when proof cannot
+  be obtained; do not describe the requested verification as complete.
 - If there are unstaged changes relevant to your current work, create a scoped local commit. Do not invoke `trigger:commit-code` here because it updates an existing PR after committing.
 - Do not push, create or update a PR, or run post-push CI or review during Verify.
 
@@ -95,6 +112,9 @@ Whenever practical - use one or more subagents to run any given phase to preserv
 - When Push creates a PR, it should be a ready PR by default. Draft PRs require explicit user instruction.
 - A dev.loop run that ends without a pushed branch and PR should be treated as incomplete unless the user explicitly said not to push.
 - A final answer for a code-changing dev.loop run must include the PR URL, or explicitly state that the run is incomplete because push/PR creation failed. Never end a dev.loop run with only local branch or commit status.
+- A passing aggregate suite never overrides an explicitly requested test that
+  did not run or pass; name every outstanding acceptance-proof gap in the
+  final handoff.
 
 ## Phase Overrides
 Users can substitute any phase in the dev loop by mentioning they would like to override a particular phase with another set of instrctions. 
