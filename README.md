@@ -13,7 +13,7 @@ This used to be called `skills` but my claw thought it was a boring name so we'v
 - [dev.review](active/dev.review/SKILL.md): Review code and specs for verified invariants, canonical ownership, real outcome-focused tests, explicitly requested acceptance proof, and simplifications that preserve every approved capability.
 - [sw-loop](active/sw-loop/SKILL.md): Deliver settled user-approved designs with one-pass spec review, minimal implementation, available coding subagents, and separate verification/push gates.
 - [dev.shortcuts](active/dev.shortcuts/SKILL.md): Triggers for focused spec creation and review, closing and archiving tasks, pushing code, loops, and PRs.
-- [ag-learn](active/ag-learn/SKILL.md): Automatically improve skills based on conversation sessions.
+- [ag-learn](active/ag-learn/SKILL.md): Improve skills from conversation evidence and derive steering principles from repeated user corrections.
 
 ## Drafts
 
@@ -44,7 +44,7 @@ Example:
 - [agcleanup](active/agcleanup/SKILL.md): Keep Codex lean and responsive by archiving stale or Archive-section tasks, reconciling tracked tasks, and reaping accumulated MCP helpers and orphaned DevBox connections.
 - [ag-dir](active/ag-dir/SKILL.md): Define and maintain an Agent Project Directory (AGD) with clear durable docs, canonical status ownership, and isolated runtime artifacts.
 - [ag-ledger](active/ag-ledger/SKILL.md): Record, sync, and query append-only agent activity ledger entries using local JSONL daily files under META_LEDGER_ROOT (default ~/.llm/ag-ledger), with structured skill metadata and explicit settled, live-frontier, and stable blocked closeout states.
-- [ag-learn](active/ag-learn/SKILL.md): Improve skills from observed agent friction in sessions, PRs, or audits, ranking evidence-based learning candidates before routing canonical skill edits through `$sc`.
+- [ag-learn](active/ag-learn/SKILL.md): Improve skills from observed agent friction in sessions, PRs, or audits; use `steering` mode to group user directives and corrective interventions into reusable behavioral principles.
 - [agent-browser](active/agent-browser/SKILL.md): Browser automation CLI for AI agents. Use when the user needs to interact with websites, including navigating pages, filling forms, clicking buttons, taking screenshots, extracting data, testing web apps, or automating any browser task. Triggers include requests to "open a website", "fill out a form", "click a button", "take a screenshot", "scrape data from a page", "test this web app", "login to a site", "automate browser actions", or any task requiring programmatic web interaction.
 - [convosearch](active/convosearch/SKILL.md): Search prior Codex conversations and return up to 3 relevant thread matches with clickable deep links. Use only when explicitly invoked as `$convosearch [query] | [filters]`.
 - [event-report](active/event-report/SKILL.md): Research organizer-confirmed local events, verify dates and practical attendance details, and create ranked, source-linked activity reports.
