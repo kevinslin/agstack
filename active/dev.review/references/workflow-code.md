@@ -7,11 +7,19 @@ Use this workflow to review code with a bias toward simplicity and correctness.
 1. Check correctness and logic.
    - Identify bugs, edge cases, race conditions, or incorrect behavior.
    - Call out violated invariants or implicit contracts.
+   - Before calling an invariant a blocker, trace it to the user's latest
+     explicit decision, an authoritative current contract, or an actual
+     enforcement boundary. Distinguish the required outcome from a stronger
+     implementation mechanism that the product does not require.
+   - Verify existing queue serialization, database constraints, locks, leases,
+     and ownership boundaries before claiming a race or missing enforcement.
    - For authorization behavior, identify the actor, effective permissions, exact resource, and expected allow or deny outcome.
 2. Check assumptions and documentation.
    - Cross-check against existing documentation, comments, and expected behavior.
    - Highlight assumptions that are undocumented, outdated, or unsafe.
    - Verify contracts, documentation, generated artifacts, and tests describe the current implementation rather than retired behavior.
+   - Verify active specifications follow the latest approved user decisions and
+     temporary security compromises have nearby TODOs naming their replacement.
 3. Check complexity and design.
    - Identify unnecessary abstractions, indirection, or branching.
    - Propose concrete simplifications such as deletion, inlining, or narrower scope.
@@ -77,15 +85,18 @@ outcome beside each checked item.
   and tests that merely validate their own setup.
 - [ ] Distinguished real infrastructure or runtime execution from fixtures,
   rendering-only checks, skipped cases, and unavailable dependencies.
+- [ ] Verified every test or end-to-end outcome explicitly requested by the
+  user actually passed at its requested application or infrastructure boundary.
 - [ ] Confirmed non-obvious integration setup and assertions explain the
   business rule or security boundary being verified.
 
 If any item cannot be verified, leave it unchecked, explain the evidence gap,
 and report the affected test by file and line. Treat a fabricated production
 path or self-validating mock as a major finding. Do not approve or describe the
-review as complete while such a finding remains. If the change contains no
-added or modified tests, write `Test Audit: no added or modified tests` instead
-of marking uninspected checklist items complete.
+review as complete while such a finding remains or an explicitly requested
+test has not passed. If the change contains no added or modified tests, write
+`Test Audit: no added or modified tests` and still report the status of any
+explicitly requested acceptance test.
 
 ## Severity Guidance
 
