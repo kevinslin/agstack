@@ -62,8 +62,14 @@ For each pass:
      implementation-coupled test/generator machinery as major when a concrete
      smaller alternative preserves approved behavior, security, and supported
      compatibility. Do not elevate style preferences or necessary complexity.
+   - Classify branch-added or modified tests as major when they have no
+     distinct production outcome, duplicate stronger integration coverage,
+     test only their own fixture, or assert framework-owned guarantees. When
+     edits are authorized, require deletion or consolidation and a passing
+     rerun of the surviving meaningful coverage.
    - For code reviews, reject a clean result that omits either required
-     evidence-backed Simplicity Audit or Test Audit for the current diff.
+     evidence-backed Simplicity Audit or Test Audit for the current diff, or
+     does not provide explicit `keep`/`merge`/`delete` test dispositions.
 
 3. If no blocker or major findings remain, stop the loop and report the clean pass.
 

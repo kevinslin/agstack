@@ -51,6 +51,10 @@ dependencies:
   checklists required by `./references/workflow-code.md`; never check an item
   without inspected evidence or report a clean review with either audit
   incomplete.
+- Give every added or modified test a `keep`, `merge`, or `delete` disposition.
+  Treat tests without distinct production-behavior evidence as major findings;
+  remove or consolidate them when edits are authorized, or report them without
+  changing files during a review-only request.
 - Treat materially avoidable duplicate ownership, parallel implementations,
   and implementation-coupled test machinery as major when a concrete smaller
   design preserves approved capabilities, security, and supported compatibility.

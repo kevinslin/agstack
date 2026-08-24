@@ -38,18 +38,18 @@ Main kind designates the invoking task itself and never creates another task.
    parent lineage, consume any configured `OnCreate` instruction in the current
    task, and set its title. Do not create, fork, or message another thread.
 4. For child kind, create exactly one Codex thread using the resolved worktree
-   and model inputs, publish its pending deep link, register it with the
-   invoking thread as parent, and submit the task prompt plus configured
-   `OnCreate` instruction and the resolver's exact final bootstrap trailer.
+   and model inputs, publish its pending deep link, immediately apply the
+   title and requested placement when a real session ID exists, register it
+   with the invoking thread as parent, and submit the task prompt plus
+   configured `OnCreate` instruction and the resolver's exact final bootstrap
+   trailer.
 5. Let the version-2 `UserPromptSubmit` hook atomically register an untracked
    materialized child and record its real first turn. Keep parent registration
    and the bootstrap record as idempotent fallback/reconciliation writes, then
-   validate the available result and repeat the deep link. The child also
-   applies title and section-placement bootstrap actions to itself. When the child runs on a
-   remote host and creation returns a real Codex session ID (`threadId` in the
-   creation result), additionally apply the same idempotent title and placement
-   actions from the parent as a fallback for remote hosts without the agtask
-   hook.
+   validate the available result and repeat the deep link. The child can also
+   apply the same idempotent title and section-placement bootstrap actions to
+   itself; queued children rely on these deferred actions after their real
+   session ID becomes available.
 
 ## Resolve the request
 
@@ -193,30 +193,19 @@ python3 ./scripts/agtask resolve-create \
   from `--section-id`; an omitted destination defaults to `pinned`, and
   `pin=false` carries no section field. Omit parent lineage for main kind,
   whose inert action envelope remains version 1.
-- For a local child, normally do not call the pin or title app action from the
-  parent. The child receives the validated action requests at its first
-  `UserPromptSubmit` boundary, where its real Codex session ID exists even
-  after queued clean-worktree setup. It performs the model-mediated
-  placement and `codex_app__set_thread_title` calls on itself. For placement,
-  use `codex_app__move_thread_to_sidebar_section` with the real child session
-  ID and resolved `sectionId` whenever available. Use
-  `codex_app__set_thread_pinned` with `pinned=true` only when the move tool is
-  unavailable; report that a requested custom section degraded to global
-  pinning. Never also globally pin after a successful custom-section move.
-  The exception is a one-shot registration result containing
-  `session_rebound_from`: the copied helper hook owned the first action
-  context, so apply title and requested pin from the parent to the authoritative
-  returned session.
-- For a remote child, use the creation result's host ID, the selected project's
-  host ID, or the authoritative current app context for a same-host fork to
-  classify the target. Treat `local` as local and any remote host ID as remote.
-  When creation returns a real Codex session ID (`threadId` in the creation
-  result), call the title app action from the parent and, when `pin=true`,
-  apply the same section-move-first, legacy-pin-second placement rule. These
-  parent calls are an idempotent fallback for a remote
-  host whose child hook is absent or unavailable; keep the version-2 envelope
-  so an installed child hook may safely repeat them. Do not inspect or wait for
-  child output before applying the fallback.
+- For every local or remote child with a real Codex session ID, immediately
+  apply the title app action from the parent and, when `pin=true`, place the
+  child before any `register` or `record-turn` request. Prefer
+  `codex_app__move_thread_to_sidebar_section` with the real child session ID and
+  resolved `sectionId`; use `codex_app__set_thread_pinned` with `pinned=true`
+  only when the move tool is unavailable. Report a requested custom section
+  that degrades to global pinning. Never also globally pin after a successful
+  custom-section move. Attempt title and placement independently so either
+  app-action failure cannot suppress the other. Parent-owned placement remains
+  effective if the child hook is absent or its backend times out. Keep the
+  version-2 envelope so an installed child hook can safely repeat the same
+  idempotent actions. Do not inspect or wait for child output before applying
+  them.
 - A queued `clientThreadId` or worktree ID is not a real Codex session ID. Do
   not call either parent app action for it; leave both actions deferred to the
   materialized child.
@@ -374,7 +363,8 @@ without starting its first turn:
 1. Resolve the exact saved-project match for the active CWD.
 2. Start an empty clean thread with the resolved `worktree` environment and
    obtain its real session ID.
-3. Publish the pending commentary link.
+3. Publish the pending commentary link and immediately apply the parent-owned
+   title and requested placement to the real session ID.
 4. Run `register --json` with the resolver `--id`, the real `--session-id`,
    `--kind child`, resolved project, title, the fully built clean prompt as
    `--initial-prompt`, its normalized value as the optional `--description`
@@ -387,15 +377,14 @@ without starting its first turn:
 6. Run `record-turn --json` with the resolver logical ID, role `user`, turn ID
    `bootstrap`, and the byte-identical prompt as `--content`. Omit `--summary`
    so this write and the `UserPromptSubmit` hook use the same normalizer.
-7. Validate the returned initial-rollout snapshot. For a remote child with a
-   real Codex session ID, apply the parent-side title and pin fallback, then
-   return the final deep link without waiting for child-owned app actions. For
-   a local child, keep both actions deferred.
+7. Validate the returned initial-rollout snapshot, then return the final deep
+   link and already-attempted parent title/placement results without waiting
+   for child-owned backup actions.
 
 If prompt submission is rejected or fails, do not write the bootstrap user
 rollout. The tracked child remains `todo`; report
-`tracked; prompt not accepted`. Neither deferred app action runs without an
-accepted prompt.
+`tracked; prompt not accepted`. Parent-applied title and requested placement
+remain effective; child backup actions do not run without an accepted prompt.
 
 Use the one-shot fallback when the clean API requires the prompt during
 creation:
@@ -403,7 +392,8 @@ creation:
 1. Create the clean thread with the fully built clean prompt, the resolved
    `worktree` environment, and the resolved model input; obtain its real session
    ID.
-2. Publish the pending commentary link.
+2. Publish the pending commentary link and immediately apply the parent-owned
+   title and requested placement to the real session ID.
 3. Run `register --json --authoritative-session` with the resolver `--id`, real
    `--session-id`, `--kind child`, resolved project, title, the fully built
    clean prompt as `--initial-prompt`, its normalized value as the optional
@@ -419,10 +409,9 @@ creation:
 4. Run `record-turn --json` with role `user`, turn ID `bootstrap`, and the
    byte-identical clean prompt as `--content`. Omit `--summary`.
 5. Validate the returned initial-rollout snapshot, including any later
-   assistant-owned state. For a remote child with a real Codex session ID, or a
-   local child whose registration returned `session_rebound_from`, apply the
-   parent-side title and pin fallback, then return the final deep link without
-   waiting for child-owned app actions. Otherwise keep local actions deferred.
+   assistant-owned state, then return the final deep link and already-attempted
+   parent title/placement results without waiting for child-owned backup
+   actions. Authoritative-session rebound does not require a second app action.
 
 The real user hook and bootstrap fallback reconcile to one rollout when their
 normalized summaries match, regardless of arrival order.
@@ -431,7 +420,8 @@ normalized summaries match, regardless of arrival order.
 
 1. Fork the calling task with the environment mapped from the resolved
    `worktree` input and the prompt field omitted.
-2. Publish the pending commentary link.
+2. Publish the pending commentary link and immediately apply the parent-owned
+   title and requested placement to the real session ID.
 3. Run `register --json` with the resolver logical ID, real session ID,
    `--kind child`, resolved project, title, the fully built fork prompt as
    `--initial-prompt`, its normalized value as the optional `--description`
@@ -442,15 +432,14 @@ normalized summaries match, regardless of arrival order.
    the deferred child-owned actions.
 5. Run `record-turn --json` with role `user`, turn ID `bootstrap`, and the
    byte-identical fork prompt as `--content`. Omit `--summary`.
-6. Validate the returned initial-rollout snapshot. For a remote child with a
-   real Codex session ID, apply the parent-side title and pin fallback, then
-   return the final deep link without waiting for child-owned app actions. For
-   a local child, keep both actions deferred.
+6. Validate the returned initial-rollout snapshot, then return the final deep
+   link and already-attempted parent title/placement results without waiting
+   for child-owned backup actions.
 
 If prompt submission is rejected or fails, do not write the bootstrap user
 rollout. The tracked child remains `todo`; report
-`tracked; prompt not accepted`. Neither deferred app action runs without an
-accepted prompt.
+`tracked; prompt not accepted`. Parent-applied title and requested placement
+remain effective; child backup actions do not run without an accepted prompt.
 
 If clean creation returns a pending `clientThreadId` instead of a real session
 ID, report queued partial success with that ID and end parent-side work at the
@@ -571,23 +560,20 @@ Return:
 - `Database: ~/.llm/agtask/ledger.db`;
 - for main kind, the direct title result and resolved section-placement
   outcome, including legacy global-pinning degradation or any exact error;
-- for an ordinary local or queued child, `Title: <resolved-title> (deferred to
-  child)` and `Pin: true (section: <section-id>; deferred to child)` or
+- for a queued child, `Title: <resolved-title> (deferred to child)` and
+  `Pin: true (section: <section-id>; deferred to child)` or
   `Pin: false (skipped)`; the child surfaces the eventual app-action results;
-- for a local one-shot child whose registration returned
-  `session_rebound_from`, report the same direct parent fallback results used
-  for a remote child;
-- for a remote child with a real Codex session ID, the direct parent fallback
-  result: `Title: <resolved-title> (set by parent fallback)`,
+- for every local or remote child with a real Codex session ID, the direct
+  parent action result: `Title: <resolved-title> (set by parent)`,
   `Title: failed: <exact error>`, or `Title: unavailable`; and
-  `Pin: true (section: <section-id>; placed by parent fallback)`,
+  `Pin: true (section: <section-id>; placed by parent)`,
   `Pin: true (global only; custom section unavailable)`,
   `Pin: true (failed: <exact error>)`, `Pin: true (unavailable)`, or
   `Pin: false (skipped)`;
 - verified status and initial rollout result (`not applicable` for main
   designation).
 
-Return after verification and any real-remote-child parent fallback without
-waiting for deferred child title or pin actions. App-action errors are separate
+Return after verification without waiting for child title or pin backup
+actions. App-action errors are separate
 from verified tracking. Monitor child completion only when the user explicitly
 requests it. Repeat the deep link in the final response.

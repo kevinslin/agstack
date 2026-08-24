@@ -43,6 +43,8 @@ Use this workflow to review code with a bias toward simplicity and correctness.
 5. Review test value and clarity.
    - Complete the mandatory Test Audit checklist below for every added or
      modified test before finishing the review.
+   - Classify every added or modified test as `keep`, `merge`, or `delete`
+     based on the distinct production behavior it proves.
    - Test application-defined behavior and invariants at the boundary responsible for enforcing them.
    - Preserve every explicitly approved capability and existing security,
      ownership, isolation, credential, and immutability invariant; removing one
@@ -50,6 +52,9 @@ Use this workflow to review code with a bias toward simplicity and correctness.
    - Do not test framework guarantees, infrastructure inventories, exact tool versions, or incidental implementation details unless the application explicitly owns that requirement.
    - Avoid repeating equivalent cases across test layers; keep comprehensive coverage where it most directly verifies application behavior.
    - Remove low-value tests added on the branch, especially tests that verify their own monkeypatched behavior.
+   - Delete a lower-fidelity duplicate when a real application or integration
+     test already proves the same invariant; first move any unique assertion
+     into the retained stronger test.
    - When possible, elevate them to higher-level tests that verify outcomes and are not coupled to implementation.
    - When a test outcome is not obvious, require a short comment identifying the relevant rule, missing input, invalid value, or security boundary.
 6. Check failure modes and risk.
@@ -109,6 +114,8 @@ outcome beside each checked item.
 
 - [ ] Inspected every added or modified test and identified its production
   behavior and observable outcome.
+- [ ] Assigned each added or modified test a `keep`, `merge`, or `delete`
+  disposition with its distinct invariant and the strongest existing proof.
 - [ ] Verified the exercised route, request, ownership, lifecycle state, and
   response exist in the actual application.
 - [ ] Identified each mock, monkeypatch, fixture, or adapter and confirmed
@@ -116,8 +123,14 @@ outcome beside each checked item.
   substitute.
 - [ ] Verified security, authorization, persistence, or lifecycle assertions
   at the real boundary responsible for enforcing them.
-- [ ] Removed or flagged duplicate coverage, implementation-coupled checks,
-  and tests that merely validate their own setup.
+- [ ] Removed or consolidated duplicate coverage, implementation-coupled
+  checks, framework-guarantee tests, and tests that merely validate their own
+  setup when edits are authorized; otherwise reported each as an unresolved
+  major finding.
+- [ ] Preserved user-requested end-to-end proof and meaningful security,
+  authorization, ownership, persistence, and supported-compatibility coverage.
+- [ ] Confirmed deleted tests have no unique production outcome, kept the
+  stronger surviving test, and reran the relevant remaining coverage.
 - [ ] Distinguished real infrastructure or runtime execution from fixtures,
   rendering-only checks, skipped cases, and unavailable dependencies.
 - [ ] Verified every test or end-to-end outcome explicitly requested by the
@@ -125,13 +138,28 @@ outcome beside each checked item.
 - [ ] Confirmed non-obvious integration setup and assertions explain the
   business rule or security boundary being verified.
 
+Include a compact `Test Disposition` section naming each added or modified test
+and its decision:
+
+- `keep`: identifies a distinct approved behavior or security invariant and the
+  real boundary proving it.
+- `merge`: moves a useful unique assertion into the stronger existing test,
+  then removes the duplicate.
+- `delete`: proves only fixture behavior, framework guarantees, incidental
+  implementation, an unreachable branch, or an outcome already covered better.
+
 If any item cannot be verified, leave it unchecked, explain the evidence gap,
 and report the affected test by file and line. Treat a fabricated production
-path or self-validating mock as a major finding. Do not approve or describe the
-review as complete while such a finding remains or an explicitly requested
-test has not passed. If the change contains no added or modified tests, write
-`Test Audit: no added or modified tests` and still report the status of any
-explicitly requested acceptance test.
+path, self-validating mock, or branch-added test with no distinct production
+outcome as a major finding even when the suite passes. In an edit-authorized
+review loop, delete or merge the test and rerun the surviving relevant proof;
+in a review-only request, report the major finding without editing. Never
+remove explicitly requested end-to-end proof, unique security coverage, or
+unrelated pre-existing tests outside the approved change. Do not approve or
+describe the review as complete while an unjustified test remains, required
+audit evidence is missing, or an explicitly requested test has not passed. If
+the change contains no added or modified tests, write `Test Audit: no added or
+modified tests` and still report any explicitly requested acceptance test.
 
 ## Severity Guidance
 

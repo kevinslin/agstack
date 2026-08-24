@@ -53,19 +53,19 @@ graph TD
         N -->|worktree| P{"Fork result"}
         P -->|threadId| O
         P -->|clientThreadId| Q["Queued fork has no prompt or real session ID yet"]
-        O --> R["Register todo, then send guarded task prompt"]
+        O --> PP["Parent immediately applies title and requested placement"]
+        PP --> R["Register todo, then send guarded task prompt"]
     end
 
     subgraph Binding["Tracking and first turn"]
         J --> S["Child UserPromptSubmit binds id to session_id and records first turn"]
         L --> S
         R --> S
-        S --> V["Materialized child owns title and section-move-first placement"]
-        J --> T["Parent register and bootstrap write reconcile idempotently"]
+        S --> V["Materialized child can repeat idempotent title and placement"]
+        J --> PA["Parent immediately applies title and requested placement"]
+        PA --> T["Parent register and bootstrap write reconcile idempotently"]
         R --> T
-        T --> W{"Remote host or local authoritative-session rebound"}
-        W -->|yes| X["Parent applies title and section-move-first placement fallback"]
-        W -->|no| Y["Title and sidebar placement remain child-owned"]
+        T --> Y["Parent returns verified tracking and app-action results"]
         Q --> U["Report queued; no registration or prompt occurs in this flow"]
     end
 ```
@@ -127,6 +127,9 @@ result := create_thread(
 )
 if result.threadId exists
   session_id := result.threadId
+  set_thread_title(session_id, resolved.title)
+  if resolved.pin
+    move_to_resolved_section_or_use_legacy_pin(session_id)
 else
   report queued clientThreadId
 ```
@@ -160,10 +163,12 @@ first turn, this hook can self-register it without parent polling.
 
 ### 4. Reconcile from the parent
 
-When clean creation returns a real `threadId`, the parent registers the same
-pair and records the byte-identical prompt with reserved turn ID `bootstrap`.
-These writes repair either parent-first or hook-first timing without creating a
-second row or initial user rollout.
+When clean creation returns a real `threadId`, the parent first applies the
+resolved title and requested sidebar placement, independently of hook or
+backend availability. It then registers the same pair and records the
+byte-identical prompt with reserved turn ID `bootstrap`. These writes repair
+either parent-first or hook-first timing without creating a second row or
+initial user rollout.
 
 #### 4.1 Verify the returned child
 
@@ -181,13 +186,12 @@ require one thread row and one initial user rollout
 return codex_deep_link(threadId)
 ```
 
-The parent does not wait for deferred child-owned title and placement actions. When
-the child is remote and creation returned a real Codex session ID, the parent
-also applies the same title and resolved sidebar section as an idempotent reliability
-fallback before returning. Local children normally leave both actions to the
-child. If authoritative one-shot registration displaces a copied helper
-session, the parent applies the same fallback locally because the real child
-did not receive bootstrap action context.
+The parent does not wait for child-owned title and placement backup actions.
+For every local or remote child with a real Codex session ID, parent-side
+actions happen before either ledger request. Thus a missing hook, failed
+first-turn recording, unavailable backend, or authoritative rebound cannot
+prevent an already-created child from receiving its title and requested
+placement.
 
 Each placement first uses `move_thread_to_sidebar_section({threadId,
 sectionId})` when available. Only when that tool is unavailable does it use
@@ -257,14 +261,14 @@ a successful custom-section move.
 - A parent with only the legacy pin tool still resolves and embeds a custom
   section because the newly created child may receive the section-move tool.
 
-### Remote-host title and sidebar-placement fallback
+### Parent-owned title and sidebar placement
 
-- A remote child with a real Codex session ID (`threadId` in the creation
-  result) receives a parent-side title and resolved-placement fallback before the
-  parent returns.
-- The version-2 child actions remain enabled. If the remote host has the agtask
-  hook, the child may repeat the same section move and title safely because
-  both are idempotent. Legacy global pinning remains an availability fallback.
+- Every local or remote child with a real Codex session ID (`threadId` in the
+  creation result) receives its parent-applied title and requested sidebar
+  placement before ledger registration or first-turn recording.
+- The version-2 child actions remain enabled as an idempotent backup. The
+  child may repeat the same section move and title safely. Legacy global
+  pinning remains an availability fallback.
 - A queued `clientThreadId` or worktree ID is not a Codex session ID, so the
   parent cannot target either app action. A queued clean child retains those
   actions in its submitted prompt; a queued fork has no submitted prompt yet.
@@ -276,8 +280,8 @@ Metrics:
 
 Logs:
 - Parent orchestration reports `created; tracking pending`, verified, partial,
-  or queued state. For a remote child with a real session ID, it also reports
-  the direct parent fallback result for title and sidebar placement.
+  or queued state. For every local or remote child with a real session ID, it
+  also reports the direct parent result for title and sidebar placement.
 - Explicit registration errors are printed by the agtask CLI. Hook-side
   malformed or conflicting bootstraps intentionally remain silent.
 
@@ -294,6 +298,7 @@ Logs:
 [keep this for the user to add notes. do not change between edits]
 
 ## Changelog
+- 2026-08-19: Apply parent-owned title and placement to every real child before ledger bookkeeping; retain child actions as an idempotent backup.
 - 2026-08-06: Added cached main-section discovery, inherited child placement, section-move-first compatibility, and bounded missing-section recovery.
 - 2026-07-21 10:21: Added remote-host title and pin fallback while preserving child-owned actions and queued-client behavior (019f6e7b-6fee-7b22-9ee7-0448a1431036 - b026a6e)
 - 2026-07-21 10:07: Split task creation into a dedicated flow and distinguished regular clean, clean worktree, same-directory fork, and worktree-fork behavior (019f6e7b-6fee-7b22-9ee7-0448a1431036 - d0ab5633f6fc478e631614a90bf4c7e2054faafa)

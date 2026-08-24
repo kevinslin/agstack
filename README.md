@@ -10,7 +10,7 @@ This used to be called `skills` but my claw thought it was a boring name so we'v
 
 - [cal](active/cal/SKILL.md): Preview mutual availability and verified room options, confirm the selected time, and create the Google Calendar invite.
 - [specy](active/specy/SKILL.md): Write focused specs and flow docs with a compact ownership, invariant, scope, and implementation-cost checkpoint.
-- [dev.review](active/dev.review/SKILL.md): Review code and specs with mandatory evidence-backed simplicity and test audits, canonical ownership, real acceptance proof, and preserved approved capabilities.
+- [dev.review](active/dev.review/SKILL.md): Review code and specs with mandatory evidence-backed simplicity and test audits, explicit keep/merge/delete test decisions, real acceptance proof, and removal of useless tests.
 - [sw-loop](active/sw-loop/SKILL.md): Deliver settled designs with explicit simplification review, a final post-fix simplicity gate, and separate verification/push tracks.
 - [dev.shortcuts](active/dev.shortcuts/SKILL.md): Route focused workflows and make material duplicate ownership or parallel implementations actionable major review-loop findings.
 - [ag-learn](active/ag-learn/SKILL.md): Improve skills from conversation evidence and derive steering principles from repeated user corrections.
@@ -56,7 +56,7 @@ Example:
 - [secrets](active/secrets/SKILL.md): Load and manage local dotenvx credential sets for agent workflows. Use when directly invoked as `$secrets` or when a task needs credentials from `~/.secrets/.env.*`.
 - [slack-notify](active/slack-notify/SKILL.md): Send explicit Slack notifications through `slack-post` using Slack credentials loaded by `$secrets slack`.
 - [sw-ctrl](active/sw-ctrl/SKILL.md): Coordinate delegated agents with explicit ownership of both source files and mutable resources such as databases, queues, ports, profiles, and test fixtures.
-- [sw-loop](active/sw-loop/SKILL.md): Swarm-based feature delivery that preserves settled decisions and approved capabilities while requiring explicit simplification review, evidence-backed current-head simplicity and test audits, outcome-focused cleanup, a post-fix minimization gate, local verification, documentation, and a separate push gate.
+- [sw-loop](active/sw-loop/SKILL.md): Swarm-based feature delivery that preserves settled decisions and approved capabilities while requiring explicit simplification review, evidence-backed current-head simplicity and test audits, removal of tests without distinct production outcomes, a post-fix minimization gate, local verification, documentation, and a separate push gate.
 
 ### Dev
 
@@ -75,8 +75,8 @@ Example:
 - [dev.do](active/dev.do/SKILL.md): End-to-end development task intake and execution. Use when the user gives a dev task (feature/bug/refactor) as a file path, pasted description, or git issue and wants it completed; this skill gathers context, asks clarifying questions if needed, then runs the dev.loop workflow to deliver the change.
 - [dev.llm-session](active/dev.llm-session/SKILL.md): Derive Codex CLI session IDs and resume interactive sessions. Use when asked to resume Codex sessions, find or map session IDs, inspect ~/.codex/history.jsonl or ~/.codex/sessions, or troubleshoot Codex resume behavior.
 - [dev.loop](active/dev.loop/SKILL.md): Drive development through infrastructure-aware acceptance planning, execution, verification of every explicitly requested real-world test, and separate push/PR/CI delivery while honoring user-authorized autonomy.
-- [dev.review](active/dev.review/SKILL.md): Review code, docs, specs, architecture, and UX with mandatory evidence-backed simplicity and test audits; treat materially avoidable duplicate authority, parallel implementations, and implementation-coupled machinery as major while preserving approved capabilities.
-- [dev.shortcuts](active/dev.shortcuts/SKILL.md): Resolve explicit `trigger:<name>` workflows, including evidence-gated review/fix loops that classify material avoidable complexity as major; spec drafting and review; ready-for-review PR creation; stacked-PR-safe merge and branch cleanup; and task archival.
+- [dev.review](active/dev.review/SKILL.md): Review code, docs, specs, architecture, and UX with mandatory evidence-backed simplicity and test audits; classify every changed test as keep, merge, or delete; and treat duplicate authority, parallel implementations, and useless tests as major while preserving approved capabilities.
+- [dev.shortcuts](active/dev.shortcuts/SKILL.md): Resolve explicit `trigger:<name>` workflows, including evidence-gated review/fix loops that classify material avoidable complexity and useless tests as major; spec drafting and review; ready-for-review PR creation; stacked-PR-safe merge and branch cleanup; and task archival.
 - [dev.worktrees](active/dev.worktrees/SKILL.md): Create and inspect Git worktrees, remove already-clean targets conservatively, and transactionally clean one proven-landed worktree and local branch with exact commit identity, dry-run-first execution, resumable journaling, and strict postconditions.
 - [fin](active/fin/SKILL.md): Finalize a completed task through a selected `gh` or `local` landing flow with a mandatory origin-main gate, stacked-PR protection, verified auto-merge monitoring, and cleanup that preserves repository-required ignored files and dependency directories.
 - [html2site](active/html2site/SKILL.md): Convert an existing static HTML application into a private Codex Site, optionally adding a persistent authenticated API and local programmatic writes when explicitly requested.

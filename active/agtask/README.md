@@ -301,15 +301,16 @@ never instructions. The child reports placement, legacy custom-section
 degradation, unavailability, or the exact app error and continues the task.
 Queued worktrees retain these actions until materialization.
 
-When a child is created on a remote host and the creation API returns a real
-Codex session ID (`threadId` in the creation result), the calling agent also
-applies the same title and resolved section through the Codex app, preferring
-the section-move tool and falling back to legacy pinning only when necessary.
-This parent-side fallback also covers local authoritative-session rebound and
-remote hosts without the agtask hook. Child actions remain enabled because
-same-section moves and title assignments are idempotent. A queued
-client/worktree ID is not a real Codex session ID and cannot receive app
-actions; those remain deferred until the child materializes.
+Whenever creation returns a real Codex session ID (`threadId`), the calling
+agent immediately applies the resolved title and sidebar placement on both
+local and remote hosts, before ledger registration or first-turn bookkeeping.
+Placement prefers the section-move tool and falls back to legacy pinning only
+when necessary. This parent-owned action keeps existing children correctly
+titled and pinned even when their hook is missing, its backend times out, or
+authoritative registration rebinds a copied helper session. Child actions
+remain an idempotent backup. A queued client/worktree ID is not a real Codex
+session ID and cannot receive app actions; those remain deferred until the
+child materializes.
 Bootstrap metadata is removed before task summary and rollout reconciliation.
 
 Use `config --json` to inspect the merged document and loaded paths. Set

@@ -50,8 +50,8 @@ The ledger is a purpose-built projection. Full conversation content remains in n
 
 The skill owns orchestration that requires Codex app APIs: deriving the task
 title and exact initial prompt, resolving the caller ID and CWD, discovering
-the caller's custom sidebar section, directly placing and titling main tasks,
-creating child threads, composing returned
+the caller's custom sidebar section, directly placing and titling main tasks
+and materialized children, creating child threads, composing returned
 `OnCreate` data and the resolver's exact bootstrap trailer with child task
 prompts, sending child first turns, publishing deep links, and verifying
 persisted results. It passes the byte-identical creation prompt as
@@ -97,8 +97,9 @@ the naming-scheme default `⭐ <project>`. Main designation does not synthesize
 a bootstrap user rollout; later hooks project subsequent conversation events.
 
 The preferred child creation path is two phase: create an empty child,
-immediately publish its link as tracking pending, register it, then send the task
-prompt. This lets the first `UserPromptSubmit` hook observe the tracked row.
+immediately publish its link as tracking pending, apply its title and requested
+placement, register it, then send the task prompt. This lets the first
+`UserPromptSubmit` hook observe the tracked row.
 After prompt acceptance, the caller writes the byte-identical prompt as a
 `bootstrap` user rollout without an independent summary. Symmetric
 reconciliation makes that write insert, promote, or no-op against the real hook
@@ -107,13 +108,13 @@ event.
 Successful `add --json`, `register --json`, and `record-turn --json` responses
 are the verification snapshots; normal add or creation does not reopen the
 ledger or inspect child completion. Ambiguous command outcomes permit bounded
-error-path reads and retries. For local and queued child tasks, title and
-sidebar placement are
-deferred through the final bootstrap trailer and run inside the materialized
-child. For a remote child with a real Codex session ID (`threadId` in the
-creation result), or a local child whose copied helper session must be
-rebound, the parent also applies both idempotent actions as a fallback. Each
-placement prefers `move_thread_to_sidebar_section` and uses legacy
+error-path reads and retries. For every local or remote child with a real Codex
+session ID (`threadId` in the creation result), the parent applies title and
+requested sidebar placement immediately, before ledger reconciliation. The
+final bootstrap trailer retains the same idempotent child-owned backup
+actions; queued children without a real session ID rely on that backup after
+materialization. Each placement prefers `move_thread_to_sidebar_section` and
+uses legacy
 `set_thread_pinned` only when the move tool is unavailable. Neither path
 downgrades verified tracking.
 
@@ -492,15 +493,14 @@ an unclaimed requested session, and a first-turn-only rollout shape. It removes
 helper user/assistant rollouts and reports the displaced session. Titles,
 timing, and UUID ordering are never used to choose the canonical session.
 
-Remote creation adds a parent-side reliability path. When the selected or
-returned host is non-local and creation returns a real Codex session ID
-(`threadId` in the creation result), the caller directly applies the resolved
-title and resolved sidebar placement through the Codex app before returning,
-preferring section moves over legacy pinning. The same fallback repairs a
-local authoritative-session rebound whose copied helper consumed the hook
-context. This does not replace or suppress the child hook; matching moves and
-title assignments converge idempotently. Queued client/worktree IDs cannot use
-the fallback because they are not real Codex session IDs.
+Every local or remote creation that returns a real Codex session ID
+(`threadId` in the creation result) immediately receives parent-applied title
+and requested sidebar placement, before ledger bookkeeping, preferring section
+moves over legacy pinning. This remains effective when a child hook is absent,
+backend recording fails, or authoritative registration later rebinds a copied
+helper. It does not replace or suppress the child hook; matching moves and title
+assignments converge idempotently. Queued client/worktree IDs cannot receive
+parent actions because they are not real Codex session IDs.
 
 ## Hook boundary mapping
 
@@ -577,13 +577,13 @@ remains the sole normal-path assistant writer for the canonical session.
 ### Fork creation
 
 Fork mode preserves copied context while using the caller's CWD. The caller
-forks without a prompt, publishes the pending session link, registers the
-resolver ID and real session as `todo` with resolved kind/project and
+forks without a prompt, publishes the pending session link, immediately applies
+title and requested placement to the real session, registers the resolver ID
+and real session as `todo` with resolved kind/project and
 kind-appropriate session lineage, sends the guarded task prompt, and writes the
-byte-identical bootstrap prompt. It validates the write response, applies the
-parent title/pin fallback when the child is remote and has a real Codex session
-ID, and returns the verified session link without waiting for child-owned title
-or pin actions.
+byte-identical bootstrap prompt. It validates the write response and returns
+the verified session link without waiting for child-owned title or pin backup
+actions.
 
 ### Turns and status
 

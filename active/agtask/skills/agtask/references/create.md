@@ -87,7 +87,18 @@ Task: [<title>](codex://threads/<threadId>) — created
    and stop. The prompt already contains the version-2 bootstrap trailer, so
    the materialized child's first hook self-registers it and performs deferred
    title and pin actions.
-8. For a real `threadId`, reconcile the hook idempotently without
+8. For every real `threadId`, local or remote, immediately set the resolved
+   title from the parent. When pinning is enabled, prefer
+   `move_thread_to_sidebar_section({threadId, sectionId})`; use
+   `set_thread_pinned({threadId, pinned: true})` only when the section tool is
+   unavailable. Report legacy-only custom-section placement as global-pinning
+   fallback. Attempt title and placement independently; failure of either must
+   not suppress the other. Apply these idempotent app actions before either
+   ledger request so a missing hook, backend timeout, or failed bookkeeping
+   cannot leave an existing child unnamed or unpinned. Keep the version-2
+   trailer: the child's actions remain a safe idempotent backup. Never target
+   a queued `clientThreadId`.
+9. Reconcile the real child's hook idempotently without
    rereading successful writes:
 
 ```text
@@ -117,20 +128,11 @@ python3 ./scripts/agtask record-turn \
    the race; these writes must converge with it. If either result is ambiguous,
    conflicts, or contains `session_rebound_from`, follow the advanced recovery
    workflow.
-9. Classify the child host from the creation result's `hostId`, falling back to
-   the selected project's `hostId`. For a remote child with a real `threadId`,
-   set the resolved title from the parent and, when pinning is enabled, prefer
-   `move_thread_to_sidebar_section({threadId, sectionId})`; use
-   `set_thread_pinned({threadId, pinned: true})` only when the section tool is
-   unavailable. Report legacy-only custom-section placement as global-pinning
-   fallback. These idempotent parent actions cover remote hosts without the
-   agtask hook; do not wait for the child. Keep title and section placement
-   deferred for a local child unless authoritative-session recovery applies.
 10. Return the deep link, logical task `id`, session or queued ID, parent session
    ID, project, mode, worktree, model, verified tracking state, and initial
-   rollout result. Describe local title and pin actions as deferred to the
-   child. Report the resolved section and remote title/placement actions as
-   direct parent fallback results.
+   rollout result. Report the resolved section and direct parent
+   title/placement results for every real child, or deferred child actions only
+   for a queued ID. App-action failures do not erase verified ledger state.
 
 ## Resolve sidebar placement
 
@@ -192,7 +194,7 @@ Read [`./create-advanced.md`](./create-advanced.md) completely for:
 
 - current-task main designation;
 - fork or worktree creation;
-- remote hosts and parent-side title/pin fallbacks;
+- remote hosts and parent-side title/placement recovery;
 - two-phase clean APIs;
 - explicit parent registration or rollout reconciliation;
 - queued worktree forks;

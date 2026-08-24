@@ -126,6 +126,12 @@ changes.
 - Remove low-value tests added on the branch, especially tests that verify
   their own monkeypatched behavior. When possible, elevate them to higher-level
   tests that verify outcomes and are not coupled to implementation.
+- Record a `keep`, `merge`, or `delete` disposition for every added or modified
+  test. Delete or consolidate each case without a distinct production outcome,
+  preserve requested end-to-end and unique security proof, and rerun the
+  surviving meaningful coverage.
+- Do not check off test-quality cleanup while a useless test remains or the
+  disposition and rerun lack concrete file-level evidence.
 - Complete this cleanup after implementation and before starting review.
 
 ### 5. Review Swarm
@@ -142,7 +148,8 @@ trigger:loop `$dev.review` subagents with disjoint scopes:
 
 Require each reviewer to return concrete findings with file references and
 proposed actions. Require the code reviewer to complete the evidence-backed
-Simplicity Audit and Test Audit; a bare `CLEAN` does not satisfy either gate.
+Simplicity Audit and Test Audit with explicit test dispositions; a bare `CLEAN`
+does not satisfy either gate.
 
 If a proposed fix is straightforward and does not require user input, apply it in
 the subagent or integrate it locally. If the fix changes product direction, policy,
