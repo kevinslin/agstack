@@ -2437,6 +2437,94 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertEqual(cache["state"], "miss")
         self.assertFalse(self.db_path.exists())
 
+    def test_sites_audit_uses_hosted_backend_and_preserves_confirmation_contract(
+        self,
+    ) -> None:
+        report = {
+            "phase": "lookup_required",
+            "applied": False,
+            "active_tasks": [],
+            "lookup_requests": [],
+            "affected_tasks": [],
+            "unresolved": [],
+            "ignored_observations": [],
+            "plan_token": None,
+        }
+
+        def respond(request: dict[str, object]) -> tuple[int, object]:
+            self.assertTrue(str(request["path"]).endswith("/operations/audit"))
+            return 200, report
+
+        with mock_sites_server(self.root, respond) as (url, certificate, requests):
+            self.write_config(
+                self.home,
+                {"backend": {"mode": "sites", "sites": {"url": url}}},
+            )
+            environment = self.env | {
+                "SSL_CERT_FILE": str(certificate),
+                "AGTASK_SITES_BYPASS_TOKEN": "platform-secret",
+                "AGTASK_SITES_APP_TOKEN": "app-secret",
+            }
+
+            discovery = json.loads(
+                self.run_cli("audit", "--json", env=environment).stdout
+            )
+            self.assertEqual(discovery, report)
+            self.assertEqual(requests[-1]["payload"], {})
+            discovery_headers = {
+                key.lower(): value
+                for key, value in requests[-1]["headers"].items()
+            }
+            self.assertNotIn("idempotency-key", discovery_headers)
+
+            observations = json.dumps(
+                {
+                    "schema_version": 1,
+                    "sessions": [
+                        {"session_id": "remote-session", "state": "archived"}
+                    ],
+                }
+            )
+            self.run_cli(
+                "audit", "--observations-json", observations, "--json", env=environment
+            )
+            self.assertEqual(
+                requests[-1]["payload"],
+                {
+                    "observations": {
+                        "schema_version": 1,
+                        "sessions": [
+                            {"session_id": "remote-session", "state": "archived"}
+                        ],
+                    }
+                },
+            )
+
+            token = "a" * 64
+            self.run_cli(
+                "audit",
+                "--observations-json",
+                observations,
+                "--apply",
+                token,
+                "--json",
+                env=environment,
+            )
+            self.assertEqual(requests[-1]["payload"]["apply"], token)
+            apply_headers = {
+                key.lower(): value
+                for key, value in requests[-1]["headers"].items()
+            }
+            self.assertIn("idempotency-key", apply_headers)
+
+            count = len(requests)
+            missing_observations = self.run_cli(
+                "audit", "--apply", token, "--json", env=environment, check=False
+            )
+            self.assertIn("--apply requires --observations-json", missing_observations.stderr)
+            self.assertEqual(len(requests), count)
+            self.assertFalse(self.db_path.exists())
+
     def test_sites_backend_hook_fails_open_without_touching_local_ledger(self) -> None:
         self.write_config(self.home, {"backend": {"mode": "sites"}})
         project = self.root / "hook-project"

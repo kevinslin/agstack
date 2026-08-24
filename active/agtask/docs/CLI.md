@@ -83,10 +83,10 @@ operations post to `/api/agtask/v1/operations/<operation>` and validate the
 dedicated `AGTASK_TASKS_SECRET`; the existing `AGTASK_PROBE_SECRET` remains
 limited to `/api/probe`.
 
-The first Sites slice supports `register`, `add`, `show`, `list`,
+The Sites backend supports `register`, `add`, `audit`, `show`, `list`,
 `record-turn`, `append-rollout`, `status`, `reopen`, `search`, and `dashboard`.
 `resolve-create` remains configuration-only planning. Attachments, rename,
-audit, saved views, `init`, and merge-claim close operations are unsupported and
+saved views, `init`, and merge-claim close operations are unsupported and
 fail closed; hosted search uses parameterized substring matching rather than SQLite
 FTS rank parity. `config`, `section-cache`, `install-hooks`, and
 `uninstall-hooks` remain available. Unsupported runtime hook bookkeeping fails
@@ -641,6 +641,10 @@ Reconcile active ledger rows with archive state observed through Codex app APIs.
 The command is deliberately split into discovery, planning, and confirmed apply
 because the CLI cannot and does not call model-mediated Codex APIs.
 
+Audit always uses the selected backend: local mode reconciles local SQLite
+rows, while Sites mode reconciles hosted D1 rows through the authenticated
+Sites operation. Sites never silently reads or modifies the local ledger.
+
 Discovery returns exact lookup requests for every `active` task and never
 mutates:
 
@@ -678,8 +682,9 @@ python3 "$AGTASK" audit \
   --json
 ```
 
-The apply phase begins an immediate SQLite transaction, rebuilds the candidate
-set, and rejects a stale or mismatched token before writing. A refreshed result
+The apply phase uses an immediate SQLite transaction in local mode or one
+transactional D1 batch in Sites mode, rebuilds the candidate set, and rejects
+a stale or mismatched token before writing. A refreshed result
 that no longer contains archive candidates is a read-only no-op. Each
 still-auditable candidate moves to the existing terminal `done` state, receives
 one shared `closed`/`updated` timestamp, and appends

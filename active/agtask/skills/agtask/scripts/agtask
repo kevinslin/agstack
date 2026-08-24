@@ -71,6 +71,7 @@ LOCAL_ADMINISTRATIVE_COMMANDS = {
 SITES_OPERATIONS = {
     "add",
     "append-rollout",
+    "audit",
     "dashboard",
     "list",
     "record-turn",
@@ -1646,7 +1647,9 @@ def sites_request(
         "OAI-Sites-Authorization": f"Bearer {bypass_token}",
         "Authorization": f"Bearer {app_token}",
     }
-    if operation in SITES_MUTATING_OPERATIONS:
+    if operation in SITES_MUTATING_OPERATIONS or (
+        operation == "audit" and "apply" in payload
+    ):
         headers["Idempotency-Key"] = hashlib.sha256(
             operation.encode("utf-8") + b"\x00" + encoded
         ).hexdigest()
@@ -1682,6 +1685,19 @@ class SitesNoRedirectHandler(HTTPRedirectHandler):
 def sites_payload(args: argparse.Namespace) -> dict[str, Any]:
     if args.command == "dashboard":
         return dashboard_state_from_args(args)
+    if args.command == "audit":
+        if args.apply is not None and args.observations_json is None:
+            raise TaskError("--apply requires --observations-json")
+        payload: dict[str, Any] = {}
+        if args.observations_json is not None:
+            observations = parse_audit_observations(args.observations_json)
+            payload["observations"] = {
+                "schema_version": AUDIT_OBSERVATIONS_SCHEMA_VERSION,
+                "sessions": list(observations.values()),
+            }
+        if args.apply is not None:
+            payload["apply"] = args.apply
+        return payload
     excluded = {"backend_mode", "command", "configuration", "handler", "json"}
     payload = {
         key: value
@@ -1714,6 +1730,11 @@ def command_sites(args: argparse.Namespace) -> None:
             return
 
     result = sites_request(args.configuration, args.command, sites_payload(args))
+    if args.command == "audit":
+        if not isinstance(result, dict):
+            raise TaskError("Sites backend returned an invalid audit report")
+        emit_audit(result, args.json)
+        return
     if args.command in {"record-turn", "append-rollout"} and isinstance(result, dict):
         thread = result.get("thread")
         if isinstance(thread, dict):

@@ -34,7 +34,10 @@ npm run build
 
 `npm test` builds the production Worker and exercises the dashboard, browser
 authentication, machine API, and D1 persistence against a real local D1
-runtime. Generate a migration after changing the hosted schema:
+runtime. Hosted audits preserve the CLI's read-only discovery and planning,
+exact-confirmation tokens, and transactional archived-task reconciliation
+without accessing the local ledger. Generate a migration after changing the
+hosted schema:
 
 ```sh
 npm run db:generate

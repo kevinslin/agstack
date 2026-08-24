@@ -41,6 +41,16 @@ export interface TaskDetail extends TaskRow {
   files: [];
 }
 
+type AuditTask = Pick<
+  TaskRow,
+  "id" | "session_id" | "parent_session_id" | "project" | "title" | "updated" | "status"
+>;
+type AuditObservation = {
+  session_id: string;
+  state: "archived" | "not_archived" | "missing" | "error";
+  detail?: string;
+};
+
 export class TaskOperationError extends Error {
   constructor(
     message: string,
@@ -214,6 +224,241 @@ export async function listTasks(payload: Payload = {}): Promise<TaskRow[]> {
     .all<TaskRow>();
 
   return result.results;
+}
+
+function auditObservations(payload: Payload): Map<string, AuditObservation> | null {
+  if (payload.observations === undefined) return null;
+
+  const document = payload.observations;
+
+  if (
+    !document ||
+    typeof document !== "object" ||
+    Array.isArray(document) ||
+    Object.keys(document).length !== 2 ||
+    !("schema_version" in document) ||
+    document.schema_version !== 1 ||
+    !("sessions" in document) ||
+    !Array.isArray(document.sessions)
+  ) {
+    throw new TaskOperationError("Audit observations must use the version-1 schema.", 400);
+  }
+
+  const observations = new Map<string, AuditObservation>();
+
+  for (const value of document.sessions) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new TaskOperationError("Each audit observation must be an object.", 400);
+    }
+
+    const observation = value as Payload;
+    const keys = Object.keys(observation);
+
+    if (
+      !keys.includes("session_id") ||
+      !keys.includes("state") ||
+      keys.some((key) => !["session_id", "state", "detail"].includes(key))
+    ) {
+      throw new TaskOperationError("The audit observation fields are invalid.", 400);
+    }
+
+    const sessionId = requiredString(observation, "session_id");
+    const state = observation.state;
+
+    if (
+      state !== "archived" &&
+      state !== "not_archived" &&
+      state !== "missing" &&
+      state !== "error"
+    ) {
+      throw new TaskOperationError("The archive lookup state is invalid.", 400);
+    }
+
+    if (
+      (state === "error" &&
+        (typeof observation.detail !== "string" || !observation.detail.trim())) ||
+      (state !== "error" && observation.detail !== undefined)
+    ) {
+      throw new TaskOperationError("Only failed archive lookups require error detail.", 400);
+    }
+
+    if (observations.has(sessionId)) {
+      throw new TaskOperationError("Duplicate archive observations are not allowed.", 400);
+    }
+
+    observations.set(sessionId, {
+      session_id: sessionId,
+      state,
+      ...(typeof observation.detail === "string" ? { detail: observation.detail } : {}),
+    });
+  }
+
+  return observations;
+}
+
+async function auditTasks(payload: Payload): Promise<Record<string, unknown>> {
+  if (Object.keys(payload).some((key) => !["observations", "apply"].includes(key))) {
+    throw new TaskOperationError("The audit request contains unsupported fields.", 400);
+  }
+
+  const observations = auditObservations(payload);
+  const apply = payload.apply;
+
+  if (
+    apply !== undefined &&
+    (observations === null || typeof apply !== "string" || !/^[0-9a-f]{64}$/.test(apply))
+  ) {
+    throw new TaskOperationError("Audit apply requires observations and a valid plan token.", 400);
+  }
+
+  const d1 = database();
+  const activeTasks: AuditTask[] = (
+    await d1
+      .prepare(
+        "SELECT id, session_id, parent_session_id, project, title, updated, status " +
+          "FROM agtask_threads WHERE status IN ('todo', 'active', 'blocked') " +
+          "ORDER BY session_id, id",
+      )
+      .all<AuditTask>()
+  ).results;
+  const affectedTasks: AuditTask[] = [];
+  const unresolved: Record<string, string>[] = [];
+  const activeSessionIds = new Set(activeTasks.map((task) => task.session_id));
+  const report: Record<string, unknown> = {
+    phase: observations === null ? "lookup_required" : "complete",
+    applied: false,
+    active_tasks: activeTasks,
+    lookup_requests: activeTasks.map((task) => ({ session_id: task.session_id })),
+    affected_tasks: affectedTasks,
+    unresolved,
+    ignored_observations:
+      observations === null
+        ? []
+        : [...observations.keys()].filter((sessionId) => !activeSessionIds.has(sessionId)).sort(),
+    plan_token: null,
+  };
+
+  if (observations === null) return report;
+
+  for (const task of activeTasks) {
+    const observation = observations.get(task.session_id);
+
+    if (!observation) {
+      unresolved.push({
+        id: task.id,
+        session_id: task.session_id,
+        lookup_state: "unobserved",
+      });
+    } else if (observation.state === "archived") {
+      affectedTasks.push(task);
+    } else if (observation.state === "missing" || observation.state === "error") {
+      unresolved.push({
+        id: task.id,
+        session_id: task.session_id,
+        lookup_state: observation.state,
+        ...(observation.detail === undefined ? {} : { detail: observation.detail }),
+      });
+    }
+  }
+
+  unresolved.sort((left, right) =>
+    left.session_id.localeCompare(right.session_id) || left.id.localeCompare(right.id),
+  );
+
+  if (!affectedTasks.length) return report;
+
+  const tokenPayload = {
+    tasks: activeTasks.map((task) => ({
+      id: task.id,
+      lookup_state: observations.get(task.session_id)?.state ?? "unobserved",
+      session_id: task.session_id,
+      status: task.status,
+      updated: task.updated,
+    })),
+    version: 2,
+  };
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(JSON.stringify(tokenPayload)),
+  );
+  const planToken = [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+
+  report.phase = "confirmation_required";
+  report.plan_token = planToken;
+
+  if (apply === undefined) return report;
+
+  if (apply !== planToken) {
+    throw new TaskOperationError(
+      "The audit plan changed; review the affected tasks and obtain confirmation again.",
+      409,
+    );
+  }
+
+  const timestamp = new Date().toISOString();
+  const statements = [
+    d1
+      .prepare(
+        "SELECT CASE WHEN (SELECT COUNT(*) FROM agtask_threads " +
+          "WHERE status IN ('todo', 'active', 'blocked')) = ? THEN 1 " +
+          "ELSE json_extract('invalid', '$') END AS verified",
+      )
+      .bind(activeTasks.length),
+  ];
+
+  for (const task of activeTasks) {
+    statements.push(
+      d1
+        .prepare(
+          "SELECT CASE WHEN EXISTS(SELECT 1 FROM agtask_threads " +
+            "WHERE id = ? AND session_id = ? AND status = ? AND updated = ?) " +
+            "THEN 1 ELSE json_extract('invalid', '$') END AS verified",
+        )
+        .bind(task.id, task.session_id, task.status, task.updated),
+    );
+  }
+
+  for (const task of affectedTasks) {
+    statements.push(
+      d1
+        .prepare(
+          "UPDATE agtask_threads SET status = 'done', updated = ?, closed = ? " +
+            "WHERE id = ? AND session_id = ? AND status = ? AND updated = ?",
+        )
+        .bind(timestamp, timestamp, task.id, task.session_id, task.status, task.updated),
+      d1.prepare(
+        "SELECT CASE WHEN changes() = 1 THEN 1 " +
+          "ELSE json_extract('invalid', '$') END AS applied",
+      ),
+      d1
+        .prepare(
+          "INSERT INTO agtask_rollouts (created, thread_id, turn_id, role, message) " +
+            "VALUES (?, ?, ?, 'meta', ?)",
+        )
+        .bind(timestamp, task.id, crypto.randomUUID(), `status:${task.status}->done`),
+      d1
+        .prepare(
+          "INSERT INTO agtask_rollouts (created, thread_id, turn_id, role, message) " +
+            "VALUES (?, ?, ?, 'meta', 'archival:codex-thread-archived')",
+        )
+        .bind(timestamp, task.id, crypto.randomUUID()),
+    );
+  }
+
+  try {
+    await d1.batch(statements);
+  } catch {
+    throw new TaskOperationError(
+      "The audit plan changed; review the affected tasks and obtain confirmation again.",
+      409,
+    );
+  }
+
+  report.phase = "complete";
+  report.applied = true;
+  return report;
 }
 
 async function registerTask(payload: Payload): Promise<TaskDetail & { task_created: boolean }> {
@@ -711,6 +956,8 @@ export async function executeTaskOperation(
       return registerTask(payload);
     case "add":
       return addTask(payload);
+    case "audit":
+      return auditTasks(payload);
     case "show":
       return taskDetail((await findTask(payload)).id);
     case "list":

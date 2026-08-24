@@ -170,7 +170,7 @@ test("both built dashboard page modules force dynamic rendering and bypass stale
 });
 
 test("every task operation requires the separate task bearer", async () => {
-  for (const name of ["health", "show", "list", "register", "dashboard"]) {
+  for (const name of ["health", "show", "list", "register", "audit", "dashboard"]) {
     assert.equal((await operation(name, {}, null)).status, 401);
     assert.equal((await operation(name, {}, probeSecret)).status, 401);
   }
@@ -611,6 +611,116 @@ test("dashboard status writes reject duplicate JSON keys without changing task s
   assert.equal(
     persisted.rollouts.filter((rollout) => rollout.message.startsWith("status:")).length,
     0,
+  );
+});
+
+test("hosted audits require an unchanged confirmed plan and reconcile archived tasks atomically", async () => {
+  const archived = fixtureTask(
+    "audit-archived-session",
+    "c10bf864-c377-450f-8818-437dfb644a01",
+  );
+  const unchanged = fixtureTask(
+    "audit-current-session",
+    "c10bf864-c377-450f-8818-437dfb644a02",
+  );
+  const merging = fixtureTask(
+    "audit-merging-session",
+    "c10bf864-c377-450f-8818-437dfb644a03",
+  );
+
+  for (const task of [archived, unchanged, merging]) {
+    assert.equal((await operation("register", task)).status, 200);
+  }
+  const d1 = await service.getD1Database("DB");
+  await d1
+    .prepare("UPDATE agtask_threads SET status = 'merging' WHERE id = ?")
+    .bind(merging.id)
+    .run();
+
+  const discovery = await (await operation("audit", {})).json();
+  assert.equal(discovery.phase, "lookup_required");
+  assert.equal(discovery.applied, false);
+  assert.ok(discovery.lookup_requests.some((item) => item.session_id === archived.session_id));
+  assert.ok(!discovery.lookup_requests.some((item) => item.session_id === merging.session_id));
+
+  const observations = {
+    schema_version: 1,
+    sessions: [
+      { session_id: archived.session_id, state: "archived" },
+      { session_id: unchanged.session_id, state: "not_archived" },
+      { session_id: "already-closed-session", state: "archived" },
+    ],
+  };
+  const planned = await (await operation("audit", { observations })).json();
+  assert.equal(planned.phase, "confirmation_required");
+  assert.equal(planned.applied, false);
+  assert.match(planned.plan_token, /^[0-9a-f]{64}$/);
+  assert.deepEqual(
+    planned.affected_tasks.map((task) => task.session_id),
+    [archived.session_id],
+  );
+  assert.deepEqual(planned.ignored_observations, ["already-closed-session"]);
+  assert.equal((await (await operation("show", { id: archived.id })).json()).status, "active");
+
+  assert.equal(
+    (
+      await operation("status", {
+        id: unchanged.id,
+        status: "blocked",
+      })
+    ).status,
+    200,
+  );
+  const stale = await operation("audit", {
+    observations,
+    apply: planned.plan_token,
+  });
+  assert.equal(stale.status, 409);
+  assert.equal((await (await operation("show", { id: archived.id })).json()).status, "active");
+
+  const fresh = await (await operation("audit", { observations })).json();
+  const applied = await (
+    await operation("audit", {
+      observations,
+      apply: fresh.plan_token,
+    })
+  ).json();
+  assert.equal(applied.phase, "complete");
+  assert.equal(applied.applied, true);
+
+  const closed = await (await operation("show", { id: archived.id })).json();
+  assert.equal(closed.status, "done");
+  assert.ok(closed.closed);
+  assert.equal(
+    closed.rollouts.filter((rollout) => rollout.message === "status:active->done").length,
+    1,
+  );
+  assert.equal(
+    closed.rollouts.filter(
+      (rollout) => rollout.message === "archival:codex-thread-archived",
+    ).length,
+    1,
+  );
+  assert.equal((await (await operation("show", { id: unchanged.id })).json()).status, "blocked");
+  assert.equal((await (await operation("show", { id: merging.id })).json()).status, "merging");
+
+  const repeat = await (await operation("audit", { observations })).json();
+  assert.deepEqual(repeat.affected_tasks, []);
+  assert.equal(repeat.applied, false);
+
+  assert.equal((await operation("audit", { apply: fresh.plan_token })).status, 400);
+  assert.equal(
+    (
+      await operation("audit", {
+        observations: {
+          schema_version: 1,
+          sessions: [
+            { session_id: unchanged.session_id, state: "error" },
+          ],
+        },
+      })
+    ).status,
+    400,
   );
 });
 

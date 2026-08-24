@@ -1,9 +1,10 @@
 # Audit archived Codex tasks
 
 Use this workflow when the user invokes `$agtask audit`. Preserve the ownership
-boundary: the Codex app owns archive state and the CLI owns ledger state. Never
-infer archive state from a missing list result, task age, title, or conversation
-status.
+boundary: the Codex app owns archive state and the selected CLI backend owns
+ledger state. Local mode audits local SQLite; Sites mode audits hosted D1 and
+never falls back to the local ledger. Never infer archive state from a missing
+list result, task age, title, or conversation status.
 
 1. Run `python3 ./scripts/agtask audit --json`. It returns every nonterminal
    ledger row whose status is `todo`, `active`, or `blocked`, plus one lookup
@@ -47,7 +48,8 @@ status.
    command has made no ledger changes.
 6. After explicit confirmation, repeat every Codex lookup and build a fresh
    observation document. Submit it with `--apply <plan_token> --json`. The CLI
-   recomputes the token under its SQLite write lock. If Codex archive results,
+   recomputes the token under its SQLite write lock or transactional D1 batch.
+   If Codex archive results,
    the active set, or an affected row changed, it fails closed or returns no
    candidates; show any new plan and ask again. Never reuse the
    pre-confirmation observations without refreshing them or substitute a token
