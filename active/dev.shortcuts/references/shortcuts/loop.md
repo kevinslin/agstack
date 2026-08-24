@@ -57,6 +57,13 @@ For each pass:
    - Treat blocker, critical, high-severity, or major findings as major findings.
    - Treat minor, nit, informational, or no-issue feedback as not major findings.
    - If severity is unclear, use impact: anything that can cause incorrect behavior, failed validation, data loss, security/privacy risk, or an unusable workflow is major.
+   - Also classify materially avoidable duplicate ownership, competing sources
+     of truth, parallel implementations without a current consumer, or substantial
+     implementation-coupled test/generator machinery as major when a concrete
+     smaller alternative preserves approved behavior, security, and supported
+     compatibility. Do not elevate style preferences or necessary complexity.
+   - For code reviews, reject a clean result that omits either required
+     evidence-backed Simplicity Audit or Test Audit for the current diff.
 
 3. If no blocker or major findings remain, stop the loop and report the clean pass.
 
@@ -72,7 +79,10 @@ For each pass:
 5. Spawn a fixer subagent to address the accepted blocker or major findings.
    - Give the fixer subagent the exact findings, target files, and any validation expectations.
    - The fixer subagent should not perform a fresh review; it should only implement the scoped fixes.
-   - Wait for the fixer result, then continue to the next review pass with a fresh reviewer subagent.
+   - Wait for the fixer result, then continue to the next review pass with a
+     fresh reviewer subagent. When fixes change ownership, architecture,
+     validation, failure handling, or tests, repeat the Simplicity Audit on
+     the resulting diff before accepting a clean pass.
 
 6. Continue looping until one of these exit conditions is met:
    - no blocker or major findings remain

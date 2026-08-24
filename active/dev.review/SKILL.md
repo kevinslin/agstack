@@ -47,9 +47,13 @@ dependencies:
 - Call out assumptions, risks, and unclear ownership/abstractions.
 - Propose simplifications when the selected workflow owns simplification.
 - Keep the review concise; avoid restating large sections of the input.
-- For code reviews, include the completed `Test Audit` checklist required by
-  `./references/workflow-code.md`; never check an item without inspected
-  evidence.
+- For code reviews, include both the `Simplicity Audit` and `Test Audit`
+  checklists required by `./references/workflow-code.md`; never check an item
+  without inspected evidence or report a clean review with either audit
+  incomplete.
+- Treat materially avoidable duplicate ownership, parallel implementations,
+  and implementation-coupled test machinery as major when a concrete smaller
+  design preserves approved capabilities, security, and supported compatibility.
 - If blocker or major findings remain in a review-only request, report them as
   unresolved and state that no fixer pass ran because edits were not authorized.
 

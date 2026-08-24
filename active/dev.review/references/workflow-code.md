@@ -21,6 +21,8 @@ Use this workflow to review code with a bias toward simplicity and correctness.
    - Verify active specifications follow the latest approved user decisions and
      temporary security compromises have nearby TODOs naming their replacement.
 3. Check complexity and design.
+   - Complete the mandatory Simplicity Audit checklist below against the
+     current, post-fix diff before finishing the review.
    - Identify unnecessary abstractions, indirection, or branching.
    - Propose concrete simplifications such as deletion, inlining, or narrower scope.
    - Prefer one canonical implementation over parallel operations, alternate representations, or fallback paths.
@@ -64,6 +66,39 @@ Use this workflow to review code with a bias toward simplicity and correctness.
    - Inspect current checks, actionable comments/reviews, and unresolved non-outdated review threads.
    - Do not report the loop as finished while required checks are failed/pending or review items remain.
    - In the handoff, include head SHA, failing/pending check count, unresolved thread count, and any blocker that still needs user action.
+
+## Mandatory Simplicity Audit
+
+Include a `Simplicity Audit` section in every code-review response. Replace
+`[ ]` with `[x]` only after inspecting concrete evidence; cite the relevant
+production file and line, actual consumer, dependency contract, or diff.
+
+- [ ] Identified the approved outcome, smallest complete execution path, and
+  security, ownership, compatibility, and acceptance boundaries that must stay.
+- [ ] Named the single authoritative owner for each introduced identity,
+  mutable state, configuration value, authorization decision, and lifecycle.
+- [ ] Compared development, production, bootstrap, request handling, and
+  persistence paths; flagged parallel operations and duplicate ownership.
+- [ ] Justified each new public API, adapter, helper, validation boundary,
+  compatibility path, and coordination mechanism with a current consumer or
+  concrete required invariant.
+- [ ] Checked existing dependency exports, application routes, and storage
+  constraints before accepting locally recreated interfaces or guarantees.
+- [ ] Distinguished required generated artifacts and dependency changes from
+  avoidable generator, lockfile, documentation, and fixture churn.
+- [ ] Proposed concrete deletion or consolidation with file references, or
+  explained why the smallest safe alternative cannot meet the approved scope.
+- [ ] Rechecked the final post-fix diff instead of relying on a review of an
+  earlier implementation or pre-fix architecture.
+
+Leave unverifiable items unchecked, explain the evidence gap, and do not claim a
+clean review while the audit is incomplete. Classify materially avoidable
+duplicate authority, competing sources of truth, parallel implementations
+without a required consumer, and substantial implementation-coupled test or
+generator machinery as major when a concrete smaller alternative preserves all
+approved capabilities and existing security, ownership, and supported
+compatibility boundaries. Do not classify preference, necessary infrastructure,
+or a genuinely required compatibility contract as a simplification defect.
 
 ## Mandatory Test Audit
 

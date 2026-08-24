@@ -18,4 +18,7 @@ Use `trigger:syncmoi` to reconcile local and upstream changes for the agents and
 `trigger:loop` always runs a reviewer pass and parent classification. It runs
 fixer passes only when the user explicitly invoked `trigger:loop`, requested a
 review-and-fix workflow, or otherwise authorized edits; automatic routing from
-a plain review stops with unresolved findings instead of changing files.
+a plain review stops with unresolved findings instead of changing files. Code
+review passes require evidence-backed simplicity and test audits; materially
+avoidable duplicate ownership or parallel implementations remain major findings
+until a safe smaller design is applied.
