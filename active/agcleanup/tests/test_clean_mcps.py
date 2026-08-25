@@ -104,7 +104,7 @@ class ParseProcessesTests(unittest.TestCase):
 class RunCleanupTests(unittest.TestCase):
     def setUp(self) -> None:
         self.stream = io.StringIO()
-        self.process = clean_mcps.Process(pid=101, parent_pid=42)
+        self.process = clean_mcps.Process(pid=101, parent_pid=1)
 
     def output(self) -> list[dict[str, object]]:
         return [json.loads(line) for line in self.stream.getvalue().splitlines()]
@@ -136,6 +136,50 @@ class RunCleanupTests(unittest.TestCase):
         self.assertTrue(self.output()[-1]["dry_run"])
         self.assertEqual(self.output()[-1]["remaining_count"], 1)
 
+    def test_active_or_uncertain_helpers_are_preserved_without_signaling(self) -> None:
+        active = clean_mcps.Process(pid=102, parent_pid=42)
+        with (
+            mock.patch.object(clean_mcps, "matching_processes", return_value=[active]),
+            mock.patch.object(clean_mcps.os, "kill") as kill,
+            mock.patch.object(clean_mcps.time, "sleep") as sleep,
+        ):
+            result = clean_mcps.run_cleanup(stream=self.stream)
+
+        self.assertEqual(result, 0)
+        kill.assert_not_called()
+        sleep.assert_not_called()
+        self.assertEqual(self.output()[0]["eligible_count"], 0)
+        self.assertEqual(self.output()[-1]["protected_count"], 1)
+        self.assertEqual(self.output()[-1]["remaining_count"], 1)
+        self.assertEqual(self.output()[-1]["remaining_eligible_count"], 0)
+
+    def test_orphans_are_cleaned_while_active_helpers_remain_protected(self) -> None:
+        active = clean_mcps.Process(pid=102, parent_pid=42)
+        matching_results = [
+            [self.process, active],
+            [active],
+            [active],
+            *[[active] for _ in range(clean_mcps.QUIET_POLLS)],
+            [active],
+        ]
+        with (
+            mock.patch.object(
+                clean_mcps, "matching_processes", side_effect=matching_results
+            ),
+            mock.patch.object(
+                clean_mcps, "send_if_still_matching", return_value=True
+            ) as send,
+            mock.patch.object(clean_mcps.time, "sleep"),
+        ):
+            result = clean_mcps.run_cleanup(stream=self.stream)
+
+        self.assertEqual(result, 0)
+        send.assert_called_once_with(101, signal.SIGTERM)
+        self.assertEqual(self.output()[-1]["term_sent"], 1)
+        self.assertEqual(self.output()[-1]["protected_count"], 1)
+        self.assertEqual(self.output()[-1]["remaining_count"], 1)
+        self.assertEqual(self.output()[-1]["remaining_eligible_count"], 0)
+
     def test_term_resistant_helper_receives_kill(self) -> None:
         matching_results = [
             [self.process],
@@ -164,7 +208,7 @@ class RunCleanupTests(unittest.TestCase):
         self.assertEqual(self.output()[-1]["kill_sent"], 1)
 
     def test_respawned_helper_gets_term_in_later_sweep(self) -> None:
-        respawned = clean_mcps.Process(pid=102, parent_pid=42)
+        respawned = clean_mcps.Process(pid=102, parent_pid=1)
         matching_results = [
             [self.process],
             [respawned],
@@ -211,6 +255,17 @@ class RunCleanupTests(unittest.TestCase):
     def test_revalidates_pid_before_sending_signal(self) -> None:
         with (
             mock.patch.object(clean_mcps, "matching_processes", return_value=[]),
+            mock.patch.object(clean_mcps.os, "kill") as kill,
+        ):
+            result = clean_mcps.send_if_still_matching(101, signal.SIGTERM)
+
+        self.assertFalse(result)
+        kill.assert_not_called()
+
+    def test_revalidation_refuses_helper_that_has_an_active_parent(self) -> None:
+        active = clean_mcps.Process(pid=101, parent_pid=42)
+        with (
+            mock.patch.object(clean_mcps, "matching_processes", return_value=[active]),
             mock.patch.object(clean_mcps.os, "kill") as kill,
         ):
             result = clean_mcps.send_if_still_matching(101, signal.SIGTERM)

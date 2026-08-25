@@ -16,7 +16,7 @@ Treat the first positional word after `agcleanup` as the subcommand. Read the ma
 - `clean_thread`: Archive local and connected-devbox Codex tasks whose latest update is at least seven days old. See `./references/clean_thread.md`.
 - `clean_archive`: Archive every Codex task in the Archive sidebar section, regardless of age. See `./references/clean_archive.md`.
 - `clean_agtask`: Audit tracked tasks and close every confirmed ledger task whose Codex task is archived. See `./references/clean_agtask.md`.
-- `clean_mcps`: Reap current-user computer-history MCP helpers, including active helpers. See `./references/clean_mcps.md`.
+- `clean_mcps`: Reap orphaned computer-history MCP helpers without interrupting active tasks. See `./references/clean_mcps.md`.
 - `clean_devbox_connections`: Reap orphaned current-user DevBox websocket proxy and tunnel pairs without disrupting active connections. See `./references/clean_devbox_connections.md`.
 
 ## Maintenance Rules

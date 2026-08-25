@@ -112,8 +112,11 @@ def matching_processes(process_id: int | None = None) -> list[Process]:
 
 
 def send_if_still_matching(process_id: int, requested_signal: signal.Signals) -> bool:
-    """Recheck ownership, executable, and full arguments before signaling a PID."""
-    if not any(process.pid == process_id for process in matching_processes(process_id)):
+    """Recheck ownership, executable, arguments, and orphan status before signaling."""
+    if not any(
+        process.pid == process_id and process.parent_pid == 1
+        for process in matching_processes(process_id)
+    ):
         return False
     try:
         os.kill(process_id, requested_signal)
@@ -129,11 +132,15 @@ def emit(payload: dict[str, object], stream: TextIO) -> None:
 def run_cleanup(*, dry_run: bool = False, stream: TextIO | None = None) -> int:
     output = sys.stdout if stream is None else stream
     initial = matching_processes()
+    eligible = [process for process in initial if process.parent_pid == 1]
+    protected = [process for process in initial if process.parent_pid != 1]
     emit(
         {
             "phase": "before",
             "dry_run": dry_run,
             "count": len(initial),
+            "eligible_count": len(eligible),
+            "protected_count": len(protected),
             "processes": [asdict(process) for process in initial],
         },
         output,
@@ -143,15 +150,18 @@ def run_cleanup(*, dry_run: bool = False, stream: TextIO | None = None) -> int:
     kill_sent = 0
     errors: list[dict[str, object]] = []
 
-    if dry_run or not initial:
+    if dry_run or not eligible:
         emit(
             {
                 "phase": "after",
                 "dry_run": dry_run,
                 "initial_count": len(initial),
+                "initial_eligible_count": len(eligible),
                 "term_sent": term_sent,
                 "kill_sent": kill_sent,
                 "remaining_count": len(initial),
+                "remaining_eligible_count": len(eligible),
+                "protected_count": len(protected),
                 "remaining": [asdict(process) for process in initial],
                 "errors": errors,
             },
@@ -159,7 +169,7 @@ def run_cleanup(*, dry_run: bool = False, stream: TextIO | None = None) -> int:
         )
         return 0
 
-    current = initial
+    current = eligible
     for sweep in range(1, MAX_SWEEPS + 1):
         if not current:
             break
@@ -181,7 +191,9 @@ def run_cleanup(*, dry_run: bool = False, stream: TextIO | None = None) -> int:
                 time.sleep(POLL_INTERVAL_SECONDS)
                 observed = matching_processes()
                 survivors = [
-                    process for process in observed if process.pid in term_targets
+                    process
+                    for process in observed
+                    if process.pid in term_targets and process.parent_pid == 1
                 ]
                 if not survivors:
                     break
@@ -197,14 +209,17 @@ def run_cleanup(*, dry_run: bool = False, stream: TextIO | None = None) -> int:
                     )
             time.sleep(POLL_INTERVAL_SECONDS)
 
-        current = matching_processes()
+        observed = matching_processes()
+        current = [process for process in observed if process.parent_pid == 1]
         emit(
             {
                 "phase": "sweep",
                 "sweep": sweep,
                 "term_sent_total": term_sent,
                 "kill_sent_total": kill_sent,
-                "remaining_count": len(current),
+                "remaining_count": len(observed),
+                "remaining_eligible_count": len(current),
+                "protected_count": len(observed) - len(current),
             },
             output,
         )
@@ -212,27 +227,34 @@ def run_cleanup(*, dry_run: bool = False, stream: TextIO | None = None) -> int:
         if not current:
             for _ in range(QUIET_POLLS):
                 time.sleep(POLL_INTERVAL_SECONDS)
-                current = matching_processes()
+                observed = matching_processes()
+                current = [
+                    process for process in observed if process.parent_pid == 1
+                ]
                 if current:
                     break
             if not current:
                 break
 
     final = matching_processes()
+    remaining_eligible = [process for process in final if process.parent_pid == 1]
     emit(
         {
             "phase": "after",
             "dry_run": dry_run,
             "initial_count": len(initial),
+            "initial_eligible_count": len(eligible),
             "term_sent": term_sent,
             "kill_sent": kill_sent,
             "remaining_count": len(final),
+            "remaining_eligible_count": len(remaining_eligible),
+            "protected_count": len(final) - len(remaining_eligible),
             "remaining": [asdict(process) for process in final],
             "errors": errors,
         },
         output,
     )
-    return 0 if not final else 2
+    return 0 if not remaining_eligible else 2
 
 
 def main() -> None:
