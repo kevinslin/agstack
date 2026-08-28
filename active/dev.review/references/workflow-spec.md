@@ -31,18 +31,25 @@ them.
 ## Steps
 
 1. Establish evidence and scope.
-   - Identify the stated goal, non-goals, target users/operators, and affected
-     surfaces.
-   - Treat explicit decisions in the task, parent handoff, or approved spec as
-     settled. Record conflicts with older architecture as narrow documentation
-     deltas; do not reopen the decision or edit unrelated canonical sources.
+   - State the retained capabilities, acceptance outcomes, non-goals, target
+     users/operators, and affected surfaces before proposing changes.
+   - Distinguish the latest accepted requirements and decisions from verified
+     current behavior, required implementation work, approved dependency or
+     upstream assumptions, and deferred scope. Existing schemas and older
+     proposals are evidence, not additional target requirements.
+   - Apply settled decisions consistently; record conflicts with older
+     architecture as narrow documentation deltas, not reasons to reopen the
+     direction or edit unrelated canonical sources. Preserve selective
+     apply/keep/defer decisions; exploratory questions are neither edit
+     authorization nor new requirements.
    - Verify source-backed claims against the current implementation, docs,
      schemas, generated types, command output, tests, or upstream contracts when
      available.
    - Flag hidden scope, vague outcomes, missing success criteria, and unverified
      claims presented as facts.
-   - Distinguish verified constraints from unsupported assumptions that would
-     change the approved behavior or ownership boundary.
+   - Record approved upstream work as an unverified dependency and required
+     implementation work, not current support. Flag unsupported assumptions
+     that would change approved behavior or ownership.
 2. Check target behavior.
    - Require clear before/after behavior, state transitions, permissions,
      prompts, error handling, edge cases, and user-visible output.
@@ -53,11 +60,16 @@ them.
 3. Check data, API, and ownership contracts.
    - Review request/response shapes, persisted data, config, schemas, enums,
      reason codes, compatibility, observability, and ownership boundaries.
-   - Flag conflicting sources of truth and contracts without a clear canonical
-     owner when they create a concrete correctness or ownership risk.
-   - Align resource ownership with the component that creates, configures,
-     deploys, and destroys it; keep consumer identity, implementation
-     selection, and authorization semantics independent.
+   - Identify the actual owner of each decision, lifecycle action, and
+     enforcement responsibility. Distinguish orchestration from delegated
+     execution; one component need not create, configure, deploy, and destroy
+     every resource. Keep consumer identity, implementation selection, and
+     authorization semantics independent.
+   - Flag conflicting sources of truth, parallel representations, duplicate
+     verification, or unclear ownership only for concrete correctness or
+     ownership risks. Preserve independent checks at actual trust boundaries;
+     trusting a delegate does not remove authorization, admission, or routing
+     responsibilities.
    - If the spec changes data/API/CLI/config/migration output, require an
      existing-contract snapshot or equivalent source-backed explanation before
      approving new output fields or types.
@@ -118,9 +130,10 @@ Classify each substantive finding before assigning severity:
 
 Ground the first two categories in the actual requirement or source-backed
 invariant. Present scope expansion as a decision for the user, and distinguish
-optional improvements from required fixes. Do not turn the strongest imagined
-enforcement mechanism into a blocker when the existing invariant and approved
-scope do not require it.
+optional improvements from required fixes. Likewise, present recommendations
+that drop retained capabilities separately as approval-required scope changes,
+not required fixes. Do not turn the strongest imagined enforcement mechanism
+into a blocker when the existing invariant and approved scope do not require it.
 
 - `blocker`: the spec cannot be implemented safely because core behavior,
   source truth, ownership, or execution contracts violate an explicit
@@ -138,14 +151,15 @@ radius, or an existing invariant requires them.
 
 ## Output
 
-- Lead with findings ordered by severity.
+- Begin with a short "Scope and Contracts Reviewed" note naming retained
+  capabilities, acceptance outcomes, ownership boundaries, and existing
+  invariants; then present findings ordered by severity.
 - For each finding, cite the exact section or line when possible, name the
-  finding category and failed rubric criterion, explain the implementation
-  risk, and give the smallest concrete fix or decision needed.
+  finding category and failed rubric criterion, and explain what the
+  recommendation changes, its consequence or risk, relevant tradeoff, and the
+  smallest concrete fix or decision needed.
 - Include a short "Ready State" verdict after findings: ready, ready after
   minor edits, or not ready.
-- Include a short "Scope and Contracts Reviewed" note naming the approved
-  behavior, ownership boundaries, and existing invariants checked.
 - Include a short "Verification Reviewed" note naming the code, docs, commands,
   tests, or runtime evidence checked and what remains unverified.
 - If there are no findings, say so clearly and still name any residual proof

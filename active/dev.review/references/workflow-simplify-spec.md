@@ -36,9 +36,19 @@ If authorization is missing or unclear, stop after the review and ask the user.
    user decisions and authoritative requirements before proposing deletions.
    Distinguish these contracts from replaceable implementation mechanisms. Keep
    every requested capability; dropping one is not simplification.
+   Separate latest accepted decisions, verified current behavior, required
+   implementation work, approved dependency or upstream assumptions, and
+   deferred scope. Existing schemas and older proposals are not additional
+   target requirements; do not repeatedly reopen settled direction. Record
+   approved upstream work as an unverified dependency to implement and prove,
+   never as current support.
 2. Describe the smallest end-to-end implementation that satisfies those
    constraints using existing code, data, public dependency contracts, and
-   control flow, with one source of truth and lifecycle-aligned ownership.
+   control flow, with one source of truth per decision. Identify the actual
+   decision, lifecycle, and enforcement owners; distinguish orchestration from
+   delegated execution. Prefer direct lifecycle hooks and existing seams over
+   generic plans or parallel representations when they preserve the same
+   contract.
 3. Challenge every proposed abstraction, helper, configuration option, public
    API, persistence model, state machine, compatibility path, background job,
    retry policy, migration, rollout phase, and observability mechanism. Remove
@@ -50,18 +60,23 @@ If authorization is missing or unclear, stop after the review and ask the user.
 4. Keep edge cases only when they are reachable, materially affect the requested
    outcome, or protect an existing safety or ownership boundary. Defer
    speculative cases until a real consumer, failure, or requirement appears.
-5. Prefer direct implementation over frameworks, existing seams over new
-   coordination, and outcome-focused tests over exhaustive implementation-detail
-   coverage. When deleting or consolidating tests, name the distinct acceptance
-   outcomes and their retained or replacement coverage. Do not replace required
-   real-system evidence with mocks. Scale proof and operational machinery to
-   actual risk.
+5. Prefer direct implementation over frameworks and authoritative enforcement
+   over redundant verification. Retain independent checks at actual trust
+   boundaries, including authorization, admission, and routing. Prefer
+   outcome-focused tests over exhaustive implementation-detail coverage. When
+   deleting or consolidating tests, name the distinct acceptance outcomes and
+   their retained or replacement coverage. Do not replace required real-system
+   evidence with mocks. Scale proof and operational machinery to actual risk.
 6. State what remains deferred, why that tradeoff is acceptable now, and which
    concrete future signal would justify adding the omitted complexity. Present
    alternatives that drop retained capabilities separately as scope changes
    requiring explicit user approval, not as capability-preserving
    `remove_or_defer` findings. Rejecting those alternatives must not block
    completion of the original scope.
+   For each recommendation, explain the changed behavior, consequence or risk,
+   relevant tradeoff, and smallest fix or decision. Preserve selective
+   apply/keep/defer decisions; exploratory questions are neither edit
+   authorization nor new requirements.
 
 ## Output
 
