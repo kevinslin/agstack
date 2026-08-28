@@ -20,6 +20,9 @@ Use this workflow to review code with a bias toward simplicity and correctness.
    - Verify contracts, documentation, generated artifacts, and tests describe the current implementation rather than retired behavior.
    - Verify active specifications follow the latest approved user decisions and
      temporary security compromises have nearby TODOs naming their replacement.
+   - Label temporary integration bridges and test-only workarounds with their
+     dependency or limitation and concrete replacement/removal condition. Do
+     not present workaround-backed proof as native support.
 3. Check complexity and design.
    - Complete the mandatory Simplicity Audit checklist below against the
      current, post-fix diff before finishing the review.
@@ -33,11 +36,20 @@ Use this workflow to review code with a bias toward simplicity and correctness.
    - Inspect public dependency exports before accepting local SDK-shaped types.
      Prefer existing concrete types or a narrowly named extension; preserve
      wire-format compatibility and stricter application-owned validation.
-   - Give each invariant one authoritative validation boundary; prefer storage constraints for persisted invariants and flag repeated checks in application layers.
+   - Give each invariant an authoritative validation boundary; prefer storage
+     constraints for persisted invariants. Before flagging repeated checks,
+     identify the failure mode and trust boundary each protects. Trusted
+     internal code is not blanket authorization to delete validation.
 4. Check for dead code and stale surface.
    - Look for unreachable branches, obsolete compatibility shims, abandoned helpers, duplicate implementations, unused parameters, stale feature flags, and outdated docs/tests/config left behind by the change.
-   - Verify likely dead code with call-site, import/export, route, config, CLI, migration, or serialization searches before recommending deletion.
+   - Before recommending removal or retention, trace consumers relevant to the
+     reviewed change: callers/imports, routes, selectors/discovery, ownership
+     checks, config/CLI inputs, serializers/migrations, tests, and integration
+     setup as applicable. Name the actual requirement, consumer, or failure
+     mode that justifies the decision.
    - Establish whether an interface or persisted format has actual consumers or an explicit compatibility requirement before preserving an older implementation.
+   - For representation or option changes, update dependent writers, readers,
+     selectors, checks, and tests together.
    - When compatibility is not required, remove superseded APIs, helpers, formats, fixtures, and error cases instead of introducing bridges or dual behavior.
    - Prefer concrete deletion follow-ups: file/symbol to remove and contracts, generated artifacts, documentation, or tests to update.
 5. Review test value and clarity.
@@ -46,6 +58,10 @@ Use this workflow to review code with a bias toward simplicity and correctness.
    - Classify every added or modified test as `keep`, `merge`, or `delete`
      based on the distinct production behavior it proves.
    - Test application-defined behavior and invariants at the boundary responsible for enforcing them.
+   - Prove the normal user/product operation affected by the change at the
+     requested boundary, not resource creation or artifact checks alone.
+     Preserve distinct applicable proof of identity, filesystem/network
+     enforcement, product/model execution, and lifecycle behavior.
    - Preserve every explicitly approved capability and existing security,
      ownership, isolation, credential, and immutability invariant; removing one
      is not a valid simplification.
@@ -84,9 +100,10 @@ production file and line, actual consumer, dependency contract, or diff.
   mutable state, configuration value, authorization decision, and lifecycle.
 - [ ] Compared development, production, bootstrap, request handling, and
   persistence paths; flagged parallel operations and duplicate ownership.
-- [ ] Justified each new public API, adapter, helper, validation boundary,
-  compatibility path, and coordination mechanism with a current consumer or
-  concrete required invariant.
+- [ ] Justified each new or disputed retained public API, adapter, helper,
+  validation boundary, compatibility path, and coordination mechanism within
+  the diff with a current consumer, required invariant, or concrete failure
+  mode.
 - [ ] Checked existing dependency exports, application routes, and storage
   constraints before accepting locally recreated interfaces or guarantees.
 - [ ] Distinguished required generated artifacts and dependency changes from
