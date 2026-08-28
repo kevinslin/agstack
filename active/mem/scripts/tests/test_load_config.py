@@ -855,8 +855,87 @@ class LoadConfigTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("exactly one of root or root_pattern", result.stderr)
 
-    def test_root_pattern_rejects_path_patterns(self) -> None:
-        for pattern in ("proj/*", "../proj*", "proj\\name", ".", ".."):
+    def test_absolute_root_pattern_keeps_each_project_as_its_root(self) -> None:
+        projects = self.root.resolve() / "projects"
+        first = projects / "first"
+        second = projects / "second"
+        nested = first / "src" / "nested"
+        nested.mkdir(parents=True)
+        second.mkdir()
+        outside = self.root.resolve() / "elsewhere" / "first"
+        outside.mkdir(parents=True)
+        escaped = projects / "linked"
+        escaped.symlink_to(outside, target_is_directory=True)
+        self.write_config(
+            f"""
+            version: 2
+            bases:
+              - name: projects
+                description: Project knowledge.
+                root_pattern: {projects}/*
+                schemas:
+                  - name: pkg
+                  - name: project
+            """
+        )
+
+        for cwd, expected in (
+            (first, first),
+            (nested, first),
+            (second, second),
+            (projects, None),
+            (outside, None),
+            (escaped, None),
+        ):
+            with self.subTest(cwd=cwd):
+                result = self.run_loader("--cwd", str(cwd))
+                self.assertEqual(result.returncode, 0, msg=result.stderr)
+                bases = json.loads(result.stdout)["bases"]
+                if expected is None:
+                    self.assertEqual(bases, [])
+                else:
+                    self.assertEqual(bases[0]["root"], str(expected))
+                    self.assertEqual(bases[0]["managed_root"], str(expected))
+                    self.assertEqual(
+                        bases[0]["schemas"], [{"name": "pkg"}, {"name": "project"}]
+                    )
+
+    def test_root_pattern_expands_environment_paths(self) -> None:
+        project = self.root.resolve() / "projects" / "example"
+        project.mkdir(parents=True)
+        self.write_config(
+            "version: 2\nbases:\n  - name: projects\n"
+            "    description: Project notes.\n    root_pattern: '$MEM_TEST_ROOT/projects/*'\n"
+            "    schemas:\n      - name: project\n"
+        )
+        result = subprocess.run(
+            [
+                "python3",
+                str(SCRIPT_PATH),
+                "--config",
+                str(self.config),
+                "--cwd",
+                str(project),
+            ],
+            env={**os.environ, "MEM_TEST_ROOT": str(self.root.resolve())},
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(json.loads(result.stdout)["bases"][0]["root"], str(project))
+
+    def test_root_pattern_rejects_unsafe_or_relative_path_patterns(self) -> None:
+        for pattern in (
+            "proj/*",
+            "../proj*",
+            "proj\\name",
+            ".",
+            "..",
+            "/projects/../*",
+            "/projects/./*",
+            "/projects/**",
+        ):
             with self.subTest(pattern=pattern):
                 self.write_config(
                     "version: 2\nbases:\n  - name: project\n"
@@ -867,7 +946,7 @@ class LoadConfigTests(unittest.TestCase):
                 result = self.run_loader()
 
                 self.assertNotEqual(result.returncode, 0)
-                self.assertIn("must be a basename glob", result.stderr)
+                self.assertIn("root_pattern", result.stderr)
 
     def test_schema_root_accepts_inline_and_nested_mounts(self) -> None:
         for root, expected in ((".", "."), ("packages/nested", "packages/nested")):

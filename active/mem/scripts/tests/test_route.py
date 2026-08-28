@@ -255,20 +255,24 @@ class RouteTests(unittest.TestCase):
         project = self.root / "proj.2025"
         cwd = project / "src"
         cwd.mkdir(parents=True)
-        self.config.write_text(
-            "version: 2\nbases:\n  - name: pattern\n"
-            "    description: Pattern notes.\n    root_pattern: proj*\n"
-            "    schemas:\n      - name: global-core\n"
-            f"  - name: fixed\n    description: Fixed notes.\n    root: {project}\n"
-            "    schemas:\n      - name: global-core\n",
-            encoding="utf-8",
-        )
+        for pattern in ("proj*", str(self.root.resolve() / "*")):
+            with self.subTest(pattern=pattern):
+                self.config.write_text(
+                    "version: 2\nbases:\n  - name: pattern\n"
+                    f"    description: Pattern notes.\n    root_pattern: {pattern}\n"
+                    "    schemas:\n      - name: global-core\n"
+                    f"  - name: fixed\n    description: Fixed notes.\n    root: {project}\n"
+                    "    schemas:\n      - name: global-core\n",
+                    encoding="utf-8",
+                )
 
-        result = self.run_router("pattern notes", "--cwd", str(cwd))
+                result = self.run_router("pattern notes", "--cwd", str(cwd))
 
-        self.assertEqual(result["status"], "selected")
-        self.assertEqual(result["selected"]["name"], "fixed")
-        self.assertEqual([candidate["name"] for candidate in result["candidates"]], ["fixed"])
+                self.assertEqual(result["status"], "selected")
+                self.assertEqual(result["selected"]["name"], "fixed")
+                self.assertEqual(
+                    [candidate["name"] for candidate in result["candidates"]], ["fixed"]
+                )
 
     def test_multiple_matching_patterns_are_ambiguous(self) -> None:
         project = self.root / "proj.2025"

@@ -161,11 +161,20 @@ def resolve_root(raw_root: str, config_dir: Path) -> Path:
 
 def resolve_root_pattern(pattern: Any, *, cwd: Path, field: str) -> Path | None:
     value = non_empty_string(pattern, field)
-    if "/" in value or "\\" in value or value in {".", ".."}:
-        fail(f"{field} must be a basename glob without path separators or traversal")
+    value = os.path.expandvars(os.path.expanduser(value))
+    if "\\" in value or any(part in {".", ".."} for part in value.split("/")):
+        fail(f"{field} must not contain backslashes or traversal")
+    is_path_pattern = "/" in value
+    if is_path_pattern and (not Path(value).is_absolute() or "**" in value.split("/")):
+        fail(f"{field} must be a basename glob or absolute path glob without '**'")
     current = cwd.expanduser().resolve(strict=False)
     for directory in (current, *current.parents):
-        if fnmatch.fnmatchcase(directory.name, value):
+        matches = (
+            directory.match(value)
+            if is_path_pattern
+            else fnmatch.fnmatchcase(directory.name, value)
+        )
+        if matches:
             return directory
     return None
 

@@ -36,7 +36,7 @@ Unless `--config` is present, commands load:
 1. the nearest `.mem.yaml` at or above `--cwd`;
 2. `.mem.yaml` under `--home`.
 
-The nearest configuration wins for duplicate base names. Unique home bases remain available. Base names and aliases must be globally unique after merging. Each base declares exactly one fixed `root` or session-relative `root_pattern`; a pattern matches the basename of `--cwd` or its nearest matching ancestor, and bases without a match are inactive. Ordinary loading accepts only top-level configuration `version: 2`; after installing the updated skill, run `doctor --migrate` before using an existing version-1 configuration.
+The nearest configuration wins for duplicate base names. Unique home bases remain available. Base names and aliases must be globally unique after merging. Each base declares exactly one fixed `root` or session-relative `root_pattern`; a basename or absolute path glob matches `--cwd` or its nearest matching ancestor, and bases without a match are inactive. Path globs match one directory component at a time, so `/workspace/projects/*` keeps a nested session rooted at its project directory. Ordinary loading accepts only top-level configuration `version: 2`; after installing the updated skill, run `doctor --migrate` before using an existing version-1 configuration.
 
 See [Config in the README](./README.md#config) for every `.mem.yaml` field, default, routing signal, and validation rule.
 

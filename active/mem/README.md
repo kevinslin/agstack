@@ -70,6 +70,13 @@ bases:
     schemas:
       - name: pkg
         root: .
+  - name: agent-projects
+    description: Package and project knowledge for the current project.
+    root_pattern: /absolute/path/to/agents/projects/*
+    path_style: directory
+    schemas:
+      - name: pkg
+      - name: project
 ```
 
 ### Top-level fields
@@ -84,7 +91,7 @@ bases:
 - `description`: nonempty plain-language explanation of the base's contents. The router uses its words and phrases as query-routing signals.
 - Exactly one of `root` or `root_pattern`:
   - `root`: fixed workspace ownership and containment boundary. Absolute paths, `~`, environment variables, and paths relative to the configuration file are supported.
-  - `root_pattern`: nonempty glob matched against the basename of the resolved session directory and its ancestors. For example, `proj*` matches `/workspace/proj.2025` even when the session starts in `/workspace/proj.2025/src`; the nearest matching ancestor becomes the concrete root. A base with no matching ancestor is inactive for that session and cannot be selected explicitly. Fixed-root ownership takes precedence when both a fixed base and a pattern base match; competing pattern owners remain ambiguous. A project resolves to one root.
+  - `root_pattern`: basename glob such as `proj*`, or absolute path glob such as `/workspace/projects/*`, matched against the resolved session directory and its ancestors. Path patterns match one component at a time: `*` does not cross `/`, so `/workspace/projects/first/src` resolves to `/workspace/projects/first`. `~` and environment variables are expanded. Relative path patterns, traversal, backslashes, and recursive `**` path components are rejected. The nearest matching ancestor becomes the concrete root; unmatched bases are inactive and cannot be selected explicitly. Fixed-root ownership takes precedence over pattern-root ownership; competing pattern owners remain ambiguous. A project resolves to one root.
   The resolved root must be an existing directory unless `--allow-missing-roots` is explicitly supported and supplied.
 - `schemas`: nonempty list of schema mappings available to the base. Managed materialization accepts only schemas listed here.
 
