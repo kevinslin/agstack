@@ -9,6 +9,8 @@ dependencies:
 
 Keep this file lean. Use it only to route the agent to the right subcommand reference.
 
+For every cleanup report, also read and follow `./references/reporting.md`.
+
 ## Subcommands
 
 Treat the first positional word after `agcleanup` as the subcommand. Read the matching reference completely before acting.
