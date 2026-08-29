@@ -40,7 +40,9 @@ Whenever practical - use one or more subagents to run any given phase to preserv
 - Capture the plan prefix from the plan filename: `{YYYY-MM-DD}-{title-in-kebab-case}`.
 
 ### 2. Gather Context
-- Given the spec/plan, identify remaining ambiguities, gaps, and unresolved assumptions.
+- Trace the existing end-to-end lifecycle, including initialization and runtime.
+  Identify unmet requested outcomes and unresolved assumptions before introducing
+  another mechanism.
 - Preflight infrastructure needed for explicitly requested integration proof
   before declaring the task executable. Identify unavailable clusters, runtime
   images, credentials, services, or host capabilities early.
@@ -56,7 +58,8 @@ Whenever practical - use one or more subagents to run any given phase to preserv
   - `Questions for User`
   - `Proposed Flow Docs`
 - After creating the spec, spawn subagent to critical review design doc with $dev.review skill and provide recommendations
-- Apply recommendations provided by the subagent
+- Apply correctness fixes and simplifications within the approved contract.
+  Present changes to that contract as product decisions before applying them.
 - If the user asked for a post-spec check-in, perform that check-in only after the review feedback and ambiguity summary are incorporated, unless they explicitly asked to stop earlier.
 
 ### 3. Execute
