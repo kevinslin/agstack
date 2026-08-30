@@ -13,11 +13,24 @@
 const fs = require('fs');
 const path = require('path');
 
-// Load environment variables from .env file
-try {
-  require('dotenv').config({ path: path.join(__dirname, '.env') });
-} catch (err) {
-  // dotenv not installed or .env file not found - will use system environment variables
+// Prefer credentials installed with this script, then fall back to the legacy skill path.
+const localEnvPath = path.join(__dirname, '.env');
+const legacyEnvPath = path.join(
+  process.env.HOME || '',
+  '.llm/skills/tool-imagekit-upload/scripts/.env'
+);
+const envPath = [localEnvPath, legacyEnvPath].find(candidate => fs.existsSync(candidate));
+
+if (envPath) {
+  if (typeof process.loadEnvFile === 'function') {
+    process.loadEnvFile(envPath);
+  } else {
+    try {
+      require('dotenv').config({ path: envPath });
+    } catch (err) {
+      // Older Node versions need dotenv unless credentials are already exported.
+    }
+  }
 }
 
 // Parse command-line arguments

@@ -1,8 +1,8 @@
 ---
 name: gen-notifier
-description: "Top-level agents only: send exactly one final-state desktop notification before the final report."
+description: "Root tasks only: send exactly one final-state desktop notification before the final report; never notify from subtasks."
 dependencies: []
-version: 1.2.1
+version: 1.2.2
 ---
 
 # Task Completion Notifier
@@ -16,19 +16,36 @@ Use this skill in the following scenarios:
 1. **User explicitly requests notification** - When the user says "notify me when done", "let me know when this finishes", etc.
 2. **Long-running tasks** - Jobs that take significant time (builds, deployments, large refactors, test suites)
 3. **Background tasks** - When the user might context-switch while waiting
-4. **Default behavior** - By default, assume all jobs assigned to the top-level agent will require one notification unless the user specifies otherwise
+4. **Default behavior** - By default, assume jobs assigned directly to the root task will require one notification unless the user specifies otherwise
 
 ## Core Rule
 
 Use this skill only once per job, at the very end, after the work is finalized and immediately before you generate the final user-facing report.
 
-- Use this skill only from the top-level or parent agent
-- Do not use this skill from subagents, delegated workers, review workers, or background worker agents
-- If you are a subagent or worker, report your terminal state to the parent agent instead; the parent agent owns the single final notification for the overall job
+- Use this skill only from the root task that owns the overall job
+- Do not use this skill from subtasks, subagents, delegated workers, review workers, or background worker agents
+- If you are working in a subtask or worker, report your terminal state to the root task instead; the root task owns the single final notification for the overall job
 - Do not notify during intermediate steps
 - Do not notify when you are still investigating or iterating
 - Do not notify before verification, cleanup, or finalization is complete
 - If the user explicitly asks for different timing, follow the user's instruction instead
+
+## Subtask Suppression
+
+Do not send a desktop notification from any subtask. A separate Codex task
+created as an `agtask` child remains a subtask for notification purposes even
+when it is user-owned, performs substantive work, or otherwise considers itself
+a top-level task.
+
+Treat the current task as a subtask when any available context identifies it as
+a subagent or delegated worker, its creation prompt contains an
+`<agtask-bootstrap version="2">` envelope, or verified agtask ledger metadata
+records `kind: child` or a non-null `parent_session_id`.
+
+This suppression overrides the default, background-task, and long-running-task
+notification behavior. An instruction to use this skill still requires this
+check and does not by itself authorize a subtask notification. Only an explicit
+user request to notify for this specific subtask overrides the suppression.
 
 ## Memory Summary Suppression
 
@@ -124,7 +141,7 @@ Don't send notifications for:
 - Every tool execution
 - Tasks where user is actively watching
 - Cases where the job is not yet finalized
-- Subagent, delegated-worker, review-worker, or background-worker completion
+- Subtask, subagent, delegated-worker, review-worker, or background-worker completion
 - Chronicle-related threads or Skysight memory-summary work, unless the user explicitly requests an override
 
 ## Best Practices
@@ -200,7 +217,7 @@ You can install it with: brew install terminal-notifier
 
 ### Multiple Tasks
 
-For multiple sub-tasks within a larger job, only send ONE notification for the entire job:
+For multiple work items within one root job, send only ONE notification for the entire job. Separate subtasks do not notify themselves:
 
 ❌ **Bad - multiple notifications:**
 ```

@@ -7,7 +7,7 @@ A generic agent skill for uploading images to ImageKit CDN from file paths or cl
 ### 1. Navigate to Scripts Directory
 
 ```bash
-cd ~/.llm/skills/tool-imagekit-upload/scripts
+cd /path/to/imagekit-upload/scripts
 ```
 
 ### 2. Install Dependencies
@@ -25,7 +25,12 @@ This installs:
 
 ### 3. Configure Credentials
 
-Credentials should be stored under `~/.llm/skills/tool-imagekit-upload/`.
+Credentials should normally be stored in `.env` beside `./scripts/upload.js`.
+When the script is installed under `~/.codex/skills/imagekit-upload` but an
+older credential file remains at
+`~/.llm/skills/tool-imagekit-upload/scripts/.env`, the script uses that legacy
+file as a fallback. Check both locations before reporting missing credentials,
+and never print credential values.
 
 Create a `.env` file from the example:
 
@@ -48,7 +53,7 @@ You can find these credentials in your ImageKit dashboard under **Developer Opti
 Try uploading a test image:
 
 ```bash
-node ~/.llm/skills/tool-imagekit-upload/scripts/upload.js --file "/path/to/test-image.jpg"
+node ./scripts/upload.js --file "/path/to/test-image.jpg"
 ```
 
 ## Usage Examples
@@ -57,29 +62,29 @@ node ~/.llm/skills/tool-imagekit-upload/scripts/upload.js --file "/path/to/test-
 
 ```bash
 # Basic upload
-node scripts/upload.js --file "/path/to/image.jpg"
+node ./scripts/upload.js --file "/path/to/image.jpg"
 
 # Upload with custom name
-node scripts/upload.js --file "/path/to/image.jpg" --name "my-custom-name"
+node ./scripts/upload.js --file "/path/to/image.jpg" --name "my-custom-name"
 
 # Upload to specific folder
-node scripts/upload.js --file "/path/to/image.jpg" --folder "/brand/logos"
+node ./scripts/upload.js --file "/path/to/image.jpg" --folder "/brand/logos"
 
 # Upload with tags
-node scripts/upload.js --file "/path/to/image.jpg" --tags "logo,brand,2024"
+node ./scripts/upload.js --file "/path/to/image.jpg" --tags "logo,brand,2024"
 
 # Combine options
-node scripts/upload.js --file "/path/to/image.jpg" --name "company-logo" --folder "/brand" --tags "logo,primary"
+node ./scripts/upload.js --file "/path/to/image.jpg" --name "company-logo" --folder "/brand" --tags "logo,primary"
 ```
 
 ### Upload from clipboard
 
 ```bash
 # Upload image from clipboard
-node scripts/upload.js --clipboard
+node ./scripts/upload.js --clipboard
 
 # Upload from clipboard with custom name
-node scripts/upload.js --clipboard --name "screenshot-$(date +%Y%m%d)"
+node ./scripts/upload.js --clipboard --name "screenshot-$(date +%Y%m%d)"
 ```
 
 ## Using with an Agent
@@ -98,7 +103,9 @@ Agent: [Uses --clipboard flag to upload from clipboard]
 
 ### "Missing required environment variables"
 
-Make sure you've created the `.env` file in the scripts directory with all three required variables.
+Check for `.env` beside `./scripts/upload.js`, then check
+`~/.llm/skills/tool-imagekit-upload/scripts/.env`. One of those files must
+contain all three required variables.
 
 ### "ImageKit SDK not installed"
 

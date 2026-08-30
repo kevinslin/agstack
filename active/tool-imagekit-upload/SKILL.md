@@ -1,6 +1,7 @@
 ---
 name: imagekit-upload
 description: Upload existing images to ImageKit and return CDN URLs.
+dependencies: []
 version: 1.0.0
 ---
 
@@ -20,11 +21,19 @@ Do not recreate, redraw, approximate, crop from another image, or generate an SV
 
 ## Prerequisites
 
-Before using this skill, configure your ImageKit credentials in `~/.llm/skills/tool-imagekit-upload/`.
-Create a `.env` file in the scripts directory:
+The upload script may be installed under `~/.codex/skills/imagekit-upload`, while
+credentials from an older installation remain under
+`~/.llm/skills/tool-imagekit-upload/scripts/.env`. This split installation is
+supported: the script first checks for `.env` beside `upload.js`, then falls back
+to the legacy `.llm` credential file.
+
+Before concluding that credentials are missing, check both locations. Never print
+credential values.
+
+For a new setup, create `.env` beside the upload script:
 
 ```bash
-cd ~/.llm/skills/tool-imagekit-upload/scripts
+cd /path/to/imagekit-upload/scripts
 cp .env.example .env
 ```
 
@@ -38,10 +47,10 @@ Find these in your ImageKit dashboard under Developer Options → API Keys.
 
 ## Setup
 
-Install Node.js dependencies:
+Install Node.js dependencies from the skill's `scripts` directory:
 
 ```bash
-cd ~/.llm/skills/tool-imagekit-upload/scripts
+cd /path/to/imagekit-upload/scripts
 npm install
 ```
 
@@ -54,7 +63,7 @@ This installs ImageKit SDK, dotenv for configuration, and clipboardy for clipboa
 When the user provides a file path to an image, use the upload script:
 
 ```bash
-node ~/.llm/skills/tool-imagekit-upload/scripts/upload.js --file "/path/to/image.jpg"
+node ./scripts/upload.js --file "/path/to/image.jpg"
 ```
 
 Optional parameters:
@@ -67,7 +76,7 @@ Optional parameters:
 When the user wants to upload an image from their clipboard:
 
 ```bash
-node ~/.llm/skills/tool-imagekit-upload/scripts/upload.js --clipboard
+node ./scripts/upload.js --clipboard
 ```
 
 This reads image data directly from the system clipboard.
@@ -85,7 +94,7 @@ Display the URL prominently to the user for easy copying.
 ## Error Handling
 
 Common errors:
-- **Missing credentials**: Verify `.env` file exists with all required variables
+- **Missing credentials**: Check for `.env` beside `upload.js`, then check `~/.llm/skills/tool-imagekit-upload/scripts/.env`
 - **File not found**: Check the file path is correct and accessible
 - **Invalid file type**: ImageKit supports common image formats (JPG, PNG, GIF, WebP, SVG)
 - **Clipboard empty**: Ensure an image is copied to the clipboard before upload

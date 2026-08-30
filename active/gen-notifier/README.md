@@ -4,7 +4,7 @@ A generic agent skill that sends desktop notifications when tasks are complete u
 
 ## Overview
 
-This skill enables a top-level agent to notify you via desktop notifications when a job is finalized, needs input, or ends in errors. By default, all jobs assigned to the top-level agent trigger one notification at final handoff unless you say otherwise.
+This skill enables a root task to notify you via desktop notifications when a job is finalized, needs input, or ends in errors. By default, jobs assigned directly to the root task trigger one notification at final handoff unless you say otherwise. Subtasks never notify unless you explicitly request a notification for that specific subtask.
 
 ## Installation
 
@@ -30,11 +30,13 @@ The skill is automatically invoked when:
 
 ### Automatic Behavior
 
-By default, assume all jobs will generate exactly one notification. The agent should send it only after the work is fully finalized and immediately before the final user-facing report.
+By default, assume jobs assigned directly to the root task will generate exactly one notification. The agent should send it only after the work is fully finalized and immediately before the final user-facing report.
 
 ### Agent Scope
 
-Only the top-level or parent agent should use this skill. Subagents, delegated workers, review workers, and background worker agents should report their terminal state to the parent agent instead of sending a desktop notification themselves.
+Only the root task that owns the overall job should send a notification. Subtasks, subagents, delegated workers, review workers, and background worker agents should report their terminal state to the root task instead of sending a notification themselves.
+
+A separate Codex task created as an `agtask` child is a subtask for notification purposes even when it is user-owned or otherwise considers itself top-level. Detect it from an `<agtask-bootstrap version="2">` creation envelope or verified agtask ledger metadata with `kind: child` or a non-null `parent_session_id`. A general instruction to use this skill does not override this suppression; the user must explicitly request a notification for that specific subtask.
 
 ### Timing Rule
 
@@ -111,7 +113,7 @@ terminal-notifier -title "Production Deployment" -message "errors"
 - **Concise titles** - Understand what finished at a glance
 - **Final-handoff timing** - Sent only after work is finalized and right before the final report
 - **No spam** - One notification per task, not per step
-- **Top-level ownership** - Subagents report state upward; the parent agent sends the single final notification
+- **Root-task ownership** - Subtasks report state upward; only the root task sends the single final notification
 
 ## Configuration
 
@@ -142,4 +144,4 @@ Ensure Terminal has notification permissions:
 
 ## Version
 
-Current version: 1.1.1
+Current version: 1.2.2
