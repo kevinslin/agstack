@@ -4,6 +4,7 @@
   "description": "Upload images to ImageKit from file paths or clipboard",
   "main": "upload.js",
   "scripts": {
+    "test": "node --test tests/*.test.js",
     "upload": "node upload.js"
   },
   "dependencies": {

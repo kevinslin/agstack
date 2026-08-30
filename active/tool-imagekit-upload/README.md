@@ -56,6 +56,12 @@ Try uploading a test image:
 node ./scripts/upload.js --file "/path/to/test-image.jpg"
 ```
 
+Run the automated credential-location checks from the scripts directory:
+
+```bash
+npm test
+```
+
 ## Usage Examples
 
 ### Upload from file path
