@@ -378,7 +378,7 @@ class MemCliTests(unittest.TestCase):
         self.assertEqual(
             warning["repair_argv"],
             [
-                str(SCRIPT_PATH),
+                "mem",
                 "index",
                 "build",
                 "--base",
@@ -394,7 +394,7 @@ class MemCliTests(unittest.TestCase):
 
         index_path.rmdir()
         repaired = subprocess.run(
-            [sys.executable, *warning["repair_argv"]],
+            [sys.executable, str(SCRIPT_PATH), *warning["repair_argv"][1:]],
             text=True,
             capture_output=True,
             check=False,
@@ -424,7 +424,7 @@ class MemCliTests(unittest.TestCase):
         warning = json.loads(result.stderr.splitlines()[-1])
         self.assertEqual(
             warning["repair_argv"],
-            [str(SCRIPT_PATH), "index", "build", "--base", "docs", "--config", str(self.config)],
+            ["mem", "index", "build", "--base", "docs", "--config", str(self.config)],
         )
 
     def test_explicit_out_requires_unmanaged(self) -> None:

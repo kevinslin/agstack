@@ -11,13 +11,13 @@ Use this mode when project or workspace instructions require `$mem` to orient so
 Run the first-class document-preserving lookup before manual search:
 
 ```bash
-python3 ./scripts/mem.py context lookup \
+mem context lookup \
   --query "{{task intent}}" \
   --source "{{project-or-package-path}}" \
   --pretty
 ```
 
-Repeat `--source` to supply multiple source files or directories. Routing remains strict unless `--allow-multiple` explicitly authorizes reading every candidate in an ambiguous route; this flag does not apply to knowledge writes or materialization. A missing config returns `status: missing_config` with exit code 0. Existing version-1 configuration instead requires `python3 ./scripts/mem.py doctor --migrate --pretty` after installing the updated skill.
+Repeat `--source` to supply multiple source files or directories. Routing remains strict unless `--allow-multiple` explicitly authorizes reading every candidate in an ambiguous route; this flag does not apply to knowledge writes or materialization. A missing config returns `status: missing_config` with exit code 0. Existing version-1 configuration instead requires `mem doctor --migrate --pretty` after installing the updated skill.
 
 1. Inspect the resolved schemas and their node descriptions.
 2. Infer one or more likely nodes from the task intent and render their concrete paths.
@@ -44,7 +44,7 @@ The JSON result reports the mode, status, query, normalized sources, config path
 - Match a file-like target to the nearest schema node.
 - Render the concrete path using the selected base's `path_style`.
 - Distinguish folder-based units from their sidecars. For example, a `specs/{NN}-{slug}/reports/{report}.md` report belongs to an existing spec unit.
-- Materialize only the chosen node with `mem.py schema materialize --base ... --include ...`.
+- Materialize only the chosen node with `mem schema materialize --base ... --include ...`.
 - Do not invent route metadata fields. Use them only when the schema template or existing file defines them.
 - Treat disagreement between the expected schema path and an existing candidate as schema drift.
 - Repair clear mechanical drift before writing; ask when the intended repair is ambiguous.
@@ -64,7 +64,7 @@ The JSON result reports the mode, status, query, normalized sources, config path
 Managed `schema materialize --base NAME_OR_ALIAS` refreshes `<managed_root>/.mem.index.json` automatically after successful execution. When an agent creates a managed Markdown entity directly through file editing instead, it **must** run:
 
 ```bash
-python3 ./scripts/mem.py index build --base NAME_OR_ALIAS --pretty
+mem index build --base NAME_OR_ALIAS --pretty
 ```
 
 Use the selected base's actual name or alias and preserve any required original `--config`, `--cwd`, or `--home` configuration controls. Refresh after the new path exists; body-only edits do not change the path fingerprint. External edits that create, rename, or delete paths, as well as repository synchronization, are not observed automatically and require an explicit rebuild when index freshness matters.
@@ -120,8 +120,8 @@ Delete only when explicitly requested. Prefer targeted removal over deleting an 
 
 - Missing config: exit the `$mem` workflow successfully and continue the underlying task without `$mem`. Do not ask for setup or report a blocker solely because neither the nearest ancestor `.mem.yaml` nor `$HOME/.mem.yaml` exists.
 - Invalid config: report the parser error and stop.
-- Legacy config: run `python3 ./scripts/mem.py doctor --migrate --pretty` to upgrade existing version-1 configuration before ordinary loading.
-- Missing, stale, or invalid index: repair the disposable cache with `python3 ./scripts/mem.py index build --base NAME_OR_ALIAS`; do not infer that managed knowledge is missing.
+- Legacy config: run `mem doctor --migrate --pretty` to upgrade existing version-1 configuration before ordinary loading.
+- Missing, stale, or invalid index: repair the disposable cache with `mem index build --base NAME_OR_ALIAS`; do not infer that managed knowledge is missing.
 - Post-creation refresh failure: report the structured warning and replay `repair_argv`; preserve the successfully created document.
 - Missing root: report the configured path and stop.
 - Missing optional base skill: report it and stop before operating in that base.

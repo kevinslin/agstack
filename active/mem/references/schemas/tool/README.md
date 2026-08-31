@@ -2,11 +2,11 @@
 
 Source: `schema.yaml`
 
-Regenerate this view from this schema directory:
+Inspect this schema with the installed `mem` command:
 
 ```bash
-python3 ../../../scripts/mem.py schema show tool
-python3 ../../../scripts/mem.py schema describe tool
+mem schema show tool
+mem schema describe tool
 ```
 
 ```text

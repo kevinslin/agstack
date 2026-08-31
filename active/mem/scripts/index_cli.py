@@ -14,7 +14,7 @@ from load_config import load_config
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(prog="mem.py index", description=__doc__)
+    parser = argparse.ArgumentParser(prog="mem index", description=__doc__)
     subcommands = parser.add_subparsers(dest="mode", required=True)
     for mode in ("build", "show", "check"):
         subcommand = subcommands.add_parser(mode)

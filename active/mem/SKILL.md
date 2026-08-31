@@ -41,39 +41,52 @@ Prefer managed knowledge mode for durable artifacts.
 
 ## Unified CLI
 
-Run commands from the directory containing this `SKILL.md`, or resolve `./scripts/mem.py` relative to this file.
+Require the `mem` executable on `PATH` before running CLI operations. Check with `command -v mem`; if missing, run the bundled installer and verify the command. Set `MEM_SKILL_ROOT` to the absolute directory containing this `SKILL.md`:
+
+```bash
+if ! command -v mem >/dev/null 2>&1; then
+  python3 "$MEM_SKILL_ROOT/scripts/install.py" || exit 1
+  export PATH="$HOME/.local/bin:$PATH"
+fi
+command -v mem
+mem --help
+```
+
+Verify that `mem --help` succeeds and lists `mem config show`, `mem context lookup`, and `mem schema`. If the resolved command has different help, report the conflicting executable path before running memory operations.
+
+Run `mem` from the caller's project directory so configuration discovery and routing retain the intended scope. Use the installed command for normal operations. If installation or verification fails, report the error instead of falling back to a direct `./scripts/mem.py` invocation.
 
 See [`README.md`](./README.md) for the system design and [`CLI.md`](./CLI.md) for the complete command reference.
 
 ```bash
 # Upgrade existing version-1 configuration after installing the updated skill.
-python3 ./scripts/mem.py doctor --migrate --pretty
+mem doctor --migrate --pretty
 
 # Inspect merged configuration.
-python3 ./scripts/mem.py config show --pretty
+mem config show --pretty
 
 # Explain base selection.
-python3 ./scripts/mem.py route --query "{{request intent}}" --pretty
+mem route --query "{{request intent}}" --pretty
 
 # Maintain or inspect derived base indexes.
-python3 ./scripts/mem.py index build --base oai --pretty
-python3 ./scripts/mem.py index show --base oai --pretty
-python3 ./scripts/mem.py index check --all --pretty
+mem index build --base oai --pretty
+mem index show --base oai --pretty
+mem index check --all --pretty
 
 # Read managed project context, with bounded source fallback when needed.
-python3 ./scripts/mem.py context lookup \
+mem context lookup \
   --query "{{context intent}}" \
   --source "{{project-or-package-path}}" \
   --pretty
 
 # Inspect schemas.
-python3 ./scripts/mem.py schema list
-python3 ./scripts/mem.py schema show global-core
-python3 ./scripts/mem.py schema describe global-core
-python3 ./scripts/mem.py schema validate global-core
+mem schema list
+mem schema show global-core
+mem schema describe global-core
+mem schema validate global-core
 
 # Materialize under a configured base.
-python3 ./scripts/mem.py schema materialize pkg \
+mem schema materialize pkg \
   --base oai \
   --var package=clawcmd \
   --var cook=change-claw-config \
@@ -81,7 +94,7 @@ python3 ./scripts/mem.py schema materialize pkg \
   --skip-existing
 
 # Materialize an explicit non-memory artifact.
-python3 ./scripts/mem.py schema materialize integ-proof \
+mem schema materialize integ-proof \
   --out /tmp/proofs \
   --unmanaged \
   --var proof=example \
@@ -100,7 +113,7 @@ Merge configuration from:
 
 Load both when present. The nearest config wins when both define the same base name; unique home bases remain available.
 
-Configuration requires top-level `version: 2`. After installing the updated skill, migrate existing version-1 configuration with `python3 ./scripts/mem.py doctor --migrate --pretty`; migration discards retired `match.topics` and `match.artifact_kinds` while preserving ownership globs and other supported settings. Each base requires `name`, `description`, `schemas`, and exactly one of `root` or `root_pattern`. A fixed `root` names its workspace directly; `root_pattern` matches the session directory or an ancestor by basename glob (`proj*`) or absolute path glob (`/workspace/projects/*`). Path globs match one directory component at a time, so nested sessions retain their project root. The nearest matching ancestor becomes the workspace root; unmatched pattern bases are inactive. A project has one resolved root, and fixed-root ownership takes precedence over pattern-root ownership.
+Configuration requires top-level `version: 2`. After installing the updated skill, migrate existing version-1 configuration with `mem doctor --migrate --pretty`; migration discards retired `match.topics` and `match.artifact_kinds` while preserving ownership globs and other supported settings. Each base requires `name`, `description`, `schemas`, and exactly one of `root` or `root_pattern`. A fixed `root` names its workspace directly; `root_pattern` matches the session directory or an ancestor by basename glob (`proj*`) or absolute path glob (`/workspace/projects/*`). Path globs match one directory component at a time, so nested sessions retain their project root. The nearest matching ancestor becomes the workspace root; unmatched pattern bases are inactive. A project has one resolved root, and fixed-root ownership takes precedence over pattern-root ownership.
 
 A base may also define a relative `managed_root`, plus `path_style`, `skill`, `aliases`, `priority`, and `match.cwd_globs` or `match.source_globs`. Its resolved root is the workspace containment boundary; `managed_root` is the narrower knowledge read/write boundary and defaults to that root. Each schema may set a relative `root` mount such as `packages` or `projects/packages`; `root: .` mounts it inline. Omitting the `pkg` schema root preserves its historical `pkg/` mount.
 
@@ -110,18 +123,18 @@ Compatibility aliases must preserve the historical root and behavior. Do not map
 
 An optional top-level `audit` mapping enables mandatory conversation-scoped lookup traces. `enabled` defaults to `false`; `trace_root` defaults to `$HOME/.config/mem/traces`. When enabled, `context lookup` requires the active conversation UUID in `CODEX_THREAD_ID` and fails closed if its trace cannot be safely written. The nearest configuration that explicitly declares `audit` owns the complete effective audit mapping.
 
-Use `python3 ./scripts/mem.py config show --pretty` instead of hand-parsing configuration.
+Use `mem config show --pretty` instead of hand-parsing configuration.
 
 Each base owns `<managed_root>/.mem.index.json`, a disposable, path-derived cache containing generated topics, artifact kinds, and the first two logical hierarchy levels. Routing and context lookup create a missing index automatically; managed schema materialization refreshes it after successful creation. Index scans are uncapped, while normal knowledge search remains bounded; directory advisory locks leave no durable lockfile. External edits, renames, deletes, and syncs require explicit `index build` when freshness matters.
 
-Use `python3 ./scripts/mem.py context lookup` for project context. Repeat `--source` for multiple file or directory scopes, pass `--target` to select one base explicitly, and use `--allow-multiple` only for lookup across an otherwise ambiguous route. The command never materializes or edits knowledge or source files; its only permitted managed-root mutation is creating a missing derived index. See [the knowledge workflow](./references/knowledge-workflow.md#project-context-lookup) for its search and output contract.
+Use `mem context lookup` for project context. Repeat `--source` for multiple file or directory scopes, pass `--target` to select one base explicitly, and use `--allow-multiple` only for lookup across an otherwise ambiguous route. The command never materializes or edits knowledge or source files; its only permitted managed-root mutation is creating a missing derived index. See [the knowledge workflow](./references/knowledge-workflow.md#project-context-lookup) for its search and output contract.
 
 ## Managed Workflow
 
 1. Parse the request into a context lookup, read, write, update, delete, schema-inspection, or materialization operation.
 2. Check for the nearest ancestor `.mem.yaml` and `$HOME/.mem.yaml`. If neither exists, exit this workflow successfully and continue the underlying task without `$mem`.
 3. Load merged configuration.
-4. Select an explicit base name or alias when provided. Otherwise run `mem.py route`.
+4. Select an explicit base name or alias when provided. Otherwise run `mem route`.
 5. Stop for clarification when routing returns `ambiguous` or `no_match`.
 6. Resolve every configured schema for the selected base before operating.
 7. Treat the selected base's resolved managed root as the boundary for managed reads, searches, duplicate detection, and writes.
@@ -129,7 +142,7 @@ Use `python3 ./scripts/mem.py context lookup` for project context. Repeat `--sou
 9. Search candidate paths, filenames, headings, and body text before creating a near-duplicate.
 10. Materialize only that node. Do not create sibling placeholders or an entire schema tree.
 11. Read the existing target before editing and preserve user-owned sections.
-12. After creating a managed Markdown entity through direct file editing rather than managed materialization, run `python3 ./scripts/mem.py index build --base NAME_OR_ALIAS` for the selected base. Managed materialization performs this refresh automatically; surface any structured `index_refresh_failed` warning and its replayable `repair_argv` without reporting successful knowledge creation as failed.
+12. After creating a managed Markdown entity through direct file editing rather than managed materialization, run `mem index build --base NAME_OR_ALIAS` for the selected base. Managed materialization performs this refresh automatically; surface any structured `index_refresh_failed` warning and its replayable `repair_argv` without reporting successful knowledge creation as failed.
 13. Verify the expected path, containment, route metadata, protected sections, changelog, and index refresh outcome.
 
 For complete knowledge read/write/delete rules, read `./references/knowledge-workflow.md`.

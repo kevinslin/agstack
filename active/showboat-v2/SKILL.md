@@ -11,7 +11,7 @@ dependencies:
 
 Use this skill when the user wants an executable Showboat proof that also has a durable, structured proof directory. It is for live integration or behavior proof, not for wrapping an existing unit test run as the whole proof.
 
-Use `$mem schema` to inspect and materialize the directory structure before writing proof content. Prefer the bundled `integ-proof` schema when the user does not name another schema.
+Follow `$mem` to ensure the `mem` command is installed on `PATH`, then use `mem schema` to inspect and materialize the directory structure before writing proof content. Prefer the bundled `integ-proof` schema when the user does not name another schema.
 
 Before writing a durable proof directory or any long-lived proof artifact, invoke `$mem` to resolve the intended knowledge base, root, schemas, and file rules. Do this because the memory root may be any configured path, not necessarily a directory named `.mem`. Only write outside `$mem` when the artifact is explicitly temporary, repo-owned source/docs, or the user names a concrete non-memory destination.
 
@@ -22,13 +22,13 @@ Before writing a durable proof directory or any long-lived proof artifact, invok
 3. Read the schema before materializing:
 
 ```bash
-../mem/scripts/mem.py schema show integ-proof
+mem schema show integ-proof
 ```
 
 4. Materialize the root proof file and each scenario file with explicit includes:
 
 ```bash
-../mem/scripts/mem.py schema materialize integ-proof \
+mem schema materialize integ-proof \
   --base <selected-base> \
   --root-relative <proofs-root-relative-path> \
   --var proof=<proof-slug> \

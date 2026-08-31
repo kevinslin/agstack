@@ -15,11 +15,12 @@ Use this skill when creating, auditing, or updating a durable AG directory (AGD)
 ## Canonical Layout
 
 Use `$mem schema` and the bundled `ag-dir` schema as the source of truth for layout,
-boilerplate, file descriptions, insertion routing, and template sections. Inspect the
-schema before creating or auditing an AGD:
+boilerplate, file descriptions, insertion routing, and template sections. Follow
+`$mem` to ensure the `mem` command is installed on `PATH`, then inspect the schema
+before creating or auditing an AGD:
 
 ```bash
-../mem/scripts/mem.py schema show ag-dir
+mem schema show ag-dir
 ```
 
 When this skill and the schema disagree, prefer the schema and update stale skill text
@@ -32,7 +33,7 @@ Use `$mem schema` to create missing AGD notes instead of hand-writing boilerplat
 Create or backfill the AGD skeleton:
 
 ```bash
-../mem/scripts/mem.py schema materialize ag-dir \
+mem schema materialize ag-dir \
   --out "$ROOT_DIR" \
   --unmanaged \
   --var project_title="Example Project" \
@@ -51,7 +52,7 @@ Create or backfill the AGD skeleton:
 Add a new active spec plus matching run notes to an existing AGD:
 
 ```bash
-../mem/scripts/mem.py schema materialize ag-dir \
+mem schema materialize ag-dir \
   --out "$ROOT_DIR" \
   --unmanaged \
   --var project_title="Example Project" \
@@ -67,7 +68,7 @@ Add a new active spec plus matching run notes to an existing AGD:
 Materialize an archived spec note only when you explicitly need the optional archive branch:
 
 ```bash
-../mem/scripts/mem.py schema materialize ag-dir \
+mem schema materialize ag-dir \
   --out "$ROOT_DIR" \
   --unmanaged \
   --var project_title="Example Project" \

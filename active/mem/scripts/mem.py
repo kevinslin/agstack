@@ -118,7 +118,7 @@ def run_managed_schema(command: PreparedSchemaCommand) -> int:
 
         build_index(command.base)
     except Exception as exc:
-        repair_argv = [sys.argv[0], "index", "build", "--base", command.base_name]
+        repair_argv = ["mem", "index", "build", "--base", command.base_name]
         for option, value in command.config_controls:
             repair_argv.extend([option, value])
         warning = {
@@ -227,21 +227,21 @@ def prepare_schema_args(args: list[str]) -> PreparedSchemaCommand:
 
 def usage() -> str:
     return """usage:
-  mem.py config show [load_config options]
-  mem.py context lookup --query <text> [context options]
-  mem.py route [route options]
-  mem.py context lookup [context options]
-  mem.py doctor --migrate [--config <path>] [--cwd <path>] [--home <path>]
-  mem.py index build (--base <base> | --all) [configuration options]
-  mem.py index show --base <base> [configuration options]
-  mem.py index check (--base <base> | --all) [configuration options]
-  mem.py schema <list|show|describe|validate|materialize> [schema options]
+  mem config show [load_config options]
+  mem context lookup --query <text> [context options]
+  mem route [route options]
+  mem context lookup [context options]
+  mem doctor --migrate [--config <path>] [--cwd <path>] [--home <path>]
+  mem index build (--base <base> | --all) [configuration options]
+  mem index show --base <base> [configuration options]
+  mem index check (--base <base> | --all) [configuration options]
+  mem schema <list|show|describe|validate|materialize> [schema options]
 
 Managed schema materialization:
-  mem.py schema materialize <schema> --base <base> [--root-relative <path>] ...
+  mem schema materialize <schema> --base <base> [--root-relative <path>] ...
 
 Explicit non-memory materialization:
-  mem.py schema materialize <schema> --out <path> --unmanaged ...
+  mem schema materialize <schema> --out <path> --unmanaged ...
 """
 
 

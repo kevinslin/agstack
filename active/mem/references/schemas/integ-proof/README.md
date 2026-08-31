@@ -2,11 +2,11 @@
 
 Source: `schema.yaml`
 
-Regenerate this view from this schema directory:
+Inspect this schema with the installed `mem` command:
 
 ```bash
-python3 ../../../scripts/mem.py schema show integ-proof
-python3 ../../../scripts/mem.py schema describe integ-proof
+mem schema show integ-proof
+mem schema describe integ-proof
 ```
 
 ```text

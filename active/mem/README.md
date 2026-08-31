@@ -6,28 +6,40 @@ It separates configuration discovery and migration, base routing, generated path
 
 ## Quickstart
 
-Run commands from this directory. Python 3 is required, and schema commands also require [`uv`](https://docs.astral.sh/uv/) so the schema engine can load its declared dependencies.
+Install the `mem` command before use. Python 3 with PyYAML is required; schema commands also require [`uv`](https://docs.astral.sh/uv/). Set `MEM_SKILL_ROOT` to the directory containing this skill's `SKILL.md`, then run:
+
+```bash
+if ! command -v mem >/dev/null 2>&1; then
+  python3 "$MEM_SKILL_ROOT/scripts/install.py" || exit 1
+  export PATH="$HOME/.local/bin:$PATH"
+fi
+mem --help
+```
+
+Verify that help lists `mem config show`, `mem context lookup`, and `mem schema`. If a different command is found, resolve the `PATH` conflict before running memory operations.
+
+The installer places a launcher in `~/.local/bin`. It preserves the caller's working directory so commands find the project's `.mem.yaml`. Run the following commands from your project directory; see [installation and recovery](./CLI.md#installation) for details.
 
 ```bash
 # After installing the updated skill, upgrade existing version-1 configuration.
-python3 ./scripts/mem.py doctor --migrate --pretty
+mem doctor --migrate --pretty
 
 # Inspect the normalized configuration.
-python3 ./scripts/mem.py config show --pretty
+mem config show --pretty
 
 # Explain which base owns a request.
-python3 ./scripts/mem.py route \
+mem route \
   --query "document the claw gateway" \
   --source /Users/kevinlin/code/openclaw \
   --pretty
 
 # Inspect a schema without writing files.
-python3 ./scripts/mem.py schema describe pkg
+mem schema describe pkg
 
 # Proactively build, inspect, and verify generated base indexes.
-python3 ./scripts/mem.py index build --base example --pretty
-python3 ./scripts/mem.py index show --base example --pretty
-python3 ./scripts/mem.py index check --all --pretty
+mem index build --base example --pretty
+mem index show --base example --pretty
+mem index check --all --pretty
 ```
 
 See [`CLI.md`](./CLI.md) for the complete command reference.
@@ -141,7 +153,7 @@ Each field under `match` is a list of unique, nonempty strings:
 Inspect the effective, normalized configuration with:
 
 ```bash
-python3 ./scripts/mem.py config show --pretty
+mem config show --pretty
 ```
 
 ### Migrating existing configuration
@@ -149,10 +161,10 @@ python3 ./scripts/mem.py config show --pretty
 After installing the updated skill, run:
 
 ```bash
-python3 ./scripts/mem.py doctor --migrate --pretty
+mem doctor --migrate --pretty
 
 # Migrate only an explicitly selected configuration file.
-python3 ./scripts/mem.py doctor --migrate --config /tmp/example.mem.yaml --pretty
+mem doctor --migrate --config /tmp/example.mem.yaml --pretty
 ```
 
 The migration discovers the same ordered project and home configuration files as ordinary commands. It changes each existing top-level `version: 1` to `version: 2`, discards retired `match.topics` and `match.artifact_kinds`, and retains `cwd_globs`, `source_globs`, roots, schemas, aliases, priority, auditing, and all other supported settings. If removing retired fields leaves no ownership globs, the entire empty `match` mapping is removed. Existing valid version-2 files are not rewritten.
@@ -217,7 +229,7 @@ Cooperating processes lock the existing managed-root directory with an operating
 
 Indexes are generated automatically when routing or context lookup first uses
 a base, refreshed after managed document creation, or built explicitly with
-`python3 ./scripts/mem.py index build --base NAME`.
+`mem index build --base NAME`.
 
 #### What the existing index contains
 
@@ -245,11 +257,11 @@ mapping, no entity kind classification, no custom aliases, and no
 Use these commands to manage one base or all configured bases:
 
 ```bash
-python3 ./scripts/mem.py index build --base example --pretty
-python3 ./scripts/mem.py index build --all --pretty
-python3 ./scripts/mem.py index show --base example --pretty
-python3 ./scripts/mem.py index check --base example --pretty
-python3 ./scripts/mem.py index check --all --pretty
+mem index build --base example --pretty
+mem index build --all --pretty
+mem index show --base example --pretty
+mem index check --base example --pretty
+mem index check --all --pretty
 ```
 
 `build` creates, updates, or leaves an unchanged index intact. `show` validates and displays the stored index without claiming freshness. `check` scans all eligible paths and reports `current`, `missing`, `stale`, `invalid`, or `error` without modifying files. `--base` accepts a configured name or alias; `--all` is available only to `build` and `check`. All commands accept `--config`, `--cwd`, and `--home`.
@@ -258,7 +270,7 @@ Routing and context lookup generate missing indexes automatically. Existing vali
 
 Successful managed schema materialization refreshes its base index automatically. If refresh fails, the created document, original stdout, and successful exit status remain intact; stderr receives exactly one machine-readable warning with `level`, `code: index_refresh_failed`, `base`, `index_path`, the actual `error`, and `repair_argv`. Replay `repair_argv` as an argument array; it preserves the original entrypoint and any explicitly supplied `--config`, `--cwd`, and `--home` options, including values containing spaces.
 
-Agents that create a managed Markdown file directly instead of using managed materialization **must** run `python3 ./scripts/mem.py index build --base NAME_OR_ALIAS` afterward. External editors, renames, deletions, and Git synchronization are not watched; run `index build` explicitly whenever their path changes need to be reflected. An explicit failed build remains an error rather than a successful-creation warning.
+Agents that create a managed Markdown file directly instead of using managed materialization **must** run `mem index build --base NAME_OR_ALIAS` afterward. External editors, renames, deletions, and Git synchronization are not watched; run `index build` explicitly whenever their path changes need to be reflected. An explicit failed build remains an error rather than a successful-creation warning.
 
 ### Entity lookup design (proposed)
 
@@ -416,6 +428,7 @@ flowchart TD
 ```text
 SKILL.md                         durable knowledge workflow and safety contract
 CLI.md                           exhaustive CLI reference
+./scripts/install.py               installs the mem launcher without changing caller scope
 ./scripts/mem.py                   unified command dispatcher and managed-write guardrails
 ./scripts/load_config.py           config discovery, migration, normalization, merge, and validation
 ./scripts/base_index.py            uncapped path indexing, hierarchy, locking, and atomic updates

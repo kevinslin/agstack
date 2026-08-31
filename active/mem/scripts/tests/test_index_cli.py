@@ -202,6 +202,8 @@ class IndexCliTests(unittest.TestCase):
                 result = self.run_index(mode, *args)
                 self.assertEqual(result.returncode, 2, msg=result.stderr)
                 self.assertFalse(result.stdout)
+                if "usage:" in result.stderr:
+                    self.assertIn("usage: mem index", result.stderr)
 
     def test_symlink_index_is_rejected_before_per_base_work(self) -> None:
         target = self.root / "outside.json"

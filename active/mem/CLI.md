@@ -1,30 +1,43 @@
 # mem CLI reference
 
-Use `./scripts/mem.py` to migrate and inspect memory configuration, manage derived base indexes, explain routing, perform bounded document-preserving lookup, inspect schemas, and materialize schema nodes.
+Use the installed `mem` command to migrate and inspect memory configuration, manage derived base indexes, explain routing, perform bounded document-preserving lookup, inspect schemas, and materialize schema nodes. Run commands from the project whose configuration you want to use.
 
-Run commands from the directory containing `SKILL.md`:
+## Installation
+
+Python 3 with PyYAML is required. Schema commands additionally execute the bundled `./scripts/schema.py` through `uv`, which installs that script's declared dependencies.
+
+Check `command -v mem` before using the CLI. If missing, set `MEM_SKILL_ROOT` to the absolute directory containing this skill's `SKILL.md` and run:
 
 ```bash
-python3 ./scripts/mem.py --help
+python3 "$MEM_SKILL_ROOT/scripts/install.py"
+export PATH="$HOME/.local/bin:$PATH"
+command -v mem
+mem --help
 ```
 
-Python 3 and PyYAML are required for configuration, routing, and context commands. Schema commands execute `./scripts/schema.py` through `uv`, which installs the dependencies declared in that script.
+Verify that help lists `mem config show`, `mem context lookup`, and `mem schema`. Different help indicates a conflicting executable; report its path and resolve the conflict before running memory operations.
+
+The installer creates an executable launcher at `~/.local/bin/mem` pointing to this skill's dispatcher and the Python interpreter used for installation. It preserves the caller's working directory and forwards arguments and exit status. It does not install dependencies, edit shell startup files, or change memory configuration. Re-running it updates its own launcher; it refuses to replace an unrelated file or symlink.
+
+To choose another installation directory, pass `--bin-dir PATH` to the installer and add that directory to `PATH`. The default is `~/.local/bin`.
+
+Keep the skill directory and interpreter available. Re-run installation after moving the skill or changing the interpreter. If a new shell cannot find `mem`, add `~/.local/bin` to that shell's `PATH` and verify again. If a different executable shadows this launcher, resolve the `PATH` conflict before use. Report installation or verification errors instead of switching to direct script invocation.
 
 ## Command summary
 
 ```text
-mem.py config show
-mem.py context lookup
-mem.py doctor --migrate
-mem.py index build
-mem.py index show
-mem.py index check
-mem.py route
-mem.py schema list
-mem.py schema show
-mem.py schema describe
-mem.py schema validate
-mem.py schema materialize
+mem config show
+mem context lookup
+mem doctor --migrate
+mem index build
+mem index show
+mem index check
+mem route
+mem schema list
+mem schema show
+mem schema describe
+mem schema validate
+mem schema materialize
 ```
 
 All JSON commands emit compact JSON by default. Add `--pretty` for indented output.
@@ -52,7 +65,7 @@ Common configuration options:
 Load, validate, merge, and print normalized configuration.
 
 ```bash
-python3 ./scripts/mem.py config show [OPTIONS]
+mem config show [OPTIONS]
 ```
 
 Options:
@@ -66,8 +79,8 @@ Options:
 The result includes `config_path`, ordered `config_paths`, configuration `version: 2`, normalized active `bases`, and the effective `audit` mapping. Each base includes its absolute resolved `root`, absolute `managed_root`, derived `index_path`, resolved `path_style`, normalized schemas and their configured mounts, and its owning `config_path`. A `root_pattern: proj*` base is active when `--cwd` is `proj.2025` or a descendant; unrelated sessions omit it. `audit.enabled` defaults to `false`, and `audit.trace_root` defaults to `$HOME/.config/mem/traces`.
 
 ```bash
-python3 ./scripts/mem.py config show --pretty
-python3 ./scripts/mem.py config show --config /tmp/example.mem.yaml --allow-missing-roots --pretty
+mem config show --pretty
+mem config show --config /tmp/example.mem.yaml --allow-missing-roots --pretty
 ```
 
 The command exits nonzero and writes `error: ...` to stderr for missing files, invalid YAML, invalid fields, missing roots, unsafe managed roots, missing custom schema files, and name or alias collisions.
@@ -77,7 +90,7 @@ The command exits nonzero and writes `error: ...` to stderr for missing files, i
 Upgrade legacy configuration files before strict current-schema loading.
 
 ```bash
-python3 ./scripts/mem.py doctor --migrate [OPTIONS]
+mem doctor --migrate [OPTIONS]
 ```
 
 Options:
@@ -95,10 +108,10 @@ Successful per-file work emits one JSON object containing `mode: doctor_migrate`
 
 ```bash
 # Migrate both discoverable project and home files, if present.
-python3 ./scripts/mem.py doctor --migrate --pretty
+mem doctor --migrate --pretty
 
 # Migrate exactly one legacy configuration.
-python3 ./scripts/mem.py doctor --migrate \
+mem doctor --migrate \
   --config /tmp/example.mem.yaml \
   --pretty
 ```
@@ -118,7 +131,7 @@ All index commands accept `--config PATH`, `--cwd PATH`, `--home PATH`, and `--p
 Create, update, repair, or leave unchanged the indexes for one selected base or all configured bases.
 
 ```bash
-python3 ./scripts/mem.py index build (--base NAME_OR_ALIAS | --all) [OPTIONS]
+mem index build (--base NAME_OR_ALIAS | --all) [OPTIONS]
 ```
 
 - `--base NAME_OR_ALIAS`: select exactly one configured base name or alias.
@@ -127,8 +140,8 @@ python3 ./scripts/mem.py index build (--base NAME_OR_ALIAS | --all) [OPTIONS]
 Exactly one of `--base` and `--all` is required. Per-base statuses are `created`, `updated`, `unchanged`, or `error`. Identical relative-path fingerprints preserve existing index bytes and `generated_at`; safe malformed regular index files are repairable. Run this command after external creation, rename, deletion, synchronization, or direct agent creation of a managed Markdown document.
 
 ```bash
-python3 ./scripts/mem.py index build --base oai --pretty
-python3 ./scripts/mem.py index build --all --pretty
+mem index build --base oai --pretty
+mem index build --all --pretty
 ```
 
 ### `index show`
@@ -136,13 +149,13 @@ python3 ./scripts/mem.py index build --all --pretty
 Load, validate, and print one stored index without scanning or modifying knowledge paths.
 
 ```bash
-python3 ./scripts/mem.py index show --base NAME_OR_ALIAS [OPTIONS]
+mem index show --base NAME_OR_ALIAS [OPTIONS]
 ```
 
 `--base` is required; `--all` is unsupported. Per-base statuses are `loaded`, `missing`, `invalid`, or `error`. A `loaded` result includes the validated full `index` payload. `show` does not claim the stored index is current.
 
 ```bash
-python3 ./scripts/mem.py index show --base oai --pretty
+mem index show --base oai --pretty
 ```
 
 ### `index check`
@@ -150,14 +163,14 @@ python3 ./scripts/mem.py index show --base oai --pretty
 Recompute the uncapped path fingerprint and compare it with each stored index without modifying any index or knowledge document.
 
 ```bash
-python3 ./scripts/mem.py index check (--base NAME_OR_ALIAS | --all) [OPTIONS]
+mem index check (--base NAME_OR_ALIAS | --all) [OPTIONS]
 ```
 
 Exactly one of `--base` and `--all` is required. Per-base statuses are `current`, `missing`, `stale`, `invalid`, or `error`.
 
 ```bash
-python3 ./scripts/mem.py index check --base oai --pretty
-python3 ./scripts/mem.py index check --all --pretty
+mem index check --base oai --pretty
+mem index check --all --pretty
 ```
 
 ### Index results and exits
@@ -171,7 +184,7 @@ Exit `0` means every build/show succeeded or every checked index is current. Exi
 Select a configured base and explain the routing decision without changing knowledge documents. Routing may create missing derived base indexes before consuming their generated query signals.
 
 ```bash
-python3 ./scripts/mem.py route --query TEXT [OPTIONS]
+mem route --query TEXT [OPTIONS]
 ```
 
 Options:
@@ -231,7 +244,7 @@ Candidates are ordered by descending score, descending configured `priority`, an
 For example, with a base named `claw` whose description contains `OpenClaw`:
 
 ```bash
-python3 ./scripts/mem.py route \
+mem route \
   --query "OpenClaw gateway deployment" \
   --pretty
 ```
@@ -241,12 +254,12 @@ When the base index contributes no additional matching topic or artifact, the re
 ### Routing examples
 
 ```bash
-python3 ./scripts/mem.py route \
+mem route \
   --query "write an OpenClaw runbook" \
   --source /Users/kevinlin/code/openclaw \
   --pretty
 
-python3 ./scripts/mem.py route \
+mem route \
   --query "create a package guide" \
   --target oai \
   --artifact-kind guide \
@@ -260,7 +273,7 @@ python3 ./scripts/mem.py route \
 Search managed knowledge first, then optional source scopes, without changing knowledge documents or source files. A missing selected-base derived index may be created automatically.
 
 ```bash
-python3 ./scripts/mem.py context lookup --query TEXT [OPTIONS]
+mem context lookup --query TEXT [OPTIONS]
 ```
 
 Options:
@@ -339,20 +352,20 @@ Every invocation emits a JSON object containing:
 
 ```bash
 # Search only the selected base's managed knowledge.
-python3 ./scripts/mem.py context lookup \
+mem context lookup \
   --query "gateway authentication" \
   --target claw \
   --pretty
 
 # Fall back to this exact source scope only when managed knowledge has no match.
-python3 ./scripts/mem.py context lookup \
+mem context lookup \
   --query "gateway authentication" \
   --target claw \
   --source /Users/kevinlin/code/openclaw \
   --pretty
 
 # Search candidate bases without modifying their knowledge documents.
-python3 ./scripts/mem.py context lookup \
+mem context lookup \
   --query "deployment guide" \
   --allow-multiple \
   --pretty
@@ -410,7 +423,7 @@ Bundled schemas live under `./references/schemas/<name>/schema.yaml`.
 List bundled schemas and their root nodes.
 
 ```bash
-python3 ./scripts/mem.py schema list
+mem schema list
 ```
 
 Each line is `<schema>\troot: <roots>`. An invalid schema is reported inline as `<schema>\tinvalid: <error>`; the command still exits `0` so callers must inspect the output.
@@ -420,14 +433,14 @@ Each line is `<schema>\troot: <roots>`. An invalid schema is reported inline as 
 Print variables and the fully composed schema tree.
 
 ```bash
-python3 ./scripts/mem.py schema show SCHEMA [--schema-path PATH]
+mem schema show SCHEMA [--schema-path PATH]
 ```
 
 - `SCHEMA`: bundled schema name and display label.
 - `--schema-path PATH`: inspect this explicit `schema.yaml` instead of the bundled schema. The positional schema remains required and labels the output.
 
 ```bash
-python3 ./scripts/mem.py schema show pkg
+mem schema show pkg
 ```
 
 ### `schema describe`
@@ -435,13 +448,13 @@ python3 ./scripts/mem.py schema show pkg
 Print every composed path that has a description as Markdown bullets.
 
 ```bash
-python3 ./scripts/mem.py schema describe SCHEMA [--schema-path PATH]
+mem schema describe SCHEMA [--schema-path PATH]
 ```
 
 Use this command before choosing a node for managed knowledge placement.
 
 ```bash
-python3 ./scripts/mem.py schema describe global-core
+mem schema describe global-core
 ```
 
 ### `schema validate`
@@ -449,7 +462,7 @@ python3 ./scripts/mem.py schema describe global-core
 Validate the schema document, variables, nodes, templates, and composed children.
 
 ```bash
-python3 ./scripts/mem.py schema validate SCHEMA [--schema-path PATH]
+mem schema validate SCHEMA [--schema-path PATH]
 ```
 
 Successful output is:
@@ -467,7 +480,7 @@ Render selected schema nodes into either a configured managed base or an explici
 ### Managed mode
 
 ```bash
-python3 ./scripts/mem.py schema materialize SCHEMA \
+mem schema materialize SCHEMA \
   --base BASE \
   [--root-relative PATH] \
   [--var KEY=VALUE]... \
@@ -486,7 +499,7 @@ Managed mode derives `--out`, `--path-style`, the schema's configured `root` mou
 After successful managed materialization, the selected base's index is rebuilt automatically. A changed document path updates the fingerprint; overwriting or skipping existing documents without a path change preserves the existing index. A failed schema subprocess retains its original nonzero exit and does not refresh the index. Unmanaged materialization never refreshes a managed index.
 
 ```bash
-python3 ./scripts/mem.py schema materialize pkg \
+mem schema materialize pkg \
   --base oai \
   --var package=clawcmd \
   --var cook=change-claw-config \
@@ -499,7 +512,7 @@ python3 ./scripts/mem.py schema materialize pkg \
 If materialization succeeds but its post-success index refresh fails, the command preserves the created knowledge, exact successful stdout, and exit status `0`. It appends exactly one compact JSON warning to stderr after any existing schema stderr:
 
 ```json
-{"level":"warning","code":"index_refresh_failed","base":"oai","index_path":"/managed/root/.mem.index.json","error":"lock timed out after 5 seconds","repair_argv":["mem.py","index","build","--base","oai","--config","/path with spaces/.mem.yaml","--cwd","/workspace","--home","/home/operator"]}
+{"level":"warning","code":"index_refresh_failed","base":"oai","index_path":"/managed/root/.mem.index.json","error":"lock timed out after 5 seconds","repair_argv":["mem","index","build","--base","oai","--config","/path with spaces/.mem.yaml","--cwd","/workspace","--home","/home/operator"]}
 ```
 
 All six warning fields are required. `repair_argv` is the only canonical repair action: its first element is the original CLI entrypoint, followed by `index build --base` and the original selected base, then each explicitly supplied original `--config`, `--cwd`, and `--home` option with its exact value. Options not originally supplied are omitted. Execute the array directly without shell interpolation so values containing spaces remain intact; do not expect a separate `repair_command`. Surface the warning and repair the disposable index, but never roll back or report the successful document creation as failed.
@@ -507,7 +520,7 @@ All six warning fields are required. `repair_argv` is the only canonical repair 
 ### Unmanaged mode
 
 ```bash
-python3 ./scripts/mem.py schema materialize SCHEMA \
+mem schema materialize SCHEMA \
   --out PATH \
   --unmanaged \
   [--schema-path PATH] \
@@ -527,7 +540,7 @@ Unmanaged-only options:
 `--config`, `--cwd`, `--home`, and `--root-relative` are rejected in unmanaged mode.
 
 ```bash
-python3 ./scripts/mem.py schema materialize integ-proof \
+mem schema materialize integ-proof \
   --out /tmp/proofs \
   --unmanaged \
   --path-style directory \
@@ -551,9 +564,9 @@ Materialize explicit leaf paths whenever possible. Omitting `--include` can sele
 ## Common recovery paths
 
 - **`missing config`**: managed configuration is optional for context lookup. Continue the underlying read task without `$mem`, or pass the intended `--config` if one exists.
-- **legacy configuration version**: run `python3 ./scripts/mem.py doctor --migrate --pretty` after installing the updated skill; use `--config` when migrating only a selected file.
+- **legacy configuration version**: run `mem doctor --migrate --pretty` after installing the updated skill; use `--config` when migrating only a selected file.
 - **`ambiguous` or `no_match` route**: inspect candidates with `route --pretty`, then retry with `--target`.
-- **missing, stale, or invalid index**: run `python3 ./scripts/mem.py index build --base NAME_OR_ALIAS`; use `index check --all` when verifying all configured bases after synchronization.
+- **missing, stale, or invalid index**: run `mem index build --base NAME_OR_ALIAS`; use `index check --all` when verifying all configured bases after synchronization.
 - **`index_refresh_failed` warning after successful creation**: preserve the created document and successful exit, then replay the warning's `repair_argv` exactly.
 - **unknown base**: run `config show --pretty` and use a normalized base name or alias.
 - **schema is not configured for base**: choose one of the base's configured schemas or update the canonical configuration outside this command.
