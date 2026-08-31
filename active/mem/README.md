@@ -1,8 +1,8 @@
 # mem
 
-`mem` provides one interface for finding configuration, routing, reading, indexing, and safely materializing durable knowledge across configured filesystem bases.
+`mem` provides one interface for finding configuration, routing, reading, indexing, and safely materializing durable knowledge, plus discovering projects across recent local work.
 
-It separates configuration discovery and migration, base routing, generated path-only indexes, bounded context lookup, and schema-backed file generation. Context lookup preserves knowledge documents and source files but can initialize a missing derived index. The skill workflow in [`SKILL.md`](./SKILL.md) owns the human-facing read/write rules; the scripts provide deterministic configuration, indexing, routing, lookup, and materialization primitives.
+It separates configuration discovery and migration, base routing, generated path-only indexes, bounded context lookup, schema-backed file generation, and LLM-generated workspace snapshots. Context lookup preserves knowledge documents and source files but can initialize a missing derived index. The skill workflow in [`SKILL.md`](./SKILL.md) owns the human-facing read/write rules.
 
 ## Quickstart
 
@@ -43,9 +43,22 @@ mem schema describe pkg
 mem index build --base example --pretty
 mem index show --base example --pretty
 mem index check --all --pretty
+
+# Discover meaningful projects from the last seven days of Codex activity.
+mem workspace build --pretty
 ```
 
 See [`CLI.md`](./CLI.md) for the complete command reference.
+
+## Workspace project snapshots
+
+`mem workspace build` writes a fresh `~/.mem/workspace/index.json` from the last seven days of local Codex activity. Projects represent outcomes or continuing responsibilities: one can span repositories, and several can share a repository. The LLM chooses names, aliases, relevant resources, and priorities from 1 (primary focus) to 3 (background work), with an explanation and supporting task references.
+
+The builder collects native user work from active and archived rollouts, resolves canonical Git repositories and existing mem base instances, supplies bounded evidence to the authenticated Codex CLI, validates its selections against collected facts, and atomically replaces the snapshot. It reads source documents, configuration, and per-base indexes without refreshing them. Missing mem configuration is allowed.
+
+Each build stands alone. Inactive projects disappear, names can change, and the previous snapshot is used only as the file to preserve if inference or validation fails. Recoverable source gaps produce a partial snapshot with warnings. The generated output is a navigation aid; mem configuration continues to own routing and containment.
+
+Workspace inference requires Python 3.11+ and a signed-in Codex CLI supporting ephemeral execution, structured output, and the restricted configuration described in the [command reference](./CLI.md#workspace-build). No new credential store is created. Model and login selectors come from the user's Codex configuration; shell commands, hooks, integrations, and subagents are disabled for synthesis. A read-only sandbox rejects residual file-write tools.
 
 ## Config
 

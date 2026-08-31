@@ -8,7 +8,7 @@ dependencies:
 
 # mem
 
-Use this skill as the single interface for persistent knowledge bases, project context, generated base indexes, and schema-backed file layouts. It owns base selection, root containment, schema inspection, model-inferred node selection, exact-node materialization, and durable read/write safety.
+Use this skill as the single interface for persistent knowledge bases, project context, generated base indexes, workspace project snapshots, and schema-backed file layouts. It owns base selection, root containment, schema inspection, model-inferred node selection, exact-node materialization, and durable read/write safety.
 
 ## Concepts
 
@@ -28,6 +28,8 @@ When project or workspace instructions require `$mem` for context lookup, invoke
 
 Treat configuration as optional. Before starting a managed operation, ensure the CLI is installed as described below and run `mem config find --pretty`. Use its `config_paths` result instead of checking the filesystem manually. If it returns `status: missing_config`, stop the `$mem` workflow successfully and continue the underlying task without `$mem`. Do not ask for configuration or report a blocker solely because it is absent. A discovery error is not an absent configuration.
 
+For `mem workspace build`, configuration is supplemental: continue the build when none exists. Use this command when asked to discover meaningful projects across recent local work. It reads the last seven days of Codex rollouts, groups projects with the authenticated Codex CLI, and replaces `~/.mem/workspace/index.json`. Describe partial-scan warnings and treat priorities as current attention, not durable project status. See [workspace build](./CLI.md#workspace-build) for prerequisites and boundaries.
+
 Do not auto-write merely because information might be useful later. Require explicit durable-output intent or an applicable project instruction. Do not use `$mem` for transient answers or files whose repository-owned workflow and exact destination the user already specified.
 
 ## Operating Modes
@@ -35,6 +37,7 @@ Do not auto-write merely because information might be useful later. Require expl
 - **Managed knowledge:** Resolve `.mem.yaml`, select a base, constrain all knowledge paths to its resolved managed root, and use its configured schemas.
 - **Project context lookup:** Read existing managed knowledge using schema-inferred candidate paths, then fall back to a scoped source search when it is missing or insufficient.
 - **Schema inspection:** List, show, or describe bundled schemas without writing files.
+- **Workspace snapshot:** Use LLM inference over recent local activity to generate a project map without changing knowledge documents or per-base indexes.
 - **Unmanaged materialization:** Write a schema-backed repo-owned or temporary artifact to an explicit output path only when the caller passes `--unmanaged`.
 
 Prefer managed knowledge mode for durable artifacts.
@@ -81,6 +84,9 @@ mem context lookup \
   --query "{{context intent}}" \
   --source "{{project-or-package-path}}" \
   --pretty
+
+# Build a fresh project snapshot from the last seven days of local activity.
+mem workspace build --pretty
 
 # Inspect schemas.
 mem schema list

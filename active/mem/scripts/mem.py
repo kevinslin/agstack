@@ -236,6 +236,7 @@ def usage() -> str:
   mem index build (--base <base> | --all) [configuration options]
   mem index show --base <base> [configuration options]
   mem index check (--base <base> | --all) [configuration options]
+  mem workspace build [--pretty]
   mem schema <list|show|describe|validate|materialize> [schema options]
 
 Managed schema materialization:
@@ -309,6 +310,10 @@ def main() -> None:
         from index_cli import main as run_index
 
         raise SystemExit(run_index(command_args))
+    if command == "workspace":
+        from workspace import main as run_workspace
+
+        raise SystemExit(run_workspace(command_args))
     if command == "schema":
         prepared = prepare_schema_args(command_args)
         if prepared.base is not None:

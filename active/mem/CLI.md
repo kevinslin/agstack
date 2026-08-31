@@ -1,10 +1,12 @@
 # mem CLI reference
 
-Use the installed `mem` command to find, migrate, and inspect memory configuration, manage derived base indexes, explain routing, perform bounded document-preserving lookup, inspect schemas, and materialize schema nodes. Run commands from the project whose configuration you want to use.
+Use the installed `mem` command to find, migrate, and inspect memory configuration, manage derived base indexes, explain routing, perform bounded document-preserving lookup, inspect schemas, materialize schema nodes, and build workspace project snapshots. Run managed commands from the project whose configuration you want to use.
 
 ## Installation
 
 Python 3 with PyYAML is required. Schema commands additionally execute the bundled `./scripts/schema.py` through `uv`, which installs that script's declared dependencies.
+
+`workspace build` additionally requires Python 3.11+ and an authenticated Codex CLI; see [workspace inference](#workspace-build).
 
 Check `command -v mem` before using the CLI. If missing, set `MEM_SKILL_ROOT` to the absolute directory containing this skill's `SKILL.md` and run:
 
@@ -33,6 +35,7 @@ mem doctor --migrate
 mem index build
 mem index show
 mem index check
+mem workspace build
 mem route
 mem schema list
 mem schema show
@@ -42,6 +45,32 @@ mem schema materialize
 ```
 
 All JSON commands emit compact JSON by default. Add `--pretty` for indented output.
+
+## `workspace build`
+
+Generate a fresh project map from the last seven days of local native user activity:
+
+```bash
+mem workspace build --pretty
+```
+
+The command reads active and archived rollouts under `CODEX_HOME` (default `~/.codex`), resolves related Git repositories and current mem project context, uses LLM inference to group and prioritize meaningful projects, and writes `~/.mem/workspace/index.json`. It discovers configuration from historical working directories and the caller's current directory, and includes repositories owning the configured bases. These are resource candidates; project inclusion still requires recent activity. No mem configuration is required. Existing source files and per-base indexes are read without modification or refresh.
+
+The [snapshot schema](./references/workspace-output.schema.json) defines `generated_at`, the seven-day `window`, `partial`, `warnings`, and `projects`. Each project contains a name, aliases, priority 1–3 with 1 highest, a priority explanation, exact base references, repositories, relevant files, and supporting rollout references. A base is identified by `(config_path, name, root)`; each distinct repository appears once per project with its canonical path and nullable remote. Projects may share resources. Worktrees are resolved through Git without a separate persisted inventory.
+
+Names and membership are inferred anew. Projects absent from current evidence disappear, and there are no stable project IDs, retained inactive catalog, or activity counters. Source references describe the build's observations and can become unavailable when rollouts move. Priority describes attention, not the higher-number-first priority used for mem routing.
+
+### Inference and failure behavior
+
+Install and sign in to Codex normally before building; verify `codex exec --help` exposes `--ignore-user-config`, `--strict-config`, `--ephemeral`, and `--output-schema`. The runner preserves top-level model, reasoning effort, service tier, credential-store selector, and forced login/workspace settings from `CODEX_HOME/config.toml`. It uses existing Codex authentication without reading or copying auth tokens. The configured provider must be OpenAI.
+
+The synthesis process runs in a temporary directory with an ephemeral session and a read-only sandbox, with approval escalation rejected. User integrations, hooks, shell tools, apps, plugins, browser/computer tools, and subagents are disabled. Collected text is supplied as data; candidate validation rejects invented resource and source references. The runner may maintain its ordinary runtime cache/auth metadata. These controls use the installed CLI's [configuration surface](https://learn.chatgpt.com/docs/config-file/config-reference).
+
+Inference has a five-minute timeout. An unavailable runner, failed model request, invalid output, or failed collection returns a nonzero exit and preserves the previous snapshot. Recoverable source gaps or input budget omissions produce explicit warnings and `partial: true`; a complete scan with no meaningful projects can produce an empty snapshot. Successful publication atomically replaces the file so readers see complete JSON. Operational diagnostics go to stderr.
+
+Collection considers up to 20,000 files in each rollout store, preferring recently modified files when that cap is reached; native event time determines which work belongs in the week. User-message excerpts are limited to 8,000 characters, then shortened for inference to at most 1,200 characters each and a shared 600,000-character text budget. Project-document excerpts are limited to 2,000 bytes. Inspect the snapshot's warnings to see which inputs were shortened or unavailable.
+
+If inference fails, check the reported stage, the installed Codex version, and normal login health. Repair authentication through Codex's supported login flow; do not extract or reuse refresh tokens. The command never substitutes heuristic grouping for failed LLM inference.
 
 ## Configuration discovery
 
