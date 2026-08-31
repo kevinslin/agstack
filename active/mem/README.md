@@ -56,7 +56,7 @@ See [`CLI.md`](./CLI.md) for the complete command reference.
 
 The builder collects native user work from active and archived rollouts, resolves canonical Git repositories and existing mem base instances, supplies bounded evidence to the authenticated Codex CLI, validates its selections against collected facts, and atomically replaces the snapshot. It reads source documents, configuration, and per-base indexes without refreshing them. Missing mem configuration is allowed.
 
-Each build stands alone. Inactive projects disappear, names can change, and the previous snapshot is used only as the file to preserve if inference or validation fails. Recoverable source gaps produce a partial snapshot with warnings. The generated output is a navigation aid; mem configuration continues to own routing and containment.
+Each build stands alone. Inactive projects disappear, names can change, and the previous snapshot is used only as the file to preserve if inference or validation fails. Recoverable source gaps set `partial: true`. Warning details live in a separate per-build text file under `~/.mem/workspace/logs/`, referenced by the snapshot's relative `log_path`; the JSON contains no warning array. The generated output is a navigation aid; mem configuration continues to own routing and containment.
 
 Workspace inference requires Python 3.11+ and a signed-in Codex CLI supporting ephemeral execution, structured output, and the restricted configuration described in the [command reference](./CLI.md#workspace-build). No new credential store is created. Model and login selectors come from the user's Codex configuration; shell commands, hooks, integrations, and subagents are disabled for synthesis. A read-only sandbox rejects residual file-write tools.
 

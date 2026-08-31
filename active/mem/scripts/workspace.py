@@ -50,6 +50,7 @@ class WorkspaceBuildError(Exception):
 class BuildResult:
     status: str
     path: Path
+    log_path: Path
     project_count: int
     partial: bool
     warnings: tuple[str, ...]
@@ -58,6 +59,7 @@ class BuildResult:
         return {
             "status": self.status,
             "path": str(self.path),
+            "log_path": str(self.log_path),
             "project_count": self.project_count,
             "partial": self.partial,
         }
@@ -100,6 +102,11 @@ def _default_codex_home() -> Path:
 
 def _default_output_path() -> Path:
     return Path.home() / ".mem" / "workspace" / "index.json"
+
+
+def _workspace_log_relative_path(generated_at: datetime) -> Path:
+    timestamp = generated_at.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return Path("logs") / f"workspace-{timestamp}-{secrets.token_hex(8)}.log"
 
 
 def _hash_id(prefix: str, values: list[str]) -> str:
@@ -735,17 +742,19 @@ def build_workspace_index(
     else:
         projects = []
 
-    snapshot = {
-        "generated_at": generated_at.isoformat(),
-        "window": {"start": start.isoformat(), "end": end.isoformat(), "timezone": timezone_name},
-        "partial": bool(warnings),
-        "warnings": warnings,
-        "projects": projects,
-    }
-    _atomic_publish(resolved_output_path, snapshot)
+    window = {"start": start.isoformat(), "end": end.isoformat(), "timezone": timezone_name}
+    log_path = _publish_workspace_snapshot(
+        output_path=resolved_output_path,
+        generated_at=generated_at,
+        window=window,
+        partial=bool(warnings),
+        warnings=warnings,
+        projects=projects,
+    )
     return BuildResult(
         status="ok",
         path=resolved_output_path,
+        log_path=log_path,
         project_count=len(projects),
         partial=bool(warnings),
         warnings=tuple(warnings),
@@ -775,9 +784,8 @@ def _ensure_safe_output_parent(path: Path) -> None:
         raise WorkspaceBuildError("publish", f"unsafe output path: {path}")
 
 
-def _atomic_publish(path: Path, snapshot: dict[str, Any]) -> None:
+def _atomic_write_bytes(path: Path, payload: bytes) -> None:
     parent = path.parent
-    payload = (json.dumps(snapshot, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
     temporary = parent / f".{path.name}.{secrets.token_hex(16)}.tmp"
     descriptor: int | None = None
     try:
@@ -808,6 +816,59 @@ def _atomic_publish(path: Path, snapshot: dict[str, Any]) -> None:
             temporary.unlink()
 
 
+def _atomic_publish(path: Path, snapshot: dict[str, Any]) -> None:
+    payload = (json.dumps(snapshot, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    _atomic_write_bytes(path, payload)
+
+
+def _warning_log_payload(
+    *,
+    generated_at: datetime,
+    index_path: Path,
+    warnings: list[str],
+) -> bytes:
+    lines = [
+        "mem workspace build warning log",
+        f"generated_at: {generated_at.isoformat()}",
+        f"index_path: {index_path}",
+        f"warning_count: {len(warnings)}",
+        "",
+    ]
+    if warnings:
+        lines.append("warnings:")
+        lines.extend(f"{index}. {warning}" for index, warning in enumerate(warnings, start=1))
+    else:
+        lines.append("No warnings.")
+    lines.append("")
+    return "\n".join(lines).encode("utf-8")
+
+
+def _publish_workspace_snapshot(
+    *,
+    output_path: Path,
+    generated_at: datetime,
+    window: dict[str, str],
+    partial: bool,
+    warnings: list[str],
+    projects: list[dict[str, Any]],
+) -> Path:
+    log_relative_path = _workspace_log_relative_path(generated_at)
+    log_path = output_path.parent / log_relative_path
+    _atomic_write_bytes(
+        log_path,
+        _warning_log_payload(generated_at=generated_at, index_path=output_path, warnings=warnings),
+    )
+    snapshot = {
+        "generated_at": generated_at.isoformat(),
+        "window": window,
+        "partial": partial,
+        "log_path": log_relative_path.as_posix(),
+        "projects": projects,
+    }
+    _atomic_publish(output_path, snapshot)
+    return log_path
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="mem workspace", description=__doc__)
     subcommands = parser.add_subparsers(dest="mode", required=True)
@@ -825,8 +886,8 @@ def main(argv: list[str] | None = None) -> int:
     except WorkspaceBuildError as exc:
         print(f"error: {exc.stage}: {exc}", file=sys.stderr)
         return 1
-    for warning in result.warnings:
-        print(f"warning: {warning}", file=sys.stderr)
+    if result.warnings:
+        print(f"warning: {len(result.warnings)} warning(s); see {result.log_path}", file=sys.stderr)
     json.dump(result.summary(), sys.stdout, indent=2 if args.pretty else None)
     print()
     return 0

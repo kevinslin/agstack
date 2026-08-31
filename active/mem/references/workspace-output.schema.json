@@ -3,7 +3,7 @@
   "$id": "https://agstack.local/mem/workspace-output.schema.json",
   "type": "object",
   "additionalProperties": false,
-  "required": ["generated_at", "window", "partial", "warnings", "projects"],
+  "required": ["generated_at", "window", "partial", "log_path", "projects"],
   "properties": {
     "generated_at": {
       "type": "string",
@@ -31,12 +31,9 @@
     "partial": {
       "type": "boolean"
     },
-    "warnings": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "minLength": 1
-      }
+    "log_path": {
+      "type": "string",
+      "pattern": "^logs/[^/]+\\.log$"
     },
     "projects": {
       "type": "array",

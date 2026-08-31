@@ -108,6 +108,16 @@ class WorkspaceCliTests(unittest.TestCase):
             cwd=cwd or self.root,
         )
 
+    def read_log(self, snapshot: dict[str, Any]) -> tuple[Path, str]:
+        self.assertNotIn("warnings", snapshot)
+        relative_log_path = Path(snapshot["log_path"])
+        self.assertFalse(relative_log_path.is_absolute())
+        self.assertEqual(relative_log_path.parts[0], "logs")
+        log_path = self.output_path.parent / relative_log_path
+        self.assertTrue(log_path.resolve(strict=False).is_relative_to((self.output_path.parent / "logs").resolve()))
+        self.assertEqual(log_path.stat().st_mode & 0o777, 0o600)
+        return log_path, log_path.read_text(encoding="utf-8")
+
     def write_configured_repo(self) -> Path:
         (self.notes / "design.md").write_text("# Design\n", encoding="utf-8")
         config = self.repo / ".mem.yaml"
@@ -198,13 +208,19 @@ class WorkspaceCliTests(unittest.TestCase):
         summary = json.loads(result.stdout)
         self.assertEqual(summary["status"], "ok")
         self.assertEqual(summary["path"], str(self.output_path))
+        self.assertTrue(Path(summary["log_path"]).is_absolute())
         self.assertEqual(summary["project_count"], 0)
         self.assertFalse(summary["partial"])
         self.assertFalse(self.capture.exists())
         snapshot = json.loads(self.output_path.read_text(encoding="utf-8"))
         self.assertEqual(snapshot["projects"], [])
         self.assertEqual(snapshot["window"]["timezone"], "UTC")
+        self.assertFalse(snapshot["partial"])
         self.assertEqual(self.output_path.stat().st_mode & 0o777, 0o600)
+        log_path, log_text = self.read_log(snapshot)
+        self.assertEqual(summary["log_path"], str(log_path))
+        self.assertIn("warning_count: 0", log_text)
+        self.assertIn("No warnings.", log_text)
 
     def test_build_hydrates_model_project_from_collected_resource_ids(self) -> None:
         config = self.write_configured_repo()
@@ -216,6 +232,8 @@ class WorkspaceCliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertEqual((self.notes / ".mem.index.json").read_bytes(), index_before)
         snapshot = json.loads(self.output_path.read_text(encoding="utf-8"))
+        _log_path, log_text = self.read_log(snapshot)
+        self.assertIn("warning_count: 0", log_text)
         project = snapshot["projects"][0]
         self.assertEqual(
             project["bases"],
@@ -283,6 +301,7 @@ class WorkspaceCliTests(unittest.TestCase):
         self.assertEqual((self.notes / ".mem.index.json").read_bytes(), historical_index)
         self.assertEqual((caller_notes / ".mem.index.json").read_bytes(), caller_index)
         snapshot = json.loads(self.output_path.read_text(encoding="utf-8"))
+        self.read_log(snapshot)
         project = snapshot["projects"][0]
         self.assertEqual(
             sorted(project["bases"], key=lambda item: item["name"]),
@@ -307,10 +326,37 @@ class WorkspaceCliTests(unittest.TestCase):
         result = self.run_workspace()
 
         self.assertEqual(result.returncode, 0, msg=result.stderr)
-        self.assertIn("warning: partial text: truncated collected activity", result.stderr)
-        self.assertTrue(json.loads(result.stdout)["partial"])
+        self.assertRegex(result.stderr, r"^warning: 1 warning\(s\); see .+\.log\n$")
+        self.assertNotIn("truncated collected activity at", result.stderr)
+        summary = json.loads(result.stdout)
+        self.assertTrue(summary["partial"])
+        snapshot = json.loads(self.output_path.read_text(encoding="utf-8"))
+        log_path, log_text = self.read_log(snapshot)
+        self.assertEqual(summary["log_path"], str(log_path))
+        self.assertIn("warning_count: 1", log_text)
+        self.assertIn("partial text: truncated collected activity", log_text)
+        self.assertIn("to 1200 chars", log_text)
         captured = json.loads(self.capture.read_text(encoding="utf-8"))
         self.assertLessEqual(len(captured["packet"]["activity"][0]["text"]), 1200)
+
+    def test_each_build_selects_separate_warning_log_and_preserves_prior_log(self) -> None:
+        self.write_configured_repo()
+        self.write_rollout(text="x" * 2000)
+
+        first = self.run_workspace()
+        self.assertEqual(first.returncode, 0, msg=first.stderr)
+        first_snapshot = json.loads(self.output_path.read_text(encoding="utf-8"))
+        first_log_path, first_log_text = self.read_log(first_snapshot)
+
+        second = self.run_workspace()
+        self.assertEqual(second.returncode, 0, msg=second.stderr)
+        second_snapshot = json.loads(self.output_path.read_text(encoding="utf-8"))
+        second_log_path, second_log_text = self.read_log(second_snapshot)
+
+        self.assertNotEqual(first_snapshot["log_path"], second_snapshot["log_path"])
+        self.assertTrue(first_log_path.is_file())
+        self.assertEqual(first_log_path.read_text(encoding="utf-8"), first_log_text)
+        self.assertIn("partial text: truncated collected activity", second_log_text)
 
     def test_unknown_model_candidate_id_preserves_previous_index(self) -> None:
         self.write_configured_repo()
@@ -350,6 +396,23 @@ class WorkspaceCliTests(unittest.TestCase):
         self.assertIn("error: publish:", result.stderr)
         self.assertIn("unsafe output path", result.stderr)
         self.assertEqual(target.read_text(encoding="utf-8"), '{"target": true}\n')
+
+    def test_log_write_failure_preserves_previous_index(self) -> None:
+        self.write_configured_repo()
+        self.write_rollout(text="x" * 2000)
+        self.output_path.parent.mkdir(parents=True)
+        self.output_path.write_text('{"previous": true}\n', encoding="utf-8")
+        target = self.root / "log-target"
+        target.mkdir()
+        (self.output_path.parent / "logs").symlink_to(target)
+
+        result = self.run_workspace()
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("error: publish:", result.stderr)
+        self.assertIn("unsafe output directory", result.stderr)
+        self.assertEqual(self.output_path.read_text(encoding="utf-8"), '{"previous": true}\n')
+        self.assertEqual(list(target.iterdir()), [])
 
 
 if __name__ == "__main__":
