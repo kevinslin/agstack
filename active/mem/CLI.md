@@ -1,6 +1,6 @@
 # mem CLI reference
 
-Use the installed `mem` command to migrate and inspect memory configuration, manage derived base indexes, explain routing, perform bounded document-preserving lookup, inspect schemas, and materialize schema nodes. Run commands from the project whose configuration you want to use.
+Use the installed `mem` command to find, migrate, and inspect memory configuration, manage derived base indexes, explain routing, perform bounded document-preserving lookup, inspect schemas, and materialize schema nodes. Run commands from the project whose configuration you want to use.
 
 ## Installation
 
@@ -15,7 +15,7 @@ command -v mem
 mem --help
 ```
 
-Verify that help lists `mem config show`, `mem context lookup`, and `mem schema`. Different help indicates a conflicting executable; report its path and resolve the conflict before running memory operations.
+Verify that help lists `mem config find`, `mem config show`, `mem context lookup`, and `mem schema`. Different help indicates a conflicting executable; report its path and resolve the conflict before running memory operations.
 
 The installer creates an executable launcher at `~/.local/bin/mem` pointing to this skill's dispatcher and the Python interpreter used for installation. It preserves the caller's working directory and forwards arguments and exit status. It does not install dependencies, edit shell startup files, or change memory configuration. Re-running it updates its own launcher; it refuses to replace an unrelated file or symlink.
 
@@ -26,6 +26,7 @@ Keep the skill directory and interpreter available. Re-run installation after mo
 ## Command summary
 
 ```text
+mem config find
 mem config show
 mem context lookup
 mem doctor --migrate
@@ -44,7 +45,7 @@ All JSON commands emit compact JSON by default. Add `--pretty` for indented outp
 
 ## Configuration discovery
 
-Unless `--config` is present, commands load:
+Use `mem config find` to discover paths and `mem config show` to load and validate their contents. Unless `--config` is present, discovery selects:
 
 1. the nearest `.mem.yaml` at or above `--cwd`;
 2. `.mem.yaml` under `--home`.
@@ -59,6 +60,45 @@ Common configuration options:
 - `--cwd PATH`: directory used to find the nearest ancestor config and resolve base `root_pattern` values; defaults to the current directory.
 - `--home PATH`: directory used for the home config; defaults to the current user's home.
 - `--pretty`: indent JSON output.
+
+## `config find`
+
+Find configuration files without loading or validating their contents. Use this command before managed operations instead of manually walking ancestors or checking the home directory.
+
+```bash
+mem config find [--config PATH] [--cwd PATH] [--home PATH] [--pretty]
+```
+
+Options:
+
+- `--cwd PATH`: start the ancestor search here; defaults to the caller's current directory.
+- `--home PATH`: look for the home `.mem.yaml` here; defaults to the current user's home directory.
+- `--config PATH`: find only this explicitly named file, ignoring ancestor and home discovery.
+- `--pretty`: indent the JSON result.
+
+The command reuses the loader's discovery order: the nearest ancestor `.mem.yaml`, followed by the home `.mem.yaml` when distinct. It returns absolute paths, includes the same nearest/home path only once, and does not include more distant ancestor configs after finding the nearest one.
+
+Found configuration:
+
+```json
+{"status":"found","config_paths":["/workspace/project/.mem.yaml","/home/operator/.mem.yaml"]}
+```
+
+No discoverable configuration:
+
+```json
+{"status":"missing_config","config_paths":[]}
+```
+
+Both results exit `0`. A missing or non-file `--config` is an error with nonzero exit and no fallback; discovery errors must not be treated as optional absence. `found` means the files were located, not that their contents are valid. Invalid YAML, legacy versions, missing base roots, and invalid schemas are left for `config show` or `doctor` to handle. Discovery does not create configs, indexes, or audit traces.
+
+```bash
+mem config find --pretty
+mem config find --cwd /workspace/project/src --home /home/operator --pretty
+mem config find --config /workspace/custom.mem.yaml
+```
+
+If the result is `missing_config`, continue the underlying task without managed memory. Otherwise use `mem config show`, retaining any `--config`, `--cwd`, and `--home` controls used during discovery.
 
 ## `config show`
 

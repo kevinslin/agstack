@@ -27,7 +27,7 @@ from audit_trace import (
     shell_quote_argv,
     timestamp_ms,
 )
-from load_config import load_config, nearest_config
+from load_config import find_config_paths, load_config
 from route import IndexState, ensure_base_index, route
 
 
@@ -188,14 +188,7 @@ def configured_paths(args: argparse.Namespace) -> list[Path]:
     if args.config is not None:
         path = args.config.expanduser().resolve(strict=False)
         return [path] if path.is_file() else []
-    paths: list[Path] = []
-    nearest = nearest_config(args.cwd)
-    if nearest is not None:
-        paths.append(nearest)
-    home_config = args.home.expanduser().resolve(strict=False) / ".mem.yaml"
-    if home_config.is_file() and home_config not in paths:
-        paths.append(home_config)
-    return paths
+    return find_config_paths(args.cwd, args.home)
 
 
 def load_config_safely(args: argparse.Namespace) -> tuple[dict[str, Any] | None, str | None]:

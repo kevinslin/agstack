@@ -1,6 +1,6 @@
 # mem
 
-`mem` provides one interface for routing, reading, indexing, and safely materializing durable knowledge across configured filesystem bases.
+`mem` provides one interface for finding configuration, routing, reading, indexing, and safely materializing durable knowledge across configured filesystem bases.
 
 It separates configuration discovery and migration, base routing, generated path-only indexes, bounded context lookup, and schema-backed file generation. Context lookup preserves knowledge documents and source files but can initialize a missing derived index. The skill workflow in [`SKILL.md`](./SKILL.md) owns the human-facing read/write rules; the scripts provide deterministic configuration, indexing, routing, lookup, and materialization primitives.
 
@@ -16,12 +16,15 @@ fi
 mem --help
 ```
 
-Verify that help lists `mem config show`, `mem context lookup`, and `mem schema`. If a different command is found, resolve the `PATH` conflict before running memory operations.
+Verify that help lists `mem config find`, `mem config show`, `mem context lookup`, and `mem schema`. If a different command is found, resolve the `PATH` conflict before running memory operations.
 
 The installer places a launcher in `~/.local/bin`. It preserves the caller's working directory so commands find the project's `.mem.yaml`. Run the following commands from your project directory; see [installation and recovery](./CLI.md#installation) for details.
 
 ```bash
-# After installing the updated skill, upgrade existing version-1 configuration.
+# Find configuration first; stop the managed workflow if status is missing_config.
+mem config find --pretty
+
+# For existing version-1 configuration, upgrade after installing the updated skill.
 mem doctor --migrate --pretty
 
 # Inspect the normalized configuration.
@@ -45,6 +48,8 @@ mem index check --all --pretty
 See [`CLI.md`](./CLI.md) for the complete command reference.
 
 ## Config
+
+Use `mem config find --pretty` to locate configuration through the CLI. It returns `status: found` with ordered `config_paths`, or `status: missing_config` with an empty list; both exit successfully. Discovery does not parse YAML, validate configured resources, or write configuration or memory artifacts. Use `mem config show` next to load and validate the discovered configuration. See [`config find`](./CLI.md#config-find) for options and explicit-file errors.
 
 `mem` reads YAML configuration from the nearest `.mem.yaml` at or above the current directory and from `$HOME/.mem.yaml`. Both files are merged; the nearest file wins when they define the same base name. `--config PATH` loads only the specified file.
 

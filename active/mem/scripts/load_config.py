@@ -137,7 +137,7 @@ def nearest_config(cwd: Path) -> Path | None:
     return None
 
 
-def find_configs(cwd: Path, home: Path) -> list[Path]:
+def find_config_paths(cwd: Path, home: Path) -> list[Path]:
     candidates: list[Path] = []
     nearest = nearest_config(cwd)
     if nearest is not None:
@@ -145,8 +145,14 @@ def find_configs(cwd: Path, home: Path) -> list[Path]:
     home_config = home.expanduser().resolve(strict=False) / ".mem.yaml"
     if home_config.is_file() and home_config not in candidates:
         candidates.append(home_config)
+    return candidates
+
+
+def find_configs(cwd: Path, home: Path) -> list[Path]:
+    candidates = find_config_paths(cwd, home)
     if candidates:
         return candidates
+    home_config = home.expanduser().resolve(strict=False) / ".mem.yaml"
     expected = f"nearest ancestor of {cwd} or {home_config}"
     fail(f"missing config: expected one of: {expected}")
 

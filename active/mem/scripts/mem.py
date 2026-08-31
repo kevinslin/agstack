@@ -227,6 +227,7 @@ def prepare_schema_args(args: list[str]) -> PreparedSchemaCommand:
 
 def usage() -> str:
     return """usage:
+  mem config find [--config <path>] [--cwd <path>] [--home <path>] [--pretty]
   mem config show [load_config options]
   mem context lookup --query <text> [context options]
   mem route [route options]
@@ -253,9 +254,34 @@ def main() -> None:
 
     command, command_args = args[0], args[1:]
     if command == "config":
-        if not command_args or command_args[0] != "show":
-            fail("config requires the 'show' subcommand")
-        run_python("load_config.py", command_args[1:])
+        if not command_args or command_args[0] not in {"find", "show"}:
+            fail("config requires the 'find' or 'show' subcommand")
+        if command_args[0] == "show":
+            run_python("load_config.py", command_args[1:])
+        from load_config import find_config_paths
+
+        import argparse
+
+        parser = argparse.ArgumentParser(prog="mem config find")
+        parser.add_argument("--config", type=Path)
+        parser.add_argument("--cwd", type=Path, default=Path.cwd())
+        parser.add_argument("--home", type=Path, default=Path.home())
+        parser.add_argument("--pretty", action="store_true")
+        find_args = parser.parse_args(command_args[1:])
+        if find_args.config is not None:
+            config_path = find_args.config.expanduser().resolve(strict=False)
+            if not config_path.is_file():
+                fail(f"config does not exist: {config_path}")
+            config_paths = [config_path]
+        else:
+            config_paths = find_config_paths(find_args.cwd, find_args.home)
+        payload = {
+            "status": "found" if config_paths else "missing_config",
+            "config_paths": [str(path) for path in config_paths],
+        }
+        json.dump(payload, sys.stdout, indent=2 if find_args.pretty else None)
+        print()
+        return
     if command == "context":
         if not command_args or command_args[0] != "lookup":
             fail("context requires the 'lookup' subcommand")

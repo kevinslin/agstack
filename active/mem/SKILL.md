@@ -26,7 +26,7 @@ Also invoke `$mem` when inspecting, validating, or materializing a bundled file 
 
 When project or workspace instructions require `$mem` for context lookup, invoke it even without durable-output intent. Context lookup never changes knowledge documents or source files, but may create the selected base's missing derived `.mem.index.json`; select the configured base, resolve its schemas, infer likely nodes from their descriptions, and search existing knowledge before inspecting source.
 
-Treat configuration as optional. Before starting a managed operation, check for the nearest ancestor `.mem.yaml` and `$HOME/.mem.yaml`. If neither exists, stop the `$mem` workflow successfully and continue the underlying task without `$mem`. Do not ask the user to create configuration or report a blocker solely because configuration is absent.
+Treat configuration as optional. Before starting a managed operation, ensure the CLI is installed as described below and run `mem config find --pretty`. Use its `config_paths` result instead of checking the filesystem manually. If it returns `status: missing_config`, stop the `$mem` workflow successfully and continue the underlying task without `$mem`. Do not ask for configuration or report a blocker solely because it is absent. A discovery error is not an absent configuration.
 
 Do not auto-write merely because information might be useful later. Require explicit durable-output intent or an applicable project instruction. Do not use `$mem` for transient answers or files whose repository-owned workflow and exact destination the user already specified.
 
@@ -52,13 +52,16 @@ command -v mem
 mem --help
 ```
 
-Verify that `mem --help` succeeds and lists `mem config show`, `mem context lookup`, and `mem schema`. If the resolved command has different help, report the conflicting executable path before running memory operations.
+Verify that `mem --help` succeeds and lists `mem config find`, `mem config show`, `mem context lookup`, and `mem schema`. If the resolved command has different help, report the conflicting executable path before running memory operations.
 
 Run `mem` from the caller's project directory so configuration discovery and routing retain the intended scope. Use the installed command for normal operations. If installation or verification fails, report the error instead of falling back to a direct `./scripts/mem.py` invocation.
 
 See [`README.md`](./README.md) for the system design and [`CLI.md`](./CLI.md) for the complete command reference.
 
 ```bash
+# Discover configuration without parsing it. Stop the managed workflow if status is missing_config.
+mem config find --pretty
+
 # Upgrade existing version-1 configuration after installing the updated skill.
 mem doctor --migrate --pretty
 
@@ -123,7 +126,7 @@ Compatibility aliases must preserve the historical root and behavior. Do not map
 
 An optional top-level `audit` mapping enables mandatory conversation-scoped lookup traces. `enabled` defaults to `false`; `trace_root` defaults to `$HOME/.config/mem/traces`. When enabled, `context lookup` requires the active conversation UUID in `CODEX_THREAD_ID` and fails closed if its trace cannot be safely written. The nearest configuration that explicitly declares `audit` owns the complete effective audit mapping.
 
-Use `mem config show --pretty` instead of hand-parsing configuration.
+Use `mem config find --pretty` to locate configuration and `mem config show --pretty` to load and validate it. Discovery reports paths without parsing YAML or validating roots and schemas.
 
 Each base owns `<managed_root>/.mem.index.json`, a disposable, path-derived cache containing generated topics, artifact kinds, and the first two logical hierarchy levels. Routing and context lookup create a missing index automatically; managed schema materialization refreshes it after successful creation. Index scans are uncapped, while normal knowledge search remains bounded; directory advisory locks leave no durable lockfile. External edits, renames, deletes, and syncs require explicit `index build` when freshness matters.
 
@@ -132,8 +135,8 @@ Use `mem context lookup` for project context. Repeat `--source` for multiple fil
 ## Managed Workflow
 
 1. Parse the request into a context lookup, read, write, update, delete, schema-inspection, or materialization operation.
-2. Check for the nearest ancestor `.mem.yaml` and `$HOME/.mem.yaml`. If neither exists, exit this workflow successfully and continue the underlying task without `$mem`.
-3. Load merged configuration.
+2. Run `mem config find --pretty`. If it returns `status: missing_config`, exit this workflow successfully and continue the underlying task without `$mem`. Report discovery errors instead of treating them as missing configuration.
+3. Load and validate merged configuration with `mem config show --pretty`, preserving any `--config`, `--cwd`, or `--home` controls used for discovery.
 4. Select an explicit base name or alias when provided. Otherwise run `mem route`.
 5. Stop for clarification when routing returns `ambiguous` or `no_match`.
 6. Resolve every configured schema for the selected base before operating.

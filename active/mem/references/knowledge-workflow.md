@@ -1,6 +1,6 @@
 # Knowledge workflow
 
-Use these rules after `$mem` selects a managed base and resolves its schemas.
+Before selecting a managed base, run `mem config find --pretty` to discover configuration through the CLI. If it returns `status: missing_config`, continue the underlying task without managed memory. Otherwise load it with `mem config show --pretty`, preserving discovery controls. Apply the rules below after `$mem` selects a managed base and resolves its schemas.
 
 The selected base's resolved `managed_root` is authoritative for managed knowledge. Constrain candidate-path search, filename and body search, duplicate detection, materialization, updates, and deletes to that boundary. The base root, whether fixed or resolved from a session-matching `root_pattern`, may be a wider workspace boundary, such as a Dendron workspace whose managed knowledge lives under `notes/`. Schema-specific `root` mounts remain inside `managed_root`; `.` adds no hierarchy prefix.
 
@@ -118,7 +118,7 @@ Delete only when explicitly requested. Prefer targeted removal over deleting an 
 
 ## Failure states
 
-- Missing config: exit the `$mem` workflow successfully and continue the underlying task without `$mem`. Do not ask for setup or report a blocker solely because neither the nearest ancestor `.mem.yaml` nor `$HOME/.mem.yaml` exists.
+- Missing config: when `mem config find` returns `status: missing_config`, exit the `$mem` workflow successfully and continue the underlying task without `$mem`. Do not ask for setup or report a blocker solely because configuration is absent. Treat discovery errors separately.
 - Invalid config: report the parser error and stop.
 - Legacy config: run `mem doctor --migrate --pretty` to upgrade existing version-1 configuration before ordinary loading.
 - Missing, stale, or invalid index: repair the disposable cache with `mem index build --base NAME_OR_ALIAS`; do not infer that managed knowledge is missing.

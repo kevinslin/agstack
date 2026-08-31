@@ -308,6 +308,148 @@ class MemCliTests(unittest.TestCase):
         self.assertEqual(payload["results"][0]["status"], "migrated")
         self.assertIn("version: 2", self.config.read_text(encoding="utf-8"))
 
+    def test_config_find_reports_nearest_then_home_and_deduplicates(self) -> None:
+        project = self.root / "project"
+        nested = project / "src" / "tool"
+        home = self.root / "home"
+        nested.mkdir(parents=True)
+        home.mkdir()
+        project_config = project / ".mem.yaml"
+        home_config = home / ".mem.yaml"
+        project_config.write_text("version: 1\nmalformed: [\n", encoding="utf-8")
+        home_config.write_text("not yaml: [\n", encoding="utf-8")
+
+        found = self.run_mem(
+            "config",
+            "find",
+            "--cwd",
+            str(nested),
+            "--home",
+            str(home),
+            "--pretty",
+        )
+
+        self.assertEqual(found.returncode, 0, msg=found.stderr)
+        self.assertIn('\n  "status": "found"', found.stdout)
+        self.assertEqual(
+            json.loads(found.stdout),
+            {
+                "status": "found",
+                "config_paths": [str(project_config.resolve()), str(home_config.resolve())],
+            },
+        )
+
+        deduplicated = self.run_mem("config", "find", "--cwd", str(home), "--home", str(home))
+
+        self.assertEqual(deduplicated.returncode, 0, msg=deduplicated.stderr)
+        self.assertEqual(
+            json.loads(deduplicated.stdout),
+            {"status": "found", "config_paths": [str(home_config.resolve())]},
+        )
+
+    def test_config_find_missing_is_successful_and_does_not_create_files(self) -> None:
+        self.config.unlink()
+        empty = self.root / "empty"
+        home = self.root / "home"
+        nested = empty / "nested"
+        nested.mkdir(parents=True)
+        home.mkdir()
+
+        result = self.run_mem("config", "find", "--cwd", str(nested), "--home", str(home))
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(json.loads(result.stdout), {"status": "missing_config", "config_paths": []})
+        self.assertEqual(sorted(path.relative_to(self.root) for path in self.root.rglob("*")), [
+            Path("empty"),
+            Path("empty/nested"),
+            Path("home"),
+            Path("kb"),
+        ])
+
+    def test_config_find_discovers_malformed_config_without_parsing(self) -> None:
+        self.config.write_text("not yaml: [\n", encoding="utf-8")
+
+        found = self.run_mem("config", "find", "--config", str(self.config))
+        shown = self.run_mem("config", "show", "--config", str(self.config))
+
+        self.assertEqual(found.returncode, 0, msg=found.stderr)
+        self.assertEqual(
+            json.loads(found.stdout),
+            {"status": "found", "config_paths": [str(self.config.resolve())]},
+        )
+        self.assertNotEqual(shown.returncode, 0)
+        self.assertFalse(shown.stdout)
+
+    def test_config_find_preserves_discovered_symlink_path_like_config_show(self) -> None:
+        project = self.root / "project"
+        actual = self.root / "actual"
+        home = self.root / "home"
+        project.mkdir()
+        actual.mkdir()
+        home.mkdir()
+        actual_config = actual / ".mem.yaml"
+        symlink_config = project / ".mem.yaml"
+        actual_config.write_text(
+            textwrap.dedent(
+                """
+                version: 2
+                bases:
+                  - name: docs
+                    description: Local docs.
+                    root: .
+                    schemas:
+                      - name: global-core
+                """
+            ).strip()
+            + "\n",
+            encoding="utf-8",
+        )
+        symlink_config.symlink_to(actual_config)
+
+        found = self.run_mem("config", "find", "--cwd", str(project), "--home", str(home))
+        shown = self.run_mem("config", "show", "--cwd", str(project), "--home", str(home))
+        discovered_path = str(project.resolve(strict=False) / ".mem.yaml")
+
+        self.assertEqual(found.returncode, 0, msg=found.stderr)
+        self.assertEqual(
+            json.loads(found.stdout),
+            {"status": "found", "config_paths": [discovered_path]},
+        )
+        self.assertEqual(shown.returncode, 0, msg=shown.stderr)
+        self.assertEqual(json.loads(shown.stdout)["config_paths"], [discovered_path])
+
+    def test_config_find_missing_explicit_config_errors_without_fallback(self) -> None:
+        home = self.root / "home"
+        home.mkdir()
+        (home / ".mem.yaml").write_text("version: 2\nbases: []\n", encoding="utf-8")
+        missing = self.root / "missing.yaml"
+
+        result = self.run_mem(
+            "config",
+            "find",
+            "--config",
+            str(missing),
+            "--home",
+            str(home),
+        )
+
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout, "")
+        self.assertIn(f"config does not exist: {missing.resolve(strict=False)}", result.stderr)
+
+    def test_config_show_remains_strict_when_no_config_exists(self) -> None:
+        self.config.unlink()
+        empty = self.root / "empty"
+        home = self.root / "home"
+        empty.mkdir()
+        home.mkdir()
+
+        result = self.run_mem("config", "show", "--cwd", str(empty), "--home", str(home))
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, "")
+        self.assertIn("missing config", result.stderr)
+
     def test_failed_managed_materialization_preserves_child_failure(self) -> None:
         result = self.run_mem(
             "schema",
