@@ -28,7 +28,11 @@ When project or workspace instructions require `$mem` for context lookup, invoke
 
 Treat configuration as optional. Before starting a managed operation, ensure the CLI is installed as described below and run `mem config find --pretty`. Use its `config_paths` result instead of checking the filesystem manually. If it returns `status: missing_config`, stop the `$mem` workflow successfully and continue the underlying task without `$mem`. Do not ask for configuration or report a blocker solely because it is absent. A discovery error is not an absent configuration.
 
-For `mem workspace build`, configuration is supplemental: continue the build when none exists. Use this command when asked to discover meaningful projects across recent local work. It reads the last seven days of Codex rollouts, groups projects with the authenticated Codex CLI, and replaces `~/.mem/workspace/index.json`. Warning details are in a per-build file under `~/.mem/workspace/logs/`; the snapshot keeps `partial` and a relative `log_path`. Consult that log when explaining incomplete coverage, and treat priorities as current attention, not durable project status. See [workspace build](./CLI.md#workspace-build) for prerequisites and boundaries.
+Workspace commands can run without mem configuration. Use `mem workspace lookup --query "<project or intent>"` when the relevant project is unclear or the request spans recent work. It reads compact project summaries from the existing snapshot without inference or rebuilding. If the wording produces no useful match, omit the query to browse all summaries. Use `--details` for the selected project's resources; request `--include-sources` only when supporting rollout references are needed. Multiple projects may share a repository. Match the request to project descriptions and aliases, rather than choosing solely by repository or priority.
+
+Before using a returned base, resolve its current configuration with `mem config show --config <config_path> --cwd <root>`. Confirm the active base instance, then use `mem context lookup --target <name> --config <config_path> --cwd <root> --query "<intent>"`. Snapshot aliases do not become mem routing aliases. For projects without a configured base, use the returned files and repositories to scope source inspection. An absent snapshot does not block normal configured context lookup; do not build one automatically as a side effect of reading. See [workspace lookup](./CLI.md#workspace-lookup).
+
+Use `mem workspace build` when asked to discover or refresh meaningful projects across recent local work. It reads the last seven days of Codex rollouts, groups projects with the authenticated Codex CLI, and replaces `~/.mem/workspace/index.json`. Warning details are in a per-build file under `~/.mem/workspace/logs/`; the snapshot keeps `partial` and a relative `log_path`. Consult that log when explaining incomplete coverage, and treat priorities as current attention, not durable project status. See [workspace build](./CLI.md#workspace-build) for prerequisites and boundaries.
 
 Do not auto-write merely because information might be useful later. Require explicit durable-output intent or an applicable project instruction. Do not use `$mem` for transient answers or files whose repository-owned workflow and exact destination the user already specified.
 
@@ -37,7 +41,7 @@ Do not auto-write merely because information might be useful later. Require expl
 - **Managed knowledge:** Resolve `.mem.yaml`, select a base, constrain all knowledge paths to its resolved managed root, and use its configured schemas.
 - **Project context lookup:** Read existing managed knowledge using schema-inferred candidate paths, then fall back to a scoped source search when it is missing or insufficient.
 - **Schema inspection:** List, show, or describe bundled schemas without writing files.
-- **Workspace snapshot:** Use LLM inference over recent local activity to generate a project map without changing knowledge documents or per-base indexes.
+- **Workspace discovery:** Read a compact project map to select context, or explicitly rebuild the snapshot from recent local activity with LLM inference.
 - **Unmanaged materialization:** Write a schema-backed repo-owned or temporary artifact to an explicit output path only when the caller passes `--unmanaged`.
 
 Prefer managed knowledge mode for durable artifacts.
@@ -87,6 +91,10 @@ mem context lookup \
 
 # Build a fresh project snapshot from the last seven days of local activity.
 mem workspace build --pretty
+
+# Find a project in the existing snapshot, then inspect its resources.
+mem workspace lookup --query "agent memory" --pretty
+mem workspace lookup --query "agmem" --details --pretty
 
 # Inspect schemas.
 mem schema list

@@ -35,7 +35,10 @@ if capture:
 mode = os.environ.get("WORKSPACE_TEST_MODE", "success")
 projects = []
 if packet["activity"]:
-    source_id = packet["activity"][0]["id"]
+    if mode == "all_sources":
+        source_ids = [source["id"] for source in packet["activity"]]
+    else:
+        source_ids = [packet["activity"][0]["id"]]
     repo_ids = [repo["id"] for repo in packet["resources"]["repos"]]
     if mode == "invented":
         repo_ids = ["repo:missing"]
@@ -52,7 +55,7 @@ if packet["activity"]:
         "base_ids": [base["id"] for base in packet["resources"]["bases"]],
         "repo_ids": repo_ids,
         "relevant": relevant,
-        "source_ids": [source_id],
+        "source_ids": source_ids,
     })
 pathlib.Path(args[args.index("--output-last-message") + 1]).write_text(json.dumps({"projects": projects}))
 print(json.dumps({"type": "turn.completed"}))
@@ -161,7 +164,12 @@ class WorkspaceCliTests(unittest.TestCase):
         )
         return config
 
-    def write_rollout(self, *, text: str = "Implement the workspace index builder.") -> Path:
+    def write_rollout(
+        self,
+        *,
+        text: str = "Implement the workspace index builder.",
+        extra_texts: list[str] | None = None,
+    ) -> Path:
         path = self.codex_home / "sessions" / "rollout-2026-08-30T20-00-00-owner.jsonl"
         created = time.time() - 60
         records: list[dict[str, Any]] = [
@@ -195,6 +203,23 @@ class WorkspaceCliTests(unittest.TestCase):
                 },
             },
         ]
+        for index, extra_text in enumerate(extra_texts or [], start=1):
+            records.append(
+                {
+                    "type": "response_item",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "payload": {
+                        "type": "message",
+                        "role": "user",
+                        "id": f"message-extra-{index}",
+                        "content": [{"type": "input_text", "text": extra_text}],
+                        "internal_chat_message_metadata_passthrough": {
+                            "turn_id": "turn-a",
+                            "create_time": created + index,
+                        },
+                    },
+                }
+            )
         path.write_text(
             "".join(json.dumps(record, separators=(",", ":")) + "\n" for record in records),
             encoding="utf-8",
@@ -244,7 +269,7 @@ class WorkspaceCliTests(unittest.TestCase):
             [{"name": "repo", "path": str(self.repo.resolve()), "remote": "https://example.com/acme/repo.git"}],
         )
         self.assertEqual(project["relevant"][0]["path"], str((self.notes / "design.md").resolve()))
-        self.assertEqual(project["sources"], [{"task_id": "owner-task", "path": str(rollout), "line": 4}])
+        self.assertEqual(project["sources"], [{"task_id": "owner-task", "path": str(rollout), "lines": [4]}])
         captured = json.loads(self.capture.read_text(encoding="utf-8"))
         self.assertEqual(
             set(captured["packet"]),
@@ -317,7 +342,21 @@ class WorkspaceCliTests(unittest.TestCase):
                 ("repo", str(self.repo.resolve()), "https://example.com/acme/repo.git"),
             ],
         )
-        self.assertEqual(project["sources"], [{"task_id": "owner-task", "path": str(rollout), "line": 4}])
+        self.assertEqual(project["sources"], [{"task_id": "owner-task", "path": str(rollout), "lines": [4]}])
+
+    def test_build_groups_sources_by_task_and_path_preserving_line_order(self) -> None:
+        self.write_configured_repo()
+        rollout = self.write_rollout(extra_texts=["Continue workspace lookup.", "Verify workspace lookup."])
+        env = {**self.env, "WORKSPACE_TEST_MODE": "all_sources"}
+
+        result = self.run_workspace(env=env)
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        snapshot = json.loads(self.output_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            snapshot["projects"][0]["sources"],
+            [{"task_id": "owner-task", "path": str(rollout), "lines": [4, 5, 6]}],
+        )
 
     def test_long_activity_text_warns_partial_and_truncates_runner_packet(self) -> None:
         self.write_configured_repo()

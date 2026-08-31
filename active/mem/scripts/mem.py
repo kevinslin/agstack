@@ -237,6 +237,7 @@ def usage() -> str:
   mem index show --base <base> [configuration options]
   mem index check (--base <base> | --all) [configuration options]
   mem workspace build [--pretty]
+  mem workspace lookup [--query <text>] [--details] [--include-sources] [--pretty]
   mem schema <list|show|describe|validate|materialize> [schema options]
 
 Managed schema materialization:

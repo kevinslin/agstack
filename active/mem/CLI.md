@@ -36,6 +36,7 @@ mem index build
 mem index show
 mem index check
 mem workspace build
+mem workspace lookup
 mem route
 mem schema list
 mem schema show
@@ -56,7 +57,7 @@ mem workspace build --pretty
 
 The command reads active and archived rollouts under `CODEX_HOME` (default `~/.codex`), resolves related Git repositories and current mem project context, uses LLM inference to group and prioritize meaningful projects, and writes `~/.mem/workspace/index.json`. It discovers configuration from historical working directories and the caller's current directory, and includes repositories owning the configured bases. These are resource candidates; project inclusion still requires recent activity. No mem configuration is required. Existing source files and per-base indexes are read without modification or refresh.
 
-The [snapshot schema](./references/workspace-output.schema.json) defines `generated_at`, the seven-day `window`, `partial`, `log_path`, and `projects`. Each project contains a name, aliases, priority 1–3 with 1 highest, a priority explanation, exact base references, repositories, relevant files, and supporting rollout references. A base is identified by `(config_path, name, root)`; each distinct repository appears once per project with its canonical path and nullable remote. Projects may share resources. Worktrees are resolved through Git without a separate persisted inventory.
+The [snapshot schema](./references/workspace-output.schema.json) defines `generated_at`, the seven-day `window`, `partial`, `log_path`, and `projects`. Each project contains a name, aliases, priority 1–3 with 1 highest, a priority explanation, exact base references, repositories, relevant files, and supporting rollout references. Sources are grouped within each project as `{task_id, path, lines: [...]}`, preserving the collected line locations without repeating the same task and rollout path. A base is identified by `(config_path, name, root)`; each distinct repository appears once per project with its canonical path and nullable remote. Projects may share resources. Worktrees are resolved through Git without a separate persisted inventory.
 
 Warning details are written to a unique plain-text log for each successful build under `~/.mem/workspace/logs/`. The snapshot's `log_path` is relative to its directory, such as `logs/workspace-20260831T120000Z-abc123.log`. Logs are private files (mode `0600`), and later builds leave earlier logs intact. A clean build writes a short log indicating no warnings. The command's success JSON includes the concrete log path; partial builds print one warning-count summary with that path to stderr.
 
@@ -73,6 +74,37 @@ Inference has a five-minute timeout. An unavailable runner, failed model request
 Collection considers up to 20,000 files in each rollout store, preferring recently modified files when that cap is reached; native event time determines which work belongs in the week. User-message excerpts are limited to 8,000 characters, then shortened for inference to at most 1,200 characters each and a shared 600,000-character text budget. Project-document excerpts are limited to 2,000 bytes. Inspect the referenced build log to see which inputs were shortened or unavailable.
 
 If inference fails, check the reported stage, the installed Codex version, and normal login health. Repair authentication through Codex's supported login flow; do not extract or reuse refresh tokens. The command never substitutes heuristic grouping for failed LLM inference.
+
+## `workspace lookup`
+
+Read the existing `~/.mem/workspace/index.json` to find recent projects without running inference, rebuilding the snapshot, or reading and refreshing per-base indexes.
+
+```bash
+# Browse all project summaries.
+mem workspace lookup --pretty
+
+# Find a project, then retrieve its resources or supporting source references.
+mem workspace lookup --query "agent memory" --pretty
+mem workspace lookup --query "agmem" --details --pretty
+mem workspace lookup --query "agmem" --include-sources --pretty
+
+# A shared repository can return several matching projects.
+mem workspace lookup --query /workspace/skills --pretty
+```
+
+The default project view includes `name`, optional `description`, `aliases`, and `priority`. `--details` adds the priority explanation, observed bases and repositories, and relevant files with labels scoped to their base or repository. `--include-sources` implies `--details` and also returns supporting grouped rollout references. The result contains `status` (`matched` or `no_matches`), `index_path`, `snapshot`, and `projects`. The `snapshot` metadata preserves generation time, window, partial status, and `log_path` relative to the index directory so the agent can judge freshness and inspect incomplete coverage.
+
+Exact project-name and alias matches rank first, followed by local text relevance; priority breaks relevance ties. Repository/path queries retain every matching project instead of treating a shared path as unique project identity. An omitted query lists all summaries in priority order. No matches is a successful empty result. A missing, unreadable, or malformed index returns a nonzero exit with a diagnostic; lookup does not create a replacement. Lookup expects the current snapshot format; explicitly rebuild an older snapshot if it reports a format error.
+
+Resource references describe the snapshot, not live ownership. Before reading managed knowledge, use the returned base's `config_path` and `root` with `mem config show`, confirm the active base instance, then continue with the existing context command:
+
+```bash
+mem config show --config /workspace/project/.mem.yaml --cwd /workspace/project --pretty
+mem context lookup --target example --config /workspace/project/.mem.yaml \
+  --cwd /workspace/project --query "current design decisions" --pretty
+```
+
+Configuration remains authoritative for routing and containment; workspace aliases and priorities do not alter it. Projects without a configured base still provide files and repositories for scoped source inspection. The lookup itself only reads the snapshot. To refresh its seven-day observations, explicitly run `mem workspace build`.
 
 ## Configuration discovery
 

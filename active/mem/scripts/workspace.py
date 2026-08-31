@@ -22,6 +22,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from base_index import BaseIndexError, read_index
 from load_config import find_config_paths, load_config
+from workspace_lookup import label_for_path
 from workspace_llm import infer_projects as default_infer_projects
 from workspace_rollouts import collect_work as default_collect_work
 
@@ -396,7 +397,7 @@ def _candidate_documents_for_root(
         candidates.append(
             {
                 "id": _hash_id("relevant", [str(resolved)]),
-                "name": resolved.stem,
+                "name": label_for_path(str(resolved), [str(root)]),
                 "path": str(resolved),
                 "hint": "Existing workspace document",
                 "excerpt": _read_relevant_excerpt(resolved, warnings),
@@ -663,6 +664,19 @@ def _hydrate_projects(
             raise WorkspaceBuildError(
                 "validation", f"projects[{index}] selected unknown candidate id(s): {', '.join(sorted(set(missing)))}"
             )
+        grouped_sources: list[dict[str, Any]] = []
+        grouped_index: dict[tuple[str, str], dict[str, Any]] = {}
+        for value in source_ids:
+            source = sources[value]
+            key = (source["task_id"], source["path"])
+            group = grouped_index.get(key)
+            if group is None:
+                group = {"task_id": source["task_id"], "path": source["path"], "lines": []}
+                grouped_index[key] = group
+                grouped_sources.append(group)
+            if source["line"] not in group["lines"]:
+                group["lines"].append(source["line"])
+
         hydrated: dict[str, Any] = {
             "name": project["name"].strip(),
             "aliases": [alias.strip() for alias in project["aliases"]],
@@ -684,10 +698,7 @@ def _hydrate_projects(
                 }
                 for item in relevant_items
             ],
-            "sources": [
-                {"task_id": sources[value]["task_id"], "path": sources[value]["path"], "line": sources[value]["line"]}
-                for value in source_ids
-            ],
+            "sources": grouped_sources,
         }
         if isinstance(project["description"], str) and project["description"].strip():
             hydrated["description"] = project["description"].strip()
@@ -874,11 +885,35 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     subcommands = parser.add_subparsers(dest="mode", required=True)
     build = subcommands.add_parser("build")
     build.add_argument("--pretty", action="store_true", help="Pretty-print the short success JSON.")
+    lookup = subcommands.add_parser("lookup")
+    lookup.add_argument("--query", help="Filter projects by exact name, alias, text, or resource path.")
+    lookup.add_argument("--details", action="store_true", help="Include bases, repositories, relevant files, and priority reason.")
+    lookup.add_argument(
+        "--include-sources",
+        action="store_true",
+        help="Include grouped source locations; also includes detail fields.",
+    )
+    lookup.add_argument("--pretty", action="store_true", help="Pretty-print lookup JSON.")
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    if args.mode == "lookup":
+        from workspace_lookup import lookup_workspace, WorkspaceLookupError
+
+        try:
+            result = lookup_workspace(
+                query=args.query,
+                details=args.details,
+                include_sources=args.include_sources,
+            )
+        except WorkspaceLookupError as exc:
+            print(f"error: lookup: {exc}", file=sys.stderr)
+            return 1
+        json.dump(result, sys.stdout, indent=2 if args.pretty else None)
+        print()
+        return 0
     if args.mode != "build":
         raise AssertionError(f"unhandled workspace mode: {args.mode}")
     try:
