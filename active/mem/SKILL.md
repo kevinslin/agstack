@@ -120,6 +120,11 @@ Configuration requires top-level `version: 2`. After installing the updated skil
 
 A base may also define a relative `managed_root`, plus `path_style`, `skill`, `aliases`, `priority`, and `match.cwd_globs` or `match.source_globs`. Its resolved root is the workspace containment boundary; `managed_root` is the narrower knowledge read/write boundary and defaults to that root. Each schema may set a relative `root` mount such as `packages` or `projects/packages`; `root: .` mounts it inline. Omitting the `pkg` schema root preserves its historical `pkg/` mount.
 
+Project bases that adopt the Agent Project Directory workflow configure
+`project` and `specs` as sibling schemas. Do not configure or alias a retired
+`ag-dir` schema name; aliases cannot rewrite one historical child layout into
+two current sibling schemas.
+
 Routing has strict precedence: an explicit active base or alias wins; otherwise fixed-root source/cwd ownership wins over pattern-root ownership; query signals are considered only when ownership does not match. Conflicting owners at the same precedence are ambiguous and require an explicit base. Query scores and `priority` never override a higher tier.
 
 Compatibility aliases must preserve the historical root and behavior. Do not map a retired child-root base to an aggregate parent alias because aliases carry no root-relative prefix.
@@ -130,7 +135,7 @@ Use `mem config find --pretty` to locate configuration and `mem config show --pr
 
 Each base owns `<managed_root>/.mem.index.json`, a disposable, path-derived cache containing generated topics, artifact kinds, and the first two logical hierarchy levels. Routing and context lookup create a missing index automatically; managed schema materialization refreshes it after successful creation. Index scans are uncapped, while normal knowledge search remains bounded; directory advisory locks leave no durable lockfile. External edits, renames, deletes, and syncs require explicit `index build` when freshness matters.
 
-Use `mem context lookup` for project context. Repeat `--source` for multiple file or directory scopes, pass `--target` to select one base explicitly, and use `--allow-multiple` only for lookup across an otherwise ambiguous route. The command never materializes or edits knowledge or source files; its only permitted managed-root mutation is creating a missing derived index. See [the knowledge workflow](./references/knowledge-workflow.md#project-context-lookup) for its search and output contract.
+Use `mem context lookup` for project context. Repeat `--source` for multiple file or directory scopes, pass `--target` to select one base explicitly, and use `--allow-multiple` only for lookup across an otherwise ambiguous route. The command never materializes or edits knowledge or source files, and lookup alone does not authorize maintaining project records; its only permitted managed-root mutation is creating a missing derived index. See [the knowledge workflow](./references/knowledge-workflow.md#project-context-lookup) for its search and output contract.
 
 ## Managed Workflow
 

@@ -26,6 +26,10 @@ specs [version=1.0 extension=md]
     `-- specs
         |-- .archive
         `-- {{spec_number}}-{{spec_slug}}
+            |-- spec
+            |-- handoff
+            |-- progress
+            |-- learnings
             |-- artifacts
             |   `-- {{artifact}}
             |-- flows
@@ -50,10 +54,14 @@ specs [version=1.0 extension=md]
 - specs: Active numbered specs plus a root archive for completed or superseded spec units.
 - specs/.archive: Completed or superseded spec units, including terminal milestone subspecs, moved here without renaming.
 - specs/{{spec_number}}-{{spec_slug}}: One active numbered spec directory.
+- specs/{{spec_number}}-{{spec_slug}}/spec: Main spec for this numbered unit, including goals, requirements, plan, validation, and open questions.
+- specs/{{spec_number}}-{{spec_slug}}/handoff: Current resumption context, completed work, next action, blockers, and relevant files for this spec.
+- specs/{{spec_number}}-{{spec_slug}}/progress: Spec-local implementation status, completed work, active work, next steps, and blockers.
+- specs/{{spec_number}}-{{spec_slug}}/learnings: Durable takeaways discovered while executing this numbered spec.
 - specs/{{spec_number}}-{{spec_slug}}/artifacts: Durable supporting artifacts attached to this spec, including operator runbooks, handoff instructions, and other concrete deliverables.
 - specs/{{spec_number}}-{{spec_slug}}/artifacts/{{artifact}}: One durable supporting artifact for this spec.
-- specs/{{spec_number}}-{{spec_slug}}/flows: Flow docs for this spec. Use concise kebab-case flow names, following the specy flow-doc naming contract.
-- specs/{{spec_number}}-{{spec_slug}}/flows/{{flow}}: Flow doc for a specific spec behavior or execution path.
+- specs/{{spec_number}}-{{spec_slug}}/flows: Spec-local flow docs for proposed behavior, exploration, snapshots, or behavior that has not been promoted to canonical project flow.
+- specs/{{spec_number}}-{{spec_slug}}/flows/{{flow}}: Spec-local flow doc for a proposed, exploratory, snapshot, or unpromoted behavior path.
 - specs/{{spec_number}}-{{spec_slug}}/cook: Cookbooks and reusable recipes for this spec.
 - specs/{{spec_number}}-{{spec_slug}}/cook/{{cook}}: Cookbook or reusable recipe for a recurring spec task.
 - specs/{{spec_number}}-{{spec_slug}}/milestones: Optional milestone subspecs, numbered as 1.N where N increments from 1.

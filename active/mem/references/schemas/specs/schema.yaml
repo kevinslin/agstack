@@ -47,6 +47,42 @@ schema:
         description: One active numbered spec directory.
         dynamic_child: true
         children:
+          spec:
+            description: Main spec for this numbered unit, including goals, requirements, plan, validation, and open questions.
+            template: spec
+            insertion_policy:
+              use_when:
+                - The document is the primary implementation, investigation, or design spec for this numbered unit.
+                - The content defines the spec goal, requirements, plan, validation, and accepted scope.
+              avoid_when:
+                - The content is only current execution state; put it in progress or handoff.
+                - The content is a supporting runbook, report, or proof artifact.
+          handoff:
+            description: Current resumption context, completed work, next action, blockers, and relevant files for this spec.
+            template: handoff
+            insertion_policy:
+              use_when:
+                - A replacement agent needs the latest spec-local state to resume work.
+                - The note should be overwritten or refreshed as current handoff context changes.
+              avoid_when:
+                - The content is a durable project-wide decision; put it in project design or steering.
+          progress:
+            description: Spec-local implementation status, completed work, active work, next steps, and blockers.
+            template: progress
+            insertion_policy:
+              use_when:
+                - The note tracks progress for this numbered spec rather than the whole project.
+              avoid_when:
+                - The content is project-level status; put it in project progress.
+          learnings:
+            description: Durable takeaways discovered while executing this numbered spec.
+            template: learnings
+            insertion_policy:
+              use_when:
+                - The note records evidence-backed lessons discovered during this spec.
+                - The lesson should travel with the spec when the whole unit is archived.
+              avoid_when:
+                - The content is an explicit user instruction that governs the whole project.
           artifacts:
             description: Durable supporting artifacts attached to this spec, including operator runbooks, handoff instructions, and other concrete deliverables.
             children:
@@ -62,18 +98,19 @@ schema:
                     - The document is the main feature spec, a milestone plan, or a behavior flow explanation.
                     - The content is raw integration evidence; put that under proofs instead.
           flows:
-            description: Flow docs for this spec. Use concise kebab-case flow names, following the specy flow-doc naming contract.
+            description: Spec-local flow docs for proposed behavior, exploration, snapshots, or behavior that has not been promoted to canonical project flow.
             children:
               "{{flow}}":
-                description: Flow doc for a specific spec behavior or execution path.
+                description: Spec-local flow doc for a proposed, exploratory, snapshot, or unpromoted behavior path.
                 template: flow-doc
                 dynamic_child: true
                 insertion_policy:
                   use_when:
-                    - The document explains how a startup, request, job, command, UI action, feature, or behavior flow works.
+                    - The document explains proposed, exploratory, snapshot, or spec-scoped behavior.
                     - The flow name is concise kebab-case and names the feature or behavior rather than the implementation class.
                   avoid_when:
-                    - The document is the main feature spec or milestone plan.
+                    - The document is the main feature spec, milestone plan, or current canonical project behavior.
+                    - The flow has already been accepted as maintained project-wide behavior; put it in project flows.
                     - The content is a raw integration artifact or proof summary.
           cook:
             description: Cookbooks and reusable recipes for this spec.

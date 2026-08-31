@@ -42,7 +42,7 @@ Example:
 ### Agent
 
 - [agcleanup](active/agcleanup/SKILL.md): Keep Codex lean and responsive by archiving stale or Archive-section tasks, reconciling tracked tasks, safely removing finished tasks' merged local branches and worktrees, and reaping orphaned MCP helpers and DevBox connections without interrupting active work.
-- [ag-dir](active/ag-dir/SKILL.md): Define and maintain an Agent Project Directory (AGD) with clear durable docs, canonical status ownership, and isolated runtime artifacts.
+- [ag-dir](active/ag-dir/SKILL.md): Maintain project design, recent agent changes, learnings, and user steering with the project/specs schemas and spec-local handoff notes.
 - [ag-ledger](active/ag-ledger/SKILL.md): Record, sync, and query append-only agent activity ledger entries using local JSONL daily files under META_LEDGER_ROOT (default ~/.llm/ag-ledger), with structured skill metadata and explicit settled, live-frontier, and stable blocked closeout states.
 - [ag-learn](active/ag-learn/SKILL.md): Improve skills from observed agent friction in sessions, PRs, or audits; use `steering` mode to group user directives and corrective interventions into reusable behavioral principles.
 - [agent-browser](active/agent-browser/SKILL.md): Browser automation CLI for AI agents. Use when the user needs to interact with websites, including navigating pages, filling forms, clicking buttons, taking screenshots, extracting data, testing web apps, or automating any browser task. Triggers include requests to "open a website", "fill out a form", "click a button", "take a screenshot", "scrape data from a page", "test this web app", "login to a site", "automate browser actions", or any task requiring programmatic web interaction.

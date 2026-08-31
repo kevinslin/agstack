@@ -379,6 +379,45 @@ class ContextLookupIntegrationTests(unittest.TestCase):
         self.assertEqual(before_managed, self.tree_digest(self.alpha_root))
         self.assertEqual(before_source, self.tree_digest(self.alpha_source))
 
+    def test_visible_project_records_are_retrieved_without_document_writes(self) -> None:
+        self.config.write_text(
+            self.config.read_text(encoding="utf-8").replace(
+                "- name: global-core\n", "- name: project\n"
+            ),
+            encoding="utf-8",
+        )
+        records = {
+            "design.md": "# Project Design\n\nvisible-project-record-needle design\n",
+            "progress.md": "# Project Progress\n\nvisible-project-record-needle progress\n",
+            "learnings.md": "# Project Learnings\n\nvisible-project-record-needle learnings\n",
+            "steering.md": "# Project Steering\n\nvisible-project-record-needle steering\n",
+        }
+        record_paths = []
+        for name, content in records.items():
+            path = self.alpha_root / "notes" / name
+            path.write_text(content, encoding="utf-8")
+            record_paths.append(path)
+        before = {path: path.read_bytes() for path in record_paths}
+        before_digest = self.tree_digest(self.alpha_root)
+
+        result = self.run_context(
+            "visible-project-record-needle",
+            "--config",
+            str(self.config),
+            "--target",
+            "alpha",
+        )
+        data = self.payload(result)
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(data["selected_bases"][0]["schemas"][0]["name"], "project")
+        self.assertEqual(
+            {match["relative_path"] for match in data["managed_matches"]},
+            set(records),
+        )
+        self.assertEqual(before_digest, self.tree_digest(self.alpha_root))
+        self.assertEqual({path: path.read_bytes() for path in record_paths}, before)
+
     def test_fallback_skips_symlinks_binary_oversize_and_hidden_directories(self) -> None:
         hidden = self.alpha_source / ".git"
         hidden.mkdir()

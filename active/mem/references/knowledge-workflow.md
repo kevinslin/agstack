@@ -27,7 +27,26 @@ Repeat `--source` to supply multiple source files or directories. Routing remain
 6. When managed knowledge has no match, use the command's bounded fallback search under the supplied source scopes. Follow with scoped `rg` or `rg --files` only when the result remains insufficient.
 7. Widen only after the scoped search fails; avoid broad repository-root scans unless the user needs exhaustive coverage.
 
-The JSON result reports the mode, status, query, normalized sources, config paths, route, selected bases and configured schemas, derived index metadata and hierarchy, concrete managed and source matches, fallback use, and search statistics. Schema-path inference remains model judgment guided by descriptions and existing files. When the command cannot infer a full schema node deterministically, use the reported configured schemas and concrete matched paths instead of inventing one. Context lookup never authorizes materialization or document/source edits; its only permitted managed-root mutation is initializing the missing derived index. Index generation scans all eligible Markdown paths without traversal caps, while ordinary managed and source searches retain their existing limits.
+The JSON result reports the mode, status, query, normalized sources, config paths, route, selected bases and configured schemas, derived index metadata and hierarchy, concrete managed and source matches, fallback use, and search statistics. Schema-path inference remains model judgment guided by descriptions and existing files. When the command cannot infer a full schema node deterministically, use the reported configured schemas and concrete matched paths instead of inventing one. Context lookup never authorizes materialization, project-record maintenance, or document/source edits; its only permitted managed-root mutation is initializing the missing derived index. Index generation scans all eligible Markdown paths without traversal caps, while ordinary managed and source searches retain their existing limits.
+
+For project bases that use the Agent Project Directory workflow, read visible
+project-root records before spec-local records:
+
+- `design.md`: current project model, decisions, constraints, and open
+  questions.
+- `progress.md`: recent agent changes, current status, next steps, and
+  blockers, with dates and evidence.
+- `learnings.md`: evidence-backed reusable lessons.
+- `steering.md`: explicit user instructions, corrections, and scope decisions.
+  Preserve superseded steering with its source and supersession date instead of
+  deleting it silently.
+
+Numbered spec directories under `specs/{number}-{slug}/` own their local
+`spec.md`, `handoff.md`, `progress.md`, `learnings.md`, and any spec-local
+`flows`, `cook`, and `reports`. Root-level `flows`, `cook`, and `reports`
+remain current project docs. Spec-local documents can be temporary proposals,
+investigations, snapshots, or reports and archive with the spec; they are not
+promoted automatically.
 
 ## Finding knowledge
 

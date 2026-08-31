@@ -10,15 +10,14 @@ A named schema in `.mem.yaml` follows the same local-then-global discovery, so p
 
 ## Available schemas
 
-- `ag-dir`: Agent Project Directory design, memory, progress, active specs, archives, and per-spec runtime notes.
 - `tool`: Dendron hierarchy for `pkg.<name>` and `vpkg.<name>` tool documentation.
 - `code`: Specy-style code documentation under `packages/{{module}}`.
 - `code-core`: Reusable code documentation nodes for development, observability, flows, architecture, and API references.
 - `global-core`: Reusable `cook/{{cook}}`, `ref/{{reference}}`, and `t/{{topic}}` namespaces.
 - `integ-proof`: Integration proofs with claims, scenarios, scripts, and raw artifacts.
-- `project`: Project-level specs, flows, cookbooks, and reports.
+- `project`: Project-root design, progress, learnings, steering, current flows, cookbooks, and reports.
 - `pkg`: Package hierarchy rooted at `{{package}}`, composing package guides, code documentation, and specs; its mount is selected by the base configuration.
-- `specs`: Numbered active specs, archives, milestones, proofs, cookbooks, and reports.
+- `specs`: Numbered active specs, spec-local notes, archives, milestones, proofs, cookbooks, and reports.
 
 ## Layout
 
@@ -89,6 +88,13 @@ Managed mode resolves the managed output root, path style, optional custom schem
 After successful managed materialization, the CLI refreshes `<managed_root>/.mem.index.json`; unchanged document paths leave the existing index untouched. If that refresh fails, the created knowledge, original stdout, and exit status `0` are preserved, and stderr receives one structured `index_refresh_failed` warning containing a replayable `repair_argv`. Execute that argument array exactly instead of rolling back the document. Unmanaged materialization does not refresh a managed index. If an agent creates a managed schema-backed Markdown file directly instead of using this command, run `mem index build --base NAME_OR_ALIAS` afterward.
 
 The `pkg` schema mounts `global-core` before `code-core`, so `global-core` owns the overlapping `ref` and `t` namespaces. It mounts `specs` last under `<schema-root>/{{package}}/specs`, or `{{package}}/specs` when inline. Keep `code-core` project-scoped; configure `code`, `specs`, and `global-core` separately when an aggregate base also needs `packages/{{module}}` and workspace-wide artifacts.
+
+For Agent Project Directory work, configure `project` and `specs` as sibling
+schemas. `project` owns visible project-root records and current root
+`flows`/`cook`/`reports`; `specs` owns numbered spec units, spec-local
+`handoff`/`progress`/`learnings`, and spec-local `flows`/`cook`/`reports` that
+can archive with the spec. Do not add a silent `ag-dir` alias; callers of the
+retired schema name must migrate deliberately.
 
 Explicit non-memory materialization:
 

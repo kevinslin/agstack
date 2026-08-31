@@ -626,15 +626,18 @@ class SchemaScriptIntegrationTests(unittest.TestCase):
             (out / "pkg.test.api.custom-api.md").read_text(encoding="utf-8"),
         )
 
-    def test_specs_schema_materializes_cook_and_artifact_docs(self) -> None:
+    def test_specs_schema_materializes_spec_notes_and_supporting_docs(self) -> None:
         self.install_prod_schema("integ-proof")
         self.install_prod_schema("specs")
 
         show_result = self.run_schema("show", "specs")
 
         self.assertEqual(show_result.returncode, 0, msg=show_result.stderr)
-        self.assertNotIn("            |-- spec\n", show_result.stdout)
         self.assertIn("        |-- .archive\n", show_result.stdout)
+        self.assertIn("            |-- spec\n", show_result.stdout)
+        self.assertIn("            |-- handoff\n", show_result.stdout)
+        self.assertIn("            |-- progress\n", show_result.stdout)
+        self.assertIn("            |-- learnings\n", show_result.stdout)
         self.assertIn("            |-- artifacts\n", show_result.stdout)
         self.assertIn("            |-- flows\n", show_result.stdout)
         self.assertIn("            |-- cook\n", show_result.stdout)
@@ -649,8 +652,23 @@ class SchemaScriptIntegrationTests(unittest.TestCase):
             "- specs/{{spec_number}}-{{spec_slug}}/artifacts: Durable supporting artifacts",
             describe_result.stdout,
         )
+        self.assertIn(
+            "- specs/{{spec_number}}-{{spec_slug}}/spec: Main spec for this numbered unit",
+            describe_result.stdout,
+        )
+        self.assertIn(
+            "- specs/{{spec_number}}-{{spec_slug}}/handoff: Current resumption context",
+            describe_result.stdout,
+        )
+        self.assertIn(
+            "- specs/{{spec_number}}-{{spec_slug}}/flows: Spec-local flow docs",
+            describe_result.stdout,
+        )
 
         out = self.root / "out"
+        spec = out / "specs" / "1-pilot" / "spec.md"
+        spec.parent.mkdir(parents=True)
+        spec.write_text("manual spec\n", encoding="utf-8")
         result = self.run_schema(
             "materialize",
             "specs",
@@ -666,16 +684,62 @@ class SchemaScriptIntegrationTests(unittest.TestCase):
             "artifact=run-release",
             "--var",
             "cook=release-loop",
+            "--var",
+            "flow=explore-path",
+            "--var",
+            "report=launch-review",
+            "--var",
+            "proof=release",
+            "--var",
+            "scenario=smoke",
+            "--include",
+            "specs/1-pilot/spec",
+            "--include",
+            "specs/1-pilot/handoff",
+            "--include",
+            "specs/1-pilot/progress",
+            "--include",
+            "specs/1-pilot/learnings",
             "--include",
             "specs/1-pilot/artifacts/run-release",
             "--include",
             "specs/1-pilot/cook/release-loop",
+            "--include",
+            "specs/1-pilot/flows/explore-path",
+            "--include",
+            "specs/1-pilot/reports/launch-review",
+            "--include",
+            "specs/1-pilot/proofs/release/proof",
+            "--include",
+            "specs/1-pilot/proofs/release/scenario/smoke",
+            "--skip-existing",
         )
 
         self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertEqual(spec.read_text(encoding="utf-8"), "manual spec\n")
+        self.assertIn(
+            "# Spec 1 Handoff",
+            (out / "specs" / "1-pilot" / "handoff.md").read_text(encoding="utf-8"),
+        )
+        self.assertIn(
+            "# Spec 1 Progress",
+            (out / "specs" / "1-pilot" / "progress.md").read_text(encoding="utf-8"),
+        )
+        self.assertIn(
+            "# Spec 1 Learnings",
+            (out / "specs" / "1-pilot" / "learnings.md").read_text(encoding="utf-8"),
+        )
         self.assertIn(
             "# Release Loop",
             (out / "specs" / "1-pilot" / "cook" / "release-loop.md").read_text(encoding="utf-8"),
+        )
+        self.assertIn(
+            "# Explore Path Flow",
+            (out / "specs" / "1-pilot" / "flows" / "explore-path.md").read_text(encoding="utf-8"),
+        )
+        self.assertIn(
+            "Type: proposal / exploration / snapshot",
+            (out / "specs" / "1-pilot" / "flows" / "explore-path.md").read_text(encoding="utf-8"),
         )
         self.assertIn(
             "# Run Release",
@@ -683,6 +747,44 @@ class SchemaScriptIntegrationTests(unittest.TestCase):
                 encoding="utf-8"
             ),
         )
+        self.assertTrue((out / "specs" / "1-pilot" / "reports" / "launch-review.md").is_file())
+        self.assertTrue((out / "specs" / "1-pilot" / "proofs" / "release" / "proof.md").is_file())
+        self.assertTrue(
+            (out / "specs" / "1-pilot" / "proofs" / "release" / "scenario" / "smoke.md").is_file()
+        )
+
+        dotted = self.root / "dotted-out"
+        dotted_result = self.run_schema(
+            "materialize",
+            "specs",
+            "--out",
+            str(dotted),
+            "--path-style",
+            "dotted",
+            "--var",
+            "spec_number=1",
+            "--var",
+            "spec_slug=pilot",
+            "--var",
+            "flow=explore-path",
+            "--include",
+            "specs.1-pilot.spec",
+            "--include",
+            "specs.1-pilot.handoff",
+            "--include",
+            "specs.1-pilot.progress",
+            "--include",
+            "specs.1-pilot.learnings",
+            "--include",
+            "specs.1-pilot.flows.explore-path",
+        )
+
+        self.assertEqual(dotted_result.returncode, 0, msg=dotted_result.stderr)
+        self.assertTrue((dotted / "specs.1-pilot.spec.md").is_file())
+        self.assertTrue((dotted / "specs.1-pilot.handoff.md").is_file())
+        self.assertTrue((dotted / "specs.1-pilot.progress.md").is_file())
+        self.assertTrue((dotted / "specs.1-pilot.learnings.md").is_file())
+        self.assertTrue((dotted / "specs.1-pilot.flows.explore-path.md").is_file())
 
     def test_project_schema_materializes_root_level_docs(self) -> None:
         self.install_prod_schema("project")
@@ -690,6 +792,10 @@ class SchemaScriptIntegrationTests(unittest.TestCase):
         show_result = self.run_schema("show", "project")
 
         self.assertEqual(show_result.returncode, 0, msg=show_result.stderr)
+        self.assertIn("    |-- design\n", show_result.stdout)
+        self.assertIn("    |-- progress\n", show_result.stdout)
+        self.assertIn("    |-- learnings\n", show_result.stdout)
+        self.assertIn("    |-- steering\n", show_result.stdout)
         self.assertIn("    |-- specs\n", show_result.stdout)
         self.assertIn("    |-- flows\n", show_result.stdout)
         self.assertIn("    |   `-- {{flow}}\n", show_result.stdout)
@@ -700,12 +806,19 @@ class SchemaScriptIntegrationTests(unittest.TestCase):
         describe_result = self.run_schema("describe", "project")
 
         self.assertEqual(describe_result.returncode, 0, msg=describe_result.stderr)
-        self.assertIn("- specs: Project spec directory.", describe_result.stdout)
-        self.assertIn("- flows/{{flow}}: Project-level flow doc", describe_result.stdout)
+        self.assertIn("- design: Current project design", describe_result.stdout)
+        self.assertIn("- progress: Project-level status", describe_result.stdout)
+        self.assertIn("- learnings: Evidence-backed project lessons", describe_result.stdout)
+        self.assertIn("- steering: Explicit user instructions", describe_result.stdout)
+        self.assertIn("- specs: Numbered project specs are maintained", describe_result.stdout)
+        self.assertIn("- flows/{{flow}}: Canonical project-level flow doc", describe_result.stdout)
         self.assertIn("- cook/{{cook}}: Project-level cookbook", describe_result.stdout)
         self.assertIn("- reports/{{report}}: Project-level report.", describe_result.stdout)
 
         out = self.root / "out"
+        design = out / "design.md"
+        design.parent.mkdir(parents=True)
+        design.write_text("manual design\n", encoding="utf-8")
         materialize_result = self.run_schema(
             "materialize",
             "project",
@@ -720,14 +833,27 @@ class SchemaScriptIntegrationTests(unittest.TestCase):
             "--var",
             "report=security-review",
             "--include",
+            "design",
+            "--include",
+            "progress",
+            "--include",
+            "learnings",
+            "--include",
+            "steering",
+            "--include",
             "flows/devbox-initialization",
             "--include",
             "cook/release-loop",
             "--include",
             "reports/security-review",
+            "--skip-existing",
         )
 
         self.assertEqual(materialize_result.returncode, 0, msg=materialize_result.stderr)
+        self.assertEqual(design.read_text(encoding="utf-8"), "manual design\n")
+        self.assertIn("# Project Progress", (out / "progress.md").read_text(encoding="utf-8"))
+        self.assertIn("# Agent Learnings", (out / "learnings.md").read_text(encoding="utf-8"))
+        self.assertIn("# Active User Steering", (out / "steering.md").read_text(encoding="utf-8"))
         self.assertIn(
             "# Devbox Initialization Flow",
             (out / "flows" / "devbox-initialization.md").read_text(encoding="utf-8"),
@@ -740,6 +866,35 @@ class SchemaScriptIntegrationTests(unittest.TestCase):
             "# Security Review",
             (out / "reports" / "security-review.md").read_text(encoding="utf-8"),
         )
+
+        dotted = self.root / "project-dotted"
+        dotted_result = self.run_schema(
+            "materialize",
+            "project",
+            "--out",
+            str(dotted),
+            "--path-style",
+            "dotted",
+            "--var",
+            "flow=devbox-initialization",
+            "--include",
+            "design",
+            "--include",
+            "progress",
+            "--include",
+            "learnings",
+            "--include",
+            "steering",
+            "--include",
+            "flows.devbox-initialization",
+        )
+
+        self.assertEqual(dotted_result.returncode, 0, msg=dotted_result.stderr)
+        self.assertTrue((dotted / "design.md").is_file())
+        self.assertTrue((dotted / "progress.md").is_file())
+        self.assertTrue((dotted / "learnings.md").is_file())
+        self.assertTrue((dotted / "steering.md").is_file())
+        self.assertTrue((dotted / "flows.devbox-initialization.md").is_file())
 
     def test_global_core_schema_shows_and_materializes_guide_reference_and_topic(self) -> None:
         self.install_prod_schema("global-core")
@@ -910,49 +1065,6 @@ class SchemaScriptIntegrationTests(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("must remain inside the output directory", result.stderr)
-
-    def test_ag_dir_schema_materializes_project_and_run_notes(self) -> None:
-        self.install_prod_schema("ag-dir")
-
-        show_result = self.run_schema("show", "ag-dir")
-
-        self.assertEqual(show_result.returncode, 0, msg=show_result.stderr)
-        self.assertIn("    |-- design\n", show_result.stdout)
-        self.assertIn("    `-- .agents\n", show_result.stdout)
-
-        out = self.root / "out"
-        result = self.run_schema(
-            "materialize",
-            "ag-dir",
-            "--out",
-            str(out),
-            "--path-style",
-            "directory",
-            "--var",
-            "project_title=Example Project",
-            "--var",
-            "spec_num=01",
-            "--var",
-            "spec_name=bootstrap",
-            "--include",
-            "design",
-            "--include",
-            "docs/spec-01-bootstrap",
-            "--include",
-            ".agents/runs/spec-01/handoff",
-            "--include",
-            ".agents/runs/spec-01/progress",
-            "--include",
-            ".agents/runs/spec-01/learnings",
-        )
-
-        self.assertEqual(result.returncode, 0, msg=result.stderr)
-        self.assertIn("Example Project Design", (out / "design.md").read_text(encoding="utf-8"))
-        self.assertTrue((out / "docs" / "spec-01-bootstrap.md").is_file())
-        self.assertTrue((out / ".agents" / "runs" / "spec-01" / "handoff.md").is_file())
-        self.assertTrue((out / ".agents" / "runs" / "spec-01" / "progress.md").is_file())
-        self.assertTrue((out / ".agents" / "runs" / "spec-01" / "learnings.md").is_file())
-
 
 if __name__ == "__main__":
     unittest.main()

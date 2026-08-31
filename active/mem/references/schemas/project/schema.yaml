@@ -12,16 +12,64 @@ variables:
     values: ["*"]
     description: Kebab-case report slug.
 schema:
+  design:
+    description: Current project design, ownership boundaries, decisions, constraints, and open questions.
+    template: design
+    insertion_policy:
+      use_when:
+        - The note describes the current project model, scope, ownership, invariants, accepted decisions, constraints, or open questions.
+        - The content should guide future project work at the root rather than inside one numbered spec.
+      avoid_when:
+        - The content is recent execution status; put it in progress.
+        - The content is an evidence-backed lesson from agent work; put it in learnings.
+        - The content is an explicit user instruction or correction; put it in steering.
+  progress:
+    description: Project-level status, recent agent changes, current blockers, and next actions.
+    template: progress
+    insertion_policy:
+      use_when:
+        - The note records recent project changes, current status, blockers, completed work, active work, or next actions.
+        - A replacement agent needs operational state before continuing project work.
+      avoid_when:
+        - The content is a durable design decision or ownership rule; put it in design.
+        - The content is spec-local execution state; put it in the matching specs directory.
+  learnings:
+    description: Evidence-backed project lessons, reusable patterns, invalidated assumptions, and follow-up checks.
+    template: learnings
+    insertion_policy:
+      use_when:
+        - The note records a lesson backed by source, test output, user correction, or observed runtime behavior.
+        - The lesson should help future agents avoid repeating project-specific mistakes.
+      avoid_when:
+        - The content is a direct user instruction; put it in steering.
+        - The content is unsourced interpretation that has not been checked against evidence.
+  steering:
+    description: Explicit user instructions, corrections, preferences, and source pointers that govern project work.
+    template: steering
+    insertion_policy:
+      use_when:
+        - The note records user-authored instructions, corrections, accepted constraints, or durable preferences.
+        - The source and date of the steering matter for future project decisions.
+      avoid_when:
+        - The content is an inferred lesson from agent work; put it in learnings.
+        - The content is a design recommendation not explicitly accepted by the user.
   specs:
-    description: Project spec directory.
+    description: Numbered project specs are maintained by the separate specs schema; keep this marker for project-root navigation.
     dynamic_child: true
   flows:
-    description: Project-level flow docs.
+    description: Canonical project-level flow docs for current behavior.
     children:
       "{{flow}}":
-        description: Project-level flow doc for a behavior or execution path.
+        description: Canonical project-level flow doc for a current behavior or execution path.
         template: flow-doc
         dynamic_child: true
+        insertion_policy:
+          use_when:
+            - The flow describes current project-wide behavior or an execution path that is accepted as canonical.
+            - The document should remain useful outside one numbered spec.
+          avoid_when:
+            - The flow is proposed, exploratory, snapshot evidence, or scoped to one numbered spec; put it under specs/{{spec_number}}-{{spec_slug}}/flows.
+            - Promotion from a spec flow to a project flow has not been explicitly decided.
   cook:
     description: Project-level cookbooks and reusable recipes.
     children:
@@ -29,6 +77,11 @@ schema:
         description: Project-level cookbook or reusable recipe.
         template: cook
         dynamic_child: true
+        insertion_policy:
+          use_when:
+            - The recipe is reusable across project work and not tied to one numbered spec.
+          avoid_when:
+            - The recipe is temporary or spec-local; put it under the matching specs directory.
   reports:
     description: Project-level reports.
     children:
@@ -36,3 +89,8 @@ schema:
         description: Project-level report.
         template: report
         dynamic_child: true
+        insertion_policy:
+          use_when:
+            - The report summarizes project-level findings, audits, or status that should remain visible at the root.
+          avoid_when:
+            - The report is specific to one numbered spec; put it under specs/{{spec_number}}-{{spec_slug}}/reports.
