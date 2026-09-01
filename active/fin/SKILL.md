@@ -1,6 +1,6 @@
 ---
 name: fin
-description: Finalize completed PR or local checkout work. Use when explicitly invoked
+description: Finalize completed PR or local checkout work, or close a local review branch with nocheck. Use when explicitly invoked.
 dependencies:
 - ag-learn
 - dev.llm-session
@@ -20,9 +20,11 @@ Run `fin [context] [target]`.
 
 - `gh`: finalize from a GitHub PR context. Use this when the task should land by merging the current remote PR or when the matching PR already merged and only cleanup/final verification remains. The original `fin` workflow maps to this context.
 - `local`: finalize from a local checkout. Use this when the task should land directly from local git state without depending on GitHub PR state.
+- `nocheck`: close the task's local branch and linked worktree without checking or changing any remote state. Use explicitly after reviewing someone else's code when the local review checkout is no longer needed; no landing or merge proof is required.
+- Route explicit `nocheck` directly to the `nocheck` workflow below, before detached-HEAD handling, PR-target inference, or context auto-detection. Return after that workflow; every subsequent landing workflow, guardrail, and done checklist applies only to `gh` / `local`.
 - `[target]`: optional for `gh` only. Accept a PR number, PR URL, or branch name. Examples: `fin gh 85117`, `fin gh https://github.com/owner/repo/pull/85117`.
 - If the current checkout is detached `HEAD`, treat that as a preflight issue, not a valid finalization state. Create a short-lived local branch from the current commit before auto-detecting context, checking mergeability, or attempting worktree cleanup.
-- If the argument is `gh` or `local`, respect it throughout the flow. Do not silently switch later just because repo state would make the other path easier.
+- If the argument is `gh`, `local`, or `nocheck`, respect it throughout the flow. Do not silently switch later just because repo state would make the other path easier. Never auto-detect `nocheck`.
 - If `gh` has an explicit `[target]`, lock that PR target before current-branch detection. Use the target PR as the source of truth for state, mergeability, comments, checks, spec matching, merge, and automation cleanup.
 - If the user omits `[target]` but the immediately preceding active heartbeat or delayed-merge instruction names exactly one PR and the user asks to merge, finalize, ignore a waiting period, or ignore a proof gate, treat that PR as an explicit `gh` target after one live PR-state check. Report the target source as `heartbeat automation`.
 - If the user omits `[target]` but the immediately preceding task in the same thread completed or repaired exactly one PR, such as after `trigger:fix-pr`, `trigger:fix-pr-conflict`, or a PR-specific babysit/CI run, treat that PR as an explicit `gh` target after one live PR-state check. Report the target source as `active task context`. If the current checkout points at another branch or PR, mention the mismatch and ignore the unrelated checkout for PR state, spec archival, merge, automation, and cleanup decisions unless it blocks local cleanup.
@@ -31,11 +33,76 @@ Run `fin [context] [target]`.
   - Choose `gh` when the current branch has an open or already-merged PR that corresponds to the branch being finalized.
   - Choose `local` when the current branch has no matching PR and the work should land directly from local git state.
 - Treat heartbeat-derived or active-task-derived PR targets as explicit `gh` targets, not as current-branch auto-detection.
-- If the argument is present but not one of `gh` / `local`, stop and ask the user which context to use.
+- If the argument is present but not one of `gh` / `local` / `nocheck`, stop and ask the user which context to use.
 - Report whether the finalization context was explicitly provided or auto-detected.
 - Before reporting any PR status or blocker, print one target identity line: `Target: PR #<number>, branch <headRefName>, source=<current checkout|explicit user PR|heartbeat automation|active task context>`. When multiple PRs have been mentioned in the session, prefix every PR-specific state claim with the PR number.
 
-## Shared Workflow
+## `nocheck` Context Workflow
+
+An explicit `fin nocheck` authorizes deletion of the exact disposable local
+branch even when its commits are not merged. It does not authorize discarding
+uncommitted work or deleting a remote branch. A request to add or explain this
+context does not itself invoke cleanup.
+
+1. Lock the local target from the current task's recorded review checkout and
+   branch, or the current checkout when no separate task checkout exists. Read
+   local Git state to confirm the repository, absolute worktree path, branch,
+   and full HEAD OID. Report `Target: local branch <branch>, worktree <path>,
+   context=nocheck (explicit)`. If the task's checkout differs from the shell's
+   checkout, use the task's target and preserve the unrelated checkout. Stop on
+   ambiguity, detached HEAD, or identity drift; do not create a temporary branch.
+   For a branch checked out nowhere, inspect its local ref from a retained
+   checkout and skip worktree-only checks. A missing path still registered as a
+   worktree is a blocker; do not prune it to make cleanup pass.
+2. Use local state only. Do not query GitHub, PRs, CI, reviews, downstream PRs,
+   mergeability, or the remote default branch. Do not fetch, pull, push, merge,
+   rebase, delete remote refs, or run `check_default_branch.py` or
+   `$dev.worktrees cleanup-landed`. Set `GIT_NO_LAZY_FETCH=1` for Git commands so
+   a partial clone cannot fetch missing objects implicitly; missing local data
+   is a blocker. Do not run network-capable hooks or fall back to a landing flow.
+3. Read repository preservation guidance and any matching `~/.fin.yaml` entry
+   using the normalized primary checkout root. Apply local file-preservation
+   instructions before removal; skip landing, deployment, and remote hooks.
+   Stop when malformed or ambiguous config could hide preservation requirements.
+   Inspect tracked, untracked, and ignored files with
+   `git -C <target> status --short --untracked-files=all --ignored`. Preserve
+   review notes, specs, credentials, and other wanted artifacts outside the
+   target without overwriting existing files or exposing secrets, and verify
+   the copies. A dirty tracked or untracked state blocks
+   removal until separately resolved; do not stash, reset, clean, or force-remove
+   it. Ignored files may be removed with the worktree only when known to be
+   disposable generated output; preserve unknown files instead.
+4. Protect the primary checkout directory, locked worktrees, unrelated branches,
+   and local trunk branches (`main`, `master`, and any other default/trunk branch
+   identified by local repository guidance or cached `refs/remotes/origin/HEAD`).
+   Cached refs are local evidence only; do not refresh them or require an origin
+   remote to exist. If the target might be a trunk branch, stop for clarification.
+   Record a retained checkout outside the target before removing a linked
+   worktree. If the target is in the primary checkout, keep that directory and
+   switch to an existing, locally identified safe branch without force or remote
+   guessing (`git switch --no-guess <retained-branch>`). Stop if a safe switch
+   would require fetching or changing unrelated work.
+5. Immediately recheck the target branch's full OID and, for a linked worktree,
+   its branch, HEAD OID, registration, lock state, and file-preservation
+   conditions. From the retained checkout,
+   remove only the clean linked target using the ordinary removal path in
+   `$dev.worktrees`: `git -C <retained> worktree remove <absolute-target-path>`.
+   Never use `--force`, recursive path deletion, or global prune. Skip removal
+   for a primary checkout or a branch already checked out nowhere.
+6. Recheck the local branch OID and confirm no worktree has it checked out.
+   Delete only that branch with `git -C <retained> branch -D -- <branch>`.
+   This explicit `nocheck` authorization replaces the merged-branch requirement
+   for this step only; do not fabricate a landed commit or weaken the `gh` /
+   `local` cleanup gates. If the branch moved, stop and preserve it.
+7. Verify the branch is absent and, for linked-worktree cleanup, both the target
+   path and its worktree registration are absent. If only removal succeeded,
+   report partial local cleanup and preserve the recorded branch/OID for a retry.
+   Report the local cleanup result, retained checkout, and preserved artifact
+   paths, followed by `Remote state was not checked or changed.` Do not claim a
+   PR landed or a remote branch was deleted. Skip spec archival, issue completion,
+   automation changes, retrospective publishing, and the landing checklist below.
+
+## Shared Workflow (`gh` / `local` only)
 
 1. Confirm finalization preconditions
 - Use this flow only when the requested scope is complete.
@@ -158,7 +225,7 @@ Run `fin [context] [target]`.
 
 ### Deterministic Local Cleanup
 
-- Use `$dev.worktrees cleanup-landed` as the only executor for destructive local worktree and local-branch cleanup during `fin`. Do not reproduce its reset, clean, removal, orphan recovery, or branch deletion steps manually.
+- Use `$dev.worktrees cleanup-landed` as the only executor for destructive local worktree and local-branch cleanup during `fin gh` / `fin local`. The explicit `nocheck` workflow owns its separate ordinary removal path. Do not reproduce the landed executor's reset, clean, removal, orphan recovery, or branch deletion steps manually.
 - Before invoking it:
   1. confirm the PR or local change actually landed;
   2. run every matching `~/.fin.yaml` final hook;
@@ -297,6 +364,9 @@ Run `fin [context] [target]`.
 
 ## Guardrails
 
+These landing guardrails apply to `gh` / `local`; `nocheck` uses its local-only
+workflow and returns before this section.
+
 - Do not move a spec into `.archive` unless the task is actually complete.
 - Do not archive unrelated active specs.
 - Never archive, merge, clean up, or claim full finalization without a current passing `./scripts/check_default_branch.py` record. Never merge or finalize a PR whose base is not the repository's origin main branch.
@@ -340,6 +410,9 @@ Run `fin [context] [target]`.
 - Do not suppress `ag-learn` output just because the task was straightforward; run it and report either the proposals or the explicit no-learning result.
 
 ## Done Checklist
+
+For `nocheck`, use step 7 of its workflow instead. This checklist covers landing
+through `gh` / `local`.
 
 - `fin` was run with either an explicit `gh` / `local` argument, a heartbeat-derived or active-task-derived PR target, or no argument and a context auto-detected from current-branch PR state.
 - The repository's origin main branch was resolved authoritatively before mutation, and `./scripts/check_default_branch.py` returned exit `0` with `status: "pass"`, `matches: true`, and every `allow` field set to `true` for the exact PR base or local merge target. The JSON record was retained; a missing, malformed, or failed gate stopped finalization.
