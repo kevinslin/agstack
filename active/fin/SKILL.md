@@ -13,6 +13,8 @@ dependencies:
 # fin
 
 Use this skill at the end of a task before the final user-facing report.
+Linear follow-up is best effort: attempt it when available, but never block
+finalization or mark it partial solely because Linear work could not be completed.
 
 ## Context Selection
 
@@ -184,17 +186,18 @@ context does not itself invoke cleanup.
 - When the fallback finds a persisted ordinary babysit/watch automation, retry one service lookup/delete operation using its exact id. For a `fin: auto-merge ...` heartbeat, retry lookup or update only; never delete it through this generic cleanup path. If the allowed operation still fails, report automation cleanup as blocked with the id and error.
 - When neither the bounded service lookup nor the exact registry search finds a match, report that no matching persisted automation was present and name the evidence used. Distinguish this from a service-only lookup failure.
 
-### Linear Issue Lookup
+### Linear Issue Lookup (Best Effort)
 
 - Read `~/.agents/profile` directly. Treat the profile as work only when it contains a trimmed, non-comment line exactly equal to `name=work`. For a non-work profile, skip Linear unless the user or current task context explicitly identifies a Linear issue to finish.
+- If the profile or active thread id is unavailable, skip Linear with a brief reason and continue finalization.
 - For a work profile, resolve the active Codex thread id from the current app/session context, using `dev.llm-session` when needed. Use the installed `linear:linear` connector skill and its connected Linear tools; do not use `linear-cli` or a browser fallback.
 - Let `thread_link` be the exact deep link `codex://threads/<thread-id>`. Search with `list_issues(query=thread_link, assignee="me", includeArchived=true)` first. If that produces no exact match, run one unscoped `list_issues(query=thread_link, includeArchived=true)` search and follow its pagination until exhausted. If the connector cannot exhaust the candidate set, treat lookup as ambiguous instead of guessing.
 - Treat search results only as candidates because Linear search is fuzzy. Keep bulk connector payloads out of the transcript: parse them in the tool-composition layer and emit only candidate ids needed for verification. For every candidate whose complete description is unavailable or marked truncated, call `get_issue` before comparison. Retain only issues whose complete description contains `thread_link` exactly, and expose only each exact match's id, team, status, status type, and URL.
 - Accept only an exact `thread_link` match or an issue the user explicitly identified as the ticket for this task. Do not infer linkage from a search hit, similar title, branch name, PR number, assignee, or project.
 - Treat statuses with type `backlog`, `unstarted`, or `started` as pending. Treat `completed` and `canceled` issues as terminal and leave them unchanged.
 - When exactly one linked pending issue exists, lock its issue id and team for the rest of the run. When no linked pending issue exists, record that Linear completion is not applicable and continue.
-- When more than one linked pending issue exists, do not update any of them. Record the matching issue ids as a Linear ambiguity blocker and continue landing without guessing.
-- If the connector is unavailable, unauthenticated, or the lookup result is ambiguous, do not retry through another client. Record the exact Linear blocker and continue the landing flow; the final report must describe the result as partial finalization if the task lands but its linked pending issue cannot be verified complete.
+- When more than one linked pending issue exists, do not update any of them. Record the matching issue ids as a non-blocking ambiguity note and continue finalization without guessing.
+- If the connector is unavailable, unauthenticated, errors, times out, or returns an ambiguous result, skip the remaining Linear work and report the reason briefly. Do not wait for reauthentication, require the user to repair Linear, or retry through another client. Continue landing, cleanup, retrospective, and completion reporting.
 
 2. Resolve the active spec
 - Build an ordered list of candidate docs roots:
@@ -315,16 +318,16 @@ context does not itself invoke cleanup.
 - The script deletes only the proven local branch. If a corresponding remote branch still exists and repository policy permits cleanup, delete it separately only after local base verification and successful local cleanup.
 - If neither a matching linked worktree nor local branch exists, require a cleanup dry run to report `noop` or state that no local cleanup was applicable.
 
-## Linear Completion
+## Linear Completion (Best Effort)
 
-7. Complete the linked Linear issue
+7. Attempt to complete the linked Linear issue
 - Run this step only after the selected landing flow and its required local `main` refresh or verification have completed. Do not complete the issue while a PR is merely auto-merge pending or while finalization is in a partial local-cleanup state.
 - If the user explicitly instructed that the linked issue remain open, preserve it and report that override.
 - For the single locked pending issue, list the issue team's current statuses through the Linear connector and resolve a status whose type is `completed` live. Prefer the case-insensitive name `Done` when multiple completed statuses exist; if no unique destination can be resolved, leave the issue unchanged and report the ambiguity.
 - Update the locked issue to the resolved completed status, then read it back and verify the issue id, team, and status type `completed` before claiming success.
 - If the update result is ambiguous, read the locked issue once before retrying. Never create an issue during `fin`, never complete an issue that was not locked during lookup, and never bulk-complete multiple matches.
 - If no linked pending issue was found, state that no Linear update was needed. If a linked issue was already completed or canceled, state that it was terminal and unchanged.
-- If lookup, status resolution, update, or read-back verification fails, preserve the successful landing result but report `partial finalization: Linear issue not verified complete` with the issue id when known and the exact blocker.
+- If lookup, status resolution, update, or read-back verification fails or times out, leave the issue unchanged or unverified and continue finalization. Report `Linear follow-up skipped` or `Linear update unverified`, with the issue id when known and the reason. A Linear failure alone does not make finalization blocked or partial; never claim an unverified issue update succeeded.
 
 ## Retrospective And Reporting
 
@@ -357,7 +360,7 @@ context does not itself invoke cleanup.
 - If the remote PR landed but local `main` refresh was blocked by unrelated dirty changes, call that out as `partial local cleanup`: include the merge commit, the dirty-main error, which cleanup steps did complete, and which local branch or verification step was intentionally deferred.
 - State whether `~/.fin.yaml` was checked, whether it parsed successfully, whether a workspace entry matched the non-worktree checkout root, and whether the matched repo-specific final hooks completed or were skipped.
 - If `local` pushed `main`, state whether the push succeeded. If it intentionally remained local-only, say that explicitly.
-- State the Linear result: linked issue id and completed status, no linked pending issue, already-terminal issue left unchanged, explicit keep-open override, or the exact partial-finalization blocker.
+- State the best-effort Linear result: linked issue id and verified completed status, no linked pending issue, already-terminal issue left unchanged, explicit keep-open override, or a brief skipped/unverified follow-up note. Keep the finalization outcome based on landing, required verification, and cleanup.
 - Summarize the proposed learnings as a numbered list so each item can be referenced later.
 - Mention where `ag-learn` saved the learning note.
 - Keep the final report internally consistent with the chosen context: completed task, completed spec archival, requested landing path, reconciled or verified `main`, completed retrospective.
@@ -402,7 +405,7 @@ workflow and returns before this section.
 - Do not report final success while local `main` or the safely refreshed local base ref still points behind the landed result unless the user explicitly says not to refresh or verify it.
 - Do not reclassify a green PR or passing CI as blocked because a Slack/chat/desktop notification could not be sent. Report notification failures as auxiliary notification blockers with the missing prerequisite.
 - Do not complete a Linear issue before landing and local-main verification succeed, from title/branch/PR similarity alone, or when more than one pending issue matches the active thread.
-- Do not claim full finalization when a linked pending Linear issue was found but could not be verified in a completed state. Preserve the landing result and report partial finalization instead.
+- Never block finalization or report it as partial solely because Linear lookup or completion failed, was unavailable, or remained ambiguous or unverified. Report the Linear limitation separately and claim issue completion only after verified read-back.
 - Do not invent a parallel spec layout; use the `specy` convention already present in the workspace.
 - Do not archive an active parent folder spec just because a milestone sidecar
   inside it landed; leave the parent active while sibling milestones remain.
@@ -442,7 +445,7 @@ through `gh` / `local`.
 - Requested external notifications, if any, were attempted or explicitly skipped with a separate notification blocker; notification failures were not described as CI failures.
 - For squash/rebase-merged PRs, local branch deletion used verified PR merge state plus local `main` containing the PR merge commit, not branch ancestry alone.
 - The local `main` checkout was checked for concurrent tracked or untracked changes immediately before refresh, then refreshed or verified to include the landed work before the task was reported complete; otherwise the required partial local cleanup state was reported.
-- The active thread's linked Linear issue was checked when applicable; exactly one pending match was moved to a live-resolved completed status and read back successfully, or the no-op/terminal/override/blocker result was reported explicitly.
+- Best-effort Linear follow-up was attempted when available; a verified update, no-op, terminal state, keep-open override, or skipped/unverified result was reported briefly. Unfinished Linear work did not block an otherwise completed finalization.
 - `$ag-learn` has been run.
 - The final report states whether the context was explicit, implied by heartbeat or active task context, or auto-detected.
 - The final report includes the archived spec path change when applicable.

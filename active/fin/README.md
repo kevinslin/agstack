@@ -10,3 +10,10 @@
 
 With no context, `fin` selects `gh` or `local`. `nocheck` requires an explicit
 invocation and does not merge code or require a merged PR.
+
+For `gh` and `local`, linked Linear issue follow-up is best effort. Missing
+access, authentication failures, timeouts, ambiguous matches, and failed updates
+are reported as skipped or unverified follow-up; they do not block finalization
+or make an otherwise completed task partial. Issue updates still require an
+exact task match, successful landing, and verified read-back before claiming
+completion.
