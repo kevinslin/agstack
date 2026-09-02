@@ -178,6 +178,7 @@ For schema fields, composition, authoring, and CLI behavior, read `./references/
 - Preserve `## Manual Notes` byte-for-byte unless the user explicitly asks to edit it.
 - Delete knowledge only when the user explicitly requests deletion.
 - Use schema descriptions as the primary placement signal and insertion policy only as a tiebreaker.
+- In the `project` schema, save initial findings in `raw/`. Create or update a `reports/` document from those findings only when the user explicitly promotes them; completing an investigation is not promotion. See [the project schema](./references/schemas/project/README.md).
 - Keep project context lookup read-only for knowledge documents and source files; permit only creation of the selected base's missing derived index. Search the relevant project, service, or package source with scoped `rg` only when managed knowledge is absent or insufficient.
 - When audit tracing is enabled, do not bypass a missing session ID, unsafe trace destination, lock failure, or trace write failure.
 - Create only the requested knowledge file, its parent directories, and the selected base's derived index when index initialization or refresh requires it.

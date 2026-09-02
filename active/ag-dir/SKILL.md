@@ -14,7 +14,7 @@ Directory records for a project or one of its numbered specs.
 
 `ag-dir` is a workflow over `$mem` schemas, not its own layout schema. Use the
 `project` schema for visible project-root records and project-root
-`flows`/`cook`/`reports`. Use the `specs` schema for numbered spec directories,
+`flows`/`cook`/`raw`/`reports`. Use the `specs` schema for numbered spec directories,
 including spec-local `spec.md`, `handoff.md`, `progress.md`, `learnings.md`,
 `flows`, `cook`, `milestones`, `proofs`, and `reports`.
 
@@ -51,6 +51,9 @@ project instructions authorize updates:
   the project. Do not record speculation or direct user steering here.
 - `steering.md`: explicit user instructions, corrections, scope decisions, and
   durable preferences, with source/date context.
+- `raw/{slug}.md`: initial project findings, evidence, and unresolved questions.
+  Keep findings here until the user explicitly promotes them to `reports/`;
+  finishing an investigation or validating evidence does not imply promotion.
 
 Preserve superseded steering with its source and supersession date instead of
 deleting it silently. Mark the current instruction clearly when older steering
@@ -66,12 +69,14 @@ current records.
 Numbered specs live under `specs/{number}-{slug}/`. Keep root-level and
 spec-local flows, cookbooks, and reports:
 
-- Project-root `flows`/`cook`/`reports` maintain current project-wide docs.
+- Project-root `flows`/`cook` maintain current project-wide docs; `reports`
+  contains findings explicitly promoted by the user, with links to raw sources.
 - Spec-local `flows`/`cook`/`reports` can hold temporary proposals,
   investigations, snapshots, and spec-scoped reports.
-- A spec-local doc is not promoted automatically. Promote or copy content to a
-  project-root doc only when the user or project instructions explicitly adopt
-  it as current project guidance.
+- A spec-local doc is not promoted automatically. Promote or copy flows and
+  cookbooks to project-root docs only when the user or project instructions
+  explicitly adopt them as current project guidance. Reports require explicit
+  user promotion.
 
 Keep active spec numbering stable. Archive a completed or superseded spec by
 moving the complete numbered directory unchanged under `specs/.archive/`.

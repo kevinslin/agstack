@@ -29,10 +29,14 @@ Spec-local records:
 - `specs/{number}-{slug}/learnings.md`: reusable lessons discovered while
   executing that spec.
 
-Project-root `flows`, `cook`, and `reports` contain current project-wide docs.
+Project-root `raw/{slug}.md` holds initial findings, evidence, and open questions.
+Findings remain there until the user explicitly promotes them to `reports/`.
+Reports link back to their raw sources. Completed research does not imply
+promotion. Project-root `flows` and `cook` contain current project-wide docs.
 Spec-local `flows`, `cook`, and `reports` can be temporary proposed docs,
 investigations, snapshots, and reports that archive with the spec. Spec-local
-content is promoted only by an explicit user or project decision.
+flows and cookbooks are promoted only by an explicit user or project decision;
+reports require explicit user promotion.
 
 ## Commands
 

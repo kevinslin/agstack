@@ -15,7 +15,7 @@ A named schema in `.mem.yaml` follows the same local-then-global discovery, so p
 - `code-core`: Reusable code documentation nodes for development, observability, flows, architecture, and API references.
 - `global-core`: Reusable `cook/{{cook}}`, `ref/{{reference}}`, and `t/{{topic}}` namespaces.
 - `integ-proof`: Integration proofs with claims, scenarios, scripts, and raw artifacts.
-- `project`: Project-root design, progress, learnings, steering, current flows, cookbooks, and reports.
+- `project`: Project-root design, progress, learnings, steering, current flows, cookbooks, raw findings, and explicitly promoted reports.
 - `pkg`: Package hierarchy rooted at `{{package}}`, composing package guides, code documentation, and specs; its mount is selected by the base configuration.
 - `specs`: Numbered active specs, spec-local notes, archives, milestones, proofs, cookbooks, and reports.
 
@@ -91,10 +91,16 @@ The `pkg` schema mounts `global-core` before `code-core`, so `global-core` owns 
 
 For Agent Project Directory work, configure `project` and `specs` as sibling
 schemas. `project` owns visible project-root records and current root
-`flows`/`cook`/`reports`; `specs` owns numbered spec units, spec-local
+`flows`/`cook`/`raw`/`reports`; `specs` owns numbered spec units, spec-local
 `handoff`/`progress`/`learnings`, and spec-local `flows`/`cook`/`reports` that
 can archive with the spec. Do not add a silent `ag-dir` alias; callers of the
 retired schema name must migrate deliberately.
+
+For project findings, start in `raw/{{raw}}`. Populate `reports/{{report}}`
+only when the user explicitly promotes the findings, and link the raw source
+in the report. Finishing research, validating evidence, or asking to save
+findings does not imply promotion. This is an agent placement rule; the schema
+engine materializes explicitly selected nodes and does not infer approval.
 
 Explicit non-memory materialization:
 

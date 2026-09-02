@@ -10,7 +10,10 @@ variables:
     description: Kebab-case cookbook slug.
   report:
     values: ["*"]
-    description: Kebab-case report slug.
+    description: Kebab-case report slug for findings the user explicitly promotes into a project report.
+  raw:
+    values: ["*"]
+    description: Kebab-case raw finding slug for initial project evidence.
 schema:
   design:
     description: Current project design, ownership boundaries, decisions, constraints, and open questions.
@@ -56,6 +59,20 @@ schema:
   specs:
     description: Numbered project specs are maintained by the separate specs schema; keep this marker for project-root navigation.
     dynamic_child: true
+  raw:
+    description: Initial project findings, source snapshots, uncertainties, and analysis held before the user explicitly promotes these findings into a project report.
+    children:
+      "{{raw}}":
+        description: Raw project finding with concise provenance, evidence, and uncertainty notes, used by default for findings and audits until the user explicitly promotes these findings into a project report.
+        template: raw
+        dynamic_child: true
+        insertion_policy:
+          use_when:
+            - The note captures initial findings, rough analysis, source snapshots, unresolved evidence, or uncertainty that should remain reviewable without becoming a project report.
+            - The user asks to save findings, audit results, or source-backed analysis without explicitly promoting those findings into a project report.
+          avoid_when:
+            - The user explicitly promotes these findings into a project report; put that curated result under reports/{{report}} and link back to the raw source.
+            - The content is current project status, blockers, or next actions; put it in progress.
   flows:
     description: Canonical project-level flow docs for current behavior.
     children:
@@ -83,14 +100,16 @@ schema:
           avoid_when:
             - The recipe is temporary or spec-local; put it under the matching specs directory.
   reports:
-    description: Project-level reports.
+    description: Project reports created only when the user explicitly promotes raw findings into a project report.
     children:
       "{{report}}":
-        description: Project-level report.
+        description: Project report for findings the user explicitly promoted; include source raw records and do not create this from initial findings or audits by default.
         template: report
         dynamic_child: true
         insertion_policy:
           use_when:
-            - The report summarizes project-level findings, audits, or status that should remain visible at the root.
+            - The user explicitly promotes raw findings, audit results, or source-backed analysis into a project report.
+            - The report curates source raw records into a durable project-root summary.
           avoid_when:
+            - The work is still initial research, source capture, rough analysis, or uncertain findings; put it under raw/{{raw}}.
             - The report is specific to one numbered spec; put it under specs/{{spec_number}}-{{spec_slug}}/reports.

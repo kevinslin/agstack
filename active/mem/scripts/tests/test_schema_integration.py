@@ -797,6 +797,8 @@ class SchemaScriptIntegrationTests(unittest.TestCase):
         self.assertIn("    |-- learnings\n", show_result.stdout)
         self.assertIn("    |-- steering\n", show_result.stdout)
         self.assertIn("    |-- specs\n", show_result.stdout)
+        self.assertIn("    |-- raw\n", show_result.stdout)
+        self.assertIn("    |   `-- {{raw}}\n", show_result.stdout)
         self.assertIn("    |-- flows\n", show_result.stdout)
         self.assertIn("    |   `-- {{flow}}\n", show_result.stdout)
         self.assertIn("    |-- cook\n", show_result.stdout)
@@ -811,9 +813,15 @@ class SchemaScriptIntegrationTests(unittest.TestCase):
         self.assertIn("- learnings: Evidence-backed project lessons", describe_result.stdout)
         self.assertIn("- steering: Explicit user instructions", describe_result.stdout)
         self.assertIn("- specs: Numbered project specs are maintained", describe_result.stdout)
+        self.assertIn("- raw: Initial project findings", describe_result.stdout)
+        self.assertIn(
+            "- raw/{{raw}}: Raw project finding with concise provenance",
+            describe_result.stdout,
+        )
         self.assertIn("- flows/{{flow}}: Canonical project-level flow doc", describe_result.stdout)
         self.assertIn("- cook/{{cook}}: Project-level cookbook", describe_result.stdout)
-        self.assertIn("- reports/{{report}}: Project-level report.", describe_result.stdout)
+        self.assertIn("- reports: Project reports created only when the user explicitly promotes", describe_result.stdout)
+        self.assertIn("- reports/{{report}}: Project report for findings the user explicitly promoted", describe_result.stdout)
 
         out = self.root / "out"
         design = out / "design.md"
@@ -832,6 +840,8 @@ class SchemaScriptIntegrationTests(unittest.TestCase):
             "cook=release-loop",
             "--var",
             "report=security-review",
+            "--var",
+            "raw=initial-security-findings",
             "--include",
             "design",
             "--include",
@@ -844,6 +854,8 @@ class SchemaScriptIntegrationTests(unittest.TestCase):
             "flows/devbox-initialization",
             "--include",
             "cook/release-loop",
+            "--include",
+            "raw/initial-security-findings",
             "--include",
             "reports/security-review",
             "--skip-existing",
@@ -862,8 +874,16 @@ class SchemaScriptIntegrationTests(unittest.TestCase):
             "# Release Loop",
             (out / "cook" / "release-loop.md").read_text(encoding="utf-8"),
         )
+        raw_file = out / "raw" / "initial-security-findings.md"
+        self.assertIn("# Initial Security Findings", raw_file.read_text(encoding="utf-8"))
+        self.assertIn("## Provenance", raw_file.read_text(encoding="utf-8"))
+        self.assertIn("## Uncertainty", raw_file.read_text(encoding="utf-8"))
         self.assertIn(
             "# Security Review",
+            (out / "reports" / "security-review.md").read_text(encoding="utf-8"),
+        )
+        self.assertIn(
+            "## Source Raw Records",
             (out / "reports" / "security-review.md").read_text(encoding="utf-8"),
         )
 
@@ -877,6 +897,8 @@ class SchemaScriptIntegrationTests(unittest.TestCase):
             "dotted",
             "--var",
             "flow=devbox-initialization",
+            "--var",
+            "raw=initial-security-findings",
             "--include",
             "design",
             "--include",
@@ -886,6 +908,8 @@ class SchemaScriptIntegrationTests(unittest.TestCase):
             "--include",
             "steering",
             "--include",
+            "raw.initial-security-findings",
+            "--include",
             "flows.devbox-initialization",
         )
 
@@ -894,7 +918,50 @@ class SchemaScriptIntegrationTests(unittest.TestCase):
         self.assertTrue((dotted / "progress.md").is_file())
         self.assertTrue((dotted / "learnings.md").is_file())
         self.assertTrue((dotted / "steering.md").is_file())
+        self.assertTrue((dotted / "raw.initial-security-findings.md").is_file())
         self.assertTrue((dotted / "flows.devbox-initialization.md").is_file())
+
+    def test_project_schema_materializes_raw_without_report_sibling_and_skips_existing(self) -> None:
+        self.install_prod_schema("project")
+
+        out = self.root / "raw-only"
+        result = self.run_schema(
+            "materialize",
+            "project",
+            "--out",
+            str(out),
+            "--path-style",
+            "directory",
+            "--var",
+            "raw=initial-findings",
+            "--include",
+            "raw/initial-findings",
+        )
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        raw_file = out / "raw" / "initial-findings.md"
+        self.assertTrue(raw_file.is_file())
+        self.assertFalse((out / "reports").exists())
+        self.assertEqual(sorted(path.relative_to(out) for path in out.rglob("*.md")), [Path("raw/initial-findings.md")])
+
+        raw_file.write_text("manual raw findings\n", encoding="utf-8")
+        skip_result = self.run_schema(
+            "materialize",
+            "project",
+            "--out",
+            str(out),
+            "--path-style",
+            "directory",
+            "--var",
+            "raw=initial-findings",
+            "--include",
+            "raw/initial-findings",
+            "--skip-existing",
+        )
+
+        self.assertEqual(skip_result.returncode, 0, msg=skip_result.stderr)
+        self.assertEqual(raw_file.read_text(encoding="utf-8"), "manual raw findings\n")
+        self.assertFalse((out / "reports").exists())
 
     def test_global_core_schema_shows_and_materializes_guide_reference_and_topic(self) -> None:
         self.install_prod_schema("global-core")

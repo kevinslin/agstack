@@ -404,7 +404,7 @@ Schemas under [`./references/schemas`](./references/schemas) define hierarchical
 The principal aggregate layouts are:
 
 - `code`: project-scoped code documentation at `packages/{{module}}`.
-- `project`: project-root design, progress, learnings, steering, current flows, cookbooks, and reports.
+- `project`: project-root design, progress, learnings, steering, current flows, cookbooks, raw findings, and explicitly promoted reports.
 - `specs`: numbered specifications with spec-local notes, flows, proofs, cookbooks, reports, and archives.
 - `global-core`: workspace-wide `cook`, `ref`, and `t` namespaces.
 - `pkg`: neutral package knowledge at `<schema-root>/{{package}}`, composed from `global-core`, `code-core`, and `specs`; the legacy default mount is `pkg`.
@@ -415,6 +415,10 @@ Agent Project Directory bases select `project` and `specs` as sibling schemas.
 They do not use `ag-dir` as a schema name or compatibility alias. The
 project-root records are visible knowledge documents; spec-local notes archive
 with their numbered spec directory.
+
+The [project schema](./references/schemas/project/README.md) places initial
+findings in `raw/`. Findings become `reports/` content only after explicit user
+promotion; investigation completion or confidence alone does not promote them.
 
 The `description` field is the primary placement signal. `insertion_policy` breaks ties, and `dynamic_child` allows an explicitly requested child without authorizing callers to invent unrelated nodes.
 
