@@ -96,7 +96,9 @@ Codex app observations produce an exact affected set and plan token without
 writing. Only a second call with that token, made after explicit user
 confirmation, moves positively archived rows to `done`; missing or failed
 lookups retain their prior status and are reported as unresolved. See
-[the CLI contract](docs/CLI.md#audit).
+[the CLI contract](docs/CLI.md#audit). Agent runs retain stdout, stderr, and exit
+status and recover interrupted read-only calls through supported execution
+approval; see [audit capture and recovery](skills/agtask/references/audit.md#capture-and-recover-command-results).
 
 ## Configuration and prompt hooks
 

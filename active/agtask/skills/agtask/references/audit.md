@@ -6,7 +6,8 @@ ledger state. Local mode audits local SQLite; Sites mode audits hosted D1 and
 never falls back to the local ledger. Never infer archive state from a missing
 list result, task age, title, or conversation status.
 
-1. Run `python3 ./scripts/agtask audit --json`. It returns every nonterminal
+1. Run `python3 ./scripts/agtask audit --json` using the capture and recovery
+   procedure below. It returns every nonterminal
    ledger row whose status is `todo`, `active`, or `blocked`, plus one lookup
    request per real `session_id`; it does not mutate. It excludes `merging`
    rows because their fenced close workflow owns that transition.
@@ -63,3 +64,36 @@ merge claim because Codex is already archived. Repeated discovery and planning
 are read-only; repeating an applied audit is a no-op once no matching
 auditable task remains. Logical `id` stays ledger-owned and Codex lookups
 always use `session_id`.
+
+## Capture and recover command results
+
+For each discovery, observation-plan, or apply invocation, retain complete
+stdout, stderr, and the exit status in a fresh private directory under the
+run's writable artifact root. Parse the saved JSON, not truncated terminal
+output. For discovery, run this from the skill directory:
+
+```sh
+umask 077
+audit_run_dir=$(mktemp -d "${TMPDIR:-/tmp}/agtask-audit.XXXXXX") || exit 125
+test -n "$audit_run_dir" && test -d "$audit_run_dir" || exit 125
+printf '%s\n' "$audit_run_dir"
+python3 ./scripts/agtask audit --json > "$audit_run_dir/stdout.json" 2> "$audit_run_dir/stderr.txt"
+audit_exit=$?
+printf '%s\n' "$audit_exit" > "$audit_run_dir/exit-status"
+exit "$audit_exit"
+```
+
+- Require exit status `0` and complete, parseable JSON before declaring the
+  phase successful. Summarize counts in the terminal and retain the full file.
+- If execution or polling fails, inspect the saved files first. An absent exit
+  marker means completion is unknown; an execution tool's approval/network
+  error is not a CLI or Sites response.
+- For read-only discovery or planning interrupted by sandbox access or
+  `Network request disconnected ... before approval could complete`, retry
+  once through the execution tool's supported `require_escalated` review with
+  the same CLI, arguments, configured backend, and a fresh capture directory.
+  This is recovery within the same audit workflow. If the current session has
+  already established that this command needs escalation, request it on launch.
+  Honor review denials; do not change credentials or switch backend modes.
+- Do not blindly repeat an interrupted `--apply`. Recover its completion
+  evidence and reconcile fresh authoritative state before any further mutation.
