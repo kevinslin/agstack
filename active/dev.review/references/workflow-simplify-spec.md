@@ -89,6 +89,41 @@ If authorization is missing or unclear, stop after the review and ask the user.
 - **Tradeoffs:** relevant limitations and the real conditions that would make a
   more complete solution necessary.
 
+For a feature-spec completion or `trigger:spec` review, also return this
+machine-checkable JSON. The parent agent may save it outside the repository;
+the read-only reviewer must not edit the specification.
+
+```json
+{
+  "review_kind": "simplify-spec",
+  "reviewer": "independent-simplicity-reviewer",
+  "spec_path": "path/to/the/reviewed-spec.md",
+  "spec_sha256": "sha256-of-the-exact-reviewed-document",
+  "verdict": "changes-proposed",
+  "smallest_viable_implementation": "Reuse the existing owner and lifecycle.",
+  "remove_or_defer": ["Remove speculative lifecycle coordination."],
+  "keep": ["Requested behavior and existing ownership boundaries."],
+  "tradeoffs": ["Additional backends remain outside the current scope."]
+}
+```
+
+- `changes-proposed` requires concrete `remove_or_defer` findings and blocks
+  final completion until approved changes are applied or explicitly deferred.
+- `no-meaningful-simplification` requires `no_changes_rationale`: a specific,
+  evidence-backed explanation of why the remaining design cannot be narrowed.
+- `user-deferred` requires both the original `remove_or_defer` findings and a
+  `user_decision` recording the user's actual explicit deferral.
+- A final spec over 150 lines requires `line_limit_justification` identifying
+  the required contracts or safety evidence that make the extra detail
+  necessary; an oversized draft may instead propose reducing its length.
+- Any document edit changes `spec_sha256` and invalidates the prior verdict.
+  Re-review the current document before reporting completion.
+- A correctness-only finding does not satisfy this simplification pass.
+
+The [simplification validator](../../specy/scripts/validate_spec_simplification.py)
+enforces the exact document, review freshness, verdict completeness, approved
+deferrals, and final line-count threshold.
+
 Do not rewrite the spec or implementation unless the user authorizes edits. Do
 not classify omitted future-proofing as a blocker when the approved scope and
 existing invariants do not require it.

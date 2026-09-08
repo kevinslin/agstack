@@ -60,6 +60,14 @@
     affected local link resolves.
 15. Resolve the current agent session id via `dev.llm-session` and include it,
     the current Git SHA, and a `YYYY-MM-DD HH:MM` timestamp in `## Changelog`.
+16. Before reporting a created or materially updated feature spec complete,
+    obtain an independent read-only `$dev.review simplify-spec` verdict for the
+    exact final document. Apply the
+    [simplification validator](../../scripts/validate_spec_simplification.py)
+    using `--spec <spec> --review <review.json> --phase final`. If an active
+    `trigger:spec` owns the same document, its parent owns this gate; do not run
+    duplicate reviews. A later material edit invalidates the prior digest and
+    requires a fresh focused verdict. Preserve explicit user-edit authorization.
 
 ## Authoring Requirements
 
@@ -68,9 +76,13 @@
 - `Open Decisions`, phases, decision tables, rollout, observability, access,
   and risks are conditional; omit them when they do not change implementation
   or verification.
-- Keep normal feature specs approximately 80-150 lines. Exceed that range only
-  when required contracts, independent delivery stages, or safety proof warrant
-  the additional detail.
+- Keep normal feature specs approximately 80-150 lines. A final spec over 150
+  lines fails its simplification gate unless the reviewer records a concrete
+  justification tied to required contracts, independent delivery stages, or
+  safety proof.
+- Completion requires either an evidence-backed verdict that no meaningful
+  simplification remains or the user's explicit decision to defer identified
+  changes. Correctness review does not replace simplification review.
 - Keep source links beside the decision or implementation step they support.
   Use project-root-relative links and avoid absolute local filesystem paths.
 - In `Verification`, pair each material observable outcome or invariant with a

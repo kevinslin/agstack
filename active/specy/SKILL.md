@@ -5,6 +5,7 @@ version: 2.0.0
 dependencies:
 - dev.diagram
 - dev.llm-session
+- dev.review
 - docy
 - mem
 - statsig
