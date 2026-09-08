@@ -41,6 +41,7 @@ Example:
 
 ### Agent
 
+- [agaudit](active/agaudit/SKILL.md): Audit installed automation schedules and commands from `~/.agaudit.json`, with issue notifications through a configured skill.
 - [agcleanup](active/agcleanup/SKILL.md): Keep Codex lean and responsive by archiving stale or Archive-section tasks, reconciling tracked tasks, safely removing finished tasks' merged local branches and worktrees, and reaping orphaned MCP helpers and DevBox connections without interrupting active work.
 - [ag-dir](active/ag-dir/SKILL.md): Maintain project design, recent agent changes, learnings, and user steering with the project/specs schemas and spec-local handoff notes.
 - [ag-ledger](active/ag-ledger/SKILL.md): Record, sync, and query append-only agent activity ledger entries using local JSONL daily files under META_LEDGER_ROOT (default ~/.llm/ag-ledger), with structured skill metadata and explicit settled, live-frontier, and stable blocked closeout states.
