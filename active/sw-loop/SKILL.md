@@ -136,7 +136,13 @@ changes.
 
 ### 5. Review Swarm
 
-trigger:loop `$dev.review` subagents with disjoint scopes:
+Run the initial `trigger:loop` `$dev.review` passes in parallel against one
+identified source snapshot, with disjoint scopes. After fixes, review the delta
+and affected behavior; carry forward inspected, still-applicable findings and
+audit coverage for unchanged areas. Widen a follow-up only for a stated impact
+or evidence gap, not simply because a fresh reviewer takes over.
+
+Review scopes:
 
 1. Regular code review: find correctness issues, regressions, missing tests, and risky abstractions.
 2. Simplification/deslop review: identify duplicate ownership, competing
@@ -155,16 +161,21 @@ If a proposed fix is straightforward and does not require user input, apply it i
 the subagent or integrate it locally. If the fix changes product direction, policy,
 or unclear ownership, bubble it up for human review instead of guessing.
 
-After review fixes land, rerun the simplification review against the final
-current-head diff. Do not mark the simplification checklist row complete or
-start verification while a material avoidable complexity finding remains.
+After review fixes land, account for the complete final diff in the simplification
+review: retain applicable audit evidence and recheck affected areas. Do not mark
+the simplification checklist row complete or start verification while a material
+avoidable complexity finding remains.
 
 ### 6. Verify
 
 - After review fixes land, spawn a separate subagent to run only the local Verify
   phase of `$dev.loop`. Do not push, create a PR, or invoke the Push phase here.
-- Require that verification covers the plan tests plus any checks added because of
-  review findings.
+- Apply `$dev.loop`'s evidence-reuse and scope rules. Give the verifier the existing
+  proof records and source delta; it checks applicability and runs missing or
+  invalidated checks, including those required by review findings. Independent
+  verification is not an automatic repeat of every successful live run.
+- Run independent checks in parallel only with non-overlapping mutable resources;
+  keep one owner per shared database or cluster operation.
 - For live approval/channel suites, require the verifier to report each requested
   scenario row separately as passed, blocked, or not run, with the artifact or
   screenshot path for that row when visual proof was requested.

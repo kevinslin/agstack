@@ -81,8 +81,38 @@ Whenever practical - use one or more subagents to run any given phase to preserv
 - If flow docs exist, update relevant flow docs with meaningful changes, including config updates and sudocode details when significant logic changes.
 
 ### 5. Verify
-- Run the tests specified in the plan and ensure they pass.
-- Check features against validation plan and ensure existing tests pass
+
+#### Evidence reuse and scope
+
+- In the acceptance-proof matrix, distinguish required user/repository checks,
+  affected regression checks, and exploratory checks before running them. Do not
+  downgrade a required check after it fails.
+- Keep one evidence record per check: exact command/selector, exercised boundary,
+  relevant source and test/helper versions, runtime/configuration/infrastructure
+  identity, result, and log path. Confirm the intended scenarios actually ran;
+  keep secret values out of the record.
+- Reuse inspected passing evidence while those inputs remain applicable. A new
+  agent, phase, commit hash, or unrelated documentation edit alone does not
+  invalidate it. The verifier independently checks evidence and its applicability;
+  do not rerun solely to change who executed it. Explicit fresh-run requirements
+  and current-head CI gates still apply.
+- Run cheap checks during implementation; batch expensive live checks after the
+  implementation and required base integration stabilize. After a fix or rebase,
+  inspect the actual delta and rerun the smallest supported set covering affected
+  behavior and regressions. Explain any broader rerun; unchanged areas retain
+  their evidence. If applicability is uncertain, rerun the affected check.
+- Classify failures as branch-related, established baseline/environmental, or
+  unresolved using comparable evidence; one failure alone does not establish
+  flakiness. Fix in-scope regressions. Record established unrelated failures once
+  and continue unaffected work; do not repeatedly retry unchanged failures or
+  expand into unrelated repairs without approval. A blocked required check remains
+  blocked until resolved or explicitly rescoped by the user.
+- Once required checks, applicable regression coverage, and review findings are
+  resolved, proceed to Push. Do not add another full review/test cycle merely
+  because a phase changed; preserve the required post-push CI and review gates.
+
+- Satisfy the plan tests with applicable passing evidence or fresh execution under the rules above.
+- Check features against the validation plan and existing tests using the evidence-reuse rules above.
 - Run every test the user explicitly requested and record its actual outcome.
   A skipped, failed, unavailable, or substitute test does not satisfy that
   acceptance criterion, even when the remaining suite is green.

@@ -26,18 +26,17 @@ Before code is committed all changes must be reviewed and ensure they comply wit
 
 4. **Unit testing and integration testing:**
 
-BE SURE YOU RUN ALL TESTS as this includes codegen, formatting, linting, unit tests and integration tests.
-Read @docs/development.md for additional background on test workflows.
+Cover the codegen, formatting, linting, unit, and integration checks required by
+the repository and accepted plan. Apply the active workflow's evidence-reuse
+rules: run missing or invalidated checks, and rerun the full suite when explicitly
+required. Read @docs/development.md for repository-specific test workflows.
 
-If you are in a node repo and there is a `precommit` check, then ALWAYS run the precommit check:
+Run repository-mandated validation commands unless higher-priority instructions
+prohibit them. A phase commit alone does not require repeating still-valid checks.
 
-```
-npm run precommit  # Runs: codegen, format, lint, test:unit, test:integration
-```
-
-This will generate code, auto-format, lint, and run unit and integration tests.
-
-Then YOU MUST FIX all issues found.
+Fix in-scope regressions. Classify and report other failures under the active
+workflow; do not expand into unrelated repairs without authorization. Unresolved
+required checks remain blockers, not waived passes.
 
 5. **Review spec once more:**
 

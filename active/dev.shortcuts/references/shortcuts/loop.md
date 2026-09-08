@@ -50,6 +50,10 @@ For each pass:
 1. Spawn a reviewer subagent to run `instructions` exactly as provided.
    - If `instructions` is missing, ask the user what should be looped.
    - Give the reviewer subagent the relevant artifact paths, current diff, and review scope.
+     The first pass covers the full requested scope. Later passes receive prior
+     findings/audits, the exact delta since review, and affected callers, contracts,
+     and tests; focus on those changes and their consequences. Preserve any
+     explicitly requested full-review scope.
    - The reviewer subagent should not apply fixes unless the user explicitly requested that the looped instruction itself makes edits.
    - Wait for the reviewer result before deciding whether to continue.
 
@@ -85,10 +89,14 @@ For each pass:
 5. Spawn a fixer subagent to address the accepted blocker or major findings.
    - Give the fixer subagent the exact findings, target files, and any validation expectations.
    - The fixer subagent should not perform a fresh review; it should only implement the scoped fixes.
-   - Wait for the fixer result, then continue to the next review pass with a
-     fresh reviewer subagent. When fixes change ownership, architecture,
-     validation, failure handling, or tests, repeat the Simplicity Audit on
-     the resulting diff before accepting a clean pass.
+   - Wait for the fixer result, then continue with a fresh reviewer subagent.
+     Recheck accepted fixes and affected behavior; carry forward prior inspected
+     findings, Simplicity/Test Audit evidence, and test dispositions for unchanged
+     areas. A clean result must still account for the complete current diff.
+   - When fixes change ownership, architecture, validation, failure handling, or
+     tests, repeat the affected Simplicity/Test Audit checks. Widen review when
+     the impact crosses earlier scope or prior evidence is missing/invalid, and
+     state why. A fresh reviewer alone does not require a full restart.
 
 6. Continue looping until one of these exit conditions is met:
    - no blocker or major findings remain
