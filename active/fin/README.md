@@ -17,3 +17,10 @@ are reported as skipped or unverified follow-up; they do not block finalization
 or make an otherwise completed task partial. Issue updates still require an
 exact task match, successful landing, and verified read-back before claiming
 completion.
+
+For `gh`, missing required approvals alone trigger an automatic administrator or
+maintainer bypass when required checks pass for the exact PR head and all other
+merge gates are satisfied. No extra confirmation is needed. Changes-requested
+reviews, unresolved threads, pending or failed checks, and other blockers are
+excluded. Repository no-bypass instructions still apply; `fin` does not change
+repository rules or permissions. Other overrides require explicit authorization.

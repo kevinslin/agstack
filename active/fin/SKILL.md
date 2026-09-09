@@ -158,9 +158,17 @@ context does not itself invoke cleanup.
 - If the `local` flow is blocked only by trunk drift, run `trigger:sync-branch` or otherwise rebase the current branch onto the merge target before retrying the check.
 - Continue after mergeability is confirmed, the matching PR is already merged, or a `gh` target meets the bounded-indeterminate conditions above. If repair cannot clear positive evidence of conflicts or unmergeability, stop and report the blockage instead of archiving the spec or landing the change.
 
+### Automatic Required-Review Bypass
+
+- In `gh` context, automatically use a repository-supported administrator or maintainer bypass when missing required approvals (including code-owner or last-push approval) are the only remaining merge blocker. Invoking `fin` authorizes this narrow bypass; do not ask for additional confirmation.
+- Before bypassing, verify the exact PR head, a passing default-branch gate, no merge conflicts, and successful required checks for that head. If required checks cannot be determined, are missing, pending, or failing, do not automatically bypass. Confirm that no unresolved review threads, changes-requested reviews, or other merge blockers remain; a generic `BLOCKED` status alone is insufficient evidence.
+- Preserve all normal completion, spec, downstream-PR, permission, file-preservation, and cleanup gates. Honor explicit user or repository instructions prohibiting bypass, including any RIPP auto-merge-only path. Do not change repository rules, bypass lists, or permissions to make this operation succeed.
+- Report the locked target and missing approvals being waived, then use `gh pr merge <number> --repo <owner/repo> --admin --match-head-commit <full-head-sha>` with the supported merge method. If GitHub rejects the bypass, report the exact remaining restriction; do not broaden the override. Verify the actual merged state before cleanup.
+- Record the automatic required-review bypass, exact head, waived approvals, and merge method in the final report. Other blocker overrides still require the explicit authorization below.
+
 ### Explicit Blocker Override
 
-- When finalization stops on named non-conflict blockers and the user explicitly says to merge or land while ignoring those blockers, treat that response as an auditable override limited to the blockers already reported for the locked target.
+- Outside Automatic Required-Review Bypass, when finalization stops on named non-conflict blockers and the user explicitly says to merge or land while ignoring those blockers, treat that response as an auditable override limited to the blockers already reported for the locked target.
 - Restate the target identity and the exact waived blockers before proceeding. Do not infer an override from a generic approval, an earlier broad permission, silence, or a request that does not clearly authorize landing.
 - An override may waive failing or pending checks, review/proof/approval gates, waiting periods, and incomplete-spec landing gates. It does not waive a missing or failed default-branch gate, a non-main merge target, an unmergeable/conflicting target, a target mismatch, unknown commit identity, dirty-worktree preservation, malformed or failed final hooks, missing repository permission, or post-merge verification and cleanup.
 - Keep incomplete specs and milestones active and unarchived. Do not mark them complete merely to satisfy the normal archival-before-landing order. Record the spec exception in the final report.
@@ -255,6 +263,7 @@ context does not itself invoke cleanup.
 - If the PR is not already merged and the explicit target PR does not belong to the current branch, use a target-aware remote merge for that PR, such as `gh pr merge <target>`, after the matching spec has been marked complete and archived. Do not use current-branch merge shortcuts for a different PR.
 - Under an explicit blocker override, skip the archival prerequisite only for incomplete matching specs, leave them active, and use the target-aware override merge defined above.
 - Treat the merge as part of finalization, not a follow-up option.
+- If missing required approvals are the only remaining blocker, apply Automatic Required-Review Bypass before stopping for approval.
 - If direct merge is rejected because repository policy requires auto-merge, and checks/reviews are otherwise green, enable repository-supported auto-merge for the locked target PR instead of treating the rejection as a terminal merge failure.
 - After any successful auto-merge enablement, query the target PR for `autoMergeRequest`, `state`, `mergedAt`, `mergeCommit`, `mergeStateStatus`, and status checks.
 - Treat `autoMergeRequest` present with the PR still `OPEN` as `auto-merge pending`, not as `blocked`, while checks remain green and no explicit cancellation or failing required check is present.
@@ -434,6 +443,7 @@ through `gh` / `local`.
 - For an open `gh` target, exact-head downstream PRs and `delete_branch_on_merge` were verified before merging or enabling auto-merge; dependent remote base branches were retained, or every explicitly authorized retarget was verified before deletion.
 - An unattended auto-merge-pending handoff has exactly one active heartbeat for the locked PR. The heartbeat was not deleted on first merge observation; it was deleted only after live `MERGED`, `mergedAt`, and `mergeCommit` verification and a terminal post-merge outcome from steps 5-9.
 - Any foreground watch was entered automatically only after persistent heartbeat automation was unavailable or failed, retained the locked PR number, branch, and exact head SHA, emitted concise progress at least every 60 seconds, and continued until verified `MERGED` or a reported terminal blocker. A verified merge resumed the normal refresh, containment proof, cleanup, Linear, and retrospective steps.
+- Any automatic required-review bypass met its exact-head, green-check, review-state, and permission conditions and was recorded in the final report.
 - Any explicit blocker override recorded the locked target, exact waived blockers, authorizing user instruction, override merge method, and intentionally unarchived incomplete specs.
 - In `local` mode, the completed branch has been merged into local `main` or verified as already landed there.
 - The local base was refreshed or verified to contain the landed commit before cleanup, and every matching final hook succeeded.
