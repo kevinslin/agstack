@@ -21,7 +21,9 @@ If the tool is not exposed, use the config import path below.
    user explicitly requested that separate repair.
 2. Read the current saved projects with `list_projects`. Skip registration when
    the exact host and remote path are already saved.
-3. Back up `$CODEX_HOME/codex-app/config.json`.
+3. Resolve the running app's `CODEX_HOME` (normally `~/.codex`) and back up
+   `codex-app/config.json` beneath it. If absent, start with version 1 and an
+   empty `remoteConnections` array.
 4. Merge the requested project into the existing config. Preserve unrelated
    fields and existing remote connections. The minimum remote declaration is:
 
@@ -42,23 +44,29 @@ If the tool is not exposed, use the config import path below.
    }
    ```
 
-5. Write the merged JSON atomically, then run:
+5. Batch verified additions into one write. Confirm the file has not changed
+   since reading it, write the merged JSON atomically, then run on macOS:
 
    ```bash
-   open 'codex://codex-app/apply-config'
+   /usr/bin/open 'codex://codex-app/apply-config'
    ```
 
 6. If the app asks for folder or connection consent, honor the app prompt. Do
    not bypass consent by editing private app state files.
-7. Wait for import to finish, then call `list_projects` again. Report success
-   only when the expected host and remote path appear with a saved project ID.
+7. Allow for asynchronous import and check `list_projects` with bounded,
+   spaced retries (up to two minutes). Report success only when the expected
+   host and remote path appear with a saved project ID. Keep existing IDs
+   unchanged. On timeout, inspect the app result or report pending consent or
+   connection errors; do not repeatedly apply the file or invent project IDs.
 
 ## Internal behavior and boundaries
 
-The import flow validates the declared SSH alias and remote directory, creates
-missing saved remote projects, preserves existing project IDs for normalized
-host/path matches, and keeps unrelated preferences. Reapplying the same config
-should not create duplicate saved projects for the same normalized host/path.
+The import resolves SSH aliases, creates missing saved remote projects, and
+preserves existing project IDs for normalized host/path matches. Verify directory
+existence separately in preflight. It applies the entire file and can connect
+other declared remotes, so preserve existing declarations and preferences.
+Reapplying the same config should not create duplicate saved projects for the
+same normalized host/path.
 
 Do not edit Codex's private global state files directly. Direct state edits skip
 validation, consent, project ordering, declaration tracking, and window
