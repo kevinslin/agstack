@@ -1,6 +1,6 @@
 ---
 name: fin
-description: Finalize completed PR or local checkout work, or close a local review branch with nocheck. Use when explicitly invoked.
+description: Finalize completed PR or local checkout work, use force to waive missing PR approvals, or close a local review branch with nocheck. Use when explicitly invoked.
 dependencies:
 - ag-learn
 - dev.llm-session
@@ -21,12 +21,15 @@ finalization or mark it partial solely because Linear work could not be complete
 Run `fin [context] [target]`.
 
 - `gh`: finalize from a GitHub PR context. Use this when the task should land by merging the current remote PR or when the matching PR already merged and only cleanup/final verification remains. The original `fin` workflow maps to this context.
+- `force`: run the `gh` workflow with explicit authorization to waive missing required approvals only. Route `fin force [target]` to `context=gh` with `force=true` before context auto-detection; every `gh` target-inference, locking, preflight, spec, merge, and cleanup rule applies. Pass `--context gh` to the default-branch gate. Never auto-detect `force` or fall back to `local` when no PR resolves.
 - `local`: finalize from a local checkout. Use this when the task should land directly from local git state without depending on GitHub PR state.
 - `nocheck`: close the task's local branch and linked worktree without checking or changing any remote state. Use explicitly after reviewing someone else's code when the local review checkout is no longer needed; no landing or merge proof is required.
 - Route explicit `nocheck` directly to the `nocheck` workflow below, before detached-HEAD handling, PR-target inference, or context auto-detection. Return after that workflow; every subsequent landing workflow, guardrail, and done checklist applies only to `gh` / `local`.
-- `[target]`: optional for `gh` only. Accept a PR number, PR URL, or branch name. Examples: `fin gh 85117`, `fin gh https://github.com/owner/repo/pull/85117`.
+- `[target]`: optional for `gh` and `force`. Accept a PR number, PR URL, or branch name. Examples: `fin gh 85117`, `fin force 85117`, `fin force https://github.com/owner/repo/pull/85117`, `fin force feature-branch`. With no target, `fin force` uses the normal `gh` inference order below.
+- Set `force=false` for ordinary `fin` and `fin gh`. Only an explicit `fin force` invocation sets `force=true`; a request to add, edit, or explain this command does not invoke finalization. Do not carry force authorization to another target or later invocation.
+- For `force`, lock the full head SHA on the first live read of the resolved PR. Reuse that SHA for all force checks and the merge attempt; stop on head drift rather than silently authorizing the replacement head.
 - If the current checkout is detached `HEAD`, treat that as a preflight issue, not a valid finalization state. Create a short-lived local branch from the current commit before auto-detecting context, checking mergeability, or attempting worktree cleanup.
-- If the argument is `gh`, `local`, or `nocheck`, respect it throughout the flow. Do not silently switch later just because repo state would make the other path easier. Never auto-detect `nocheck`.
+- If the argument is `gh`, `force`, `local`, or `nocheck`, respect it throughout the flow. Do not silently switch later just because repo state would make the other path easier. Never auto-detect `nocheck`.
 - If `gh` has an explicit `[target]`, lock that PR target before current-branch detection. Use the target PR as the source of truth for state, mergeability, comments, checks, spec matching, merge, and automation cleanup.
 - If the user omits `[target]` but the immediately preceding active heartbeat or delayed-merge instruction names exactly one PR and the user asks to merge, finalize, ignore a waiting period, or ignore a proof gate, treat that PR as an explicit `gh` target after one live PR-state check. Report the target source as `heartbeat automation`.
 - If the user omits `[target]` but the immediately preceding task in the same thread completed or repaired exactly one PR, such as after `trigger:fix-pr`, `trigger:fix-pr-conflict`, or a PR-specific babysit/CI run, treat that PR as an explicit `gh` target after one live PR-state check. Report the target source as `active task context`. If the current checkout points at another branch or PR, mention the mismatch and ignore the unrelated checkout for PR state, spec archival, merge, automation, and cleanup decisions unless it blocks local cleanup.
@@ -35,7 +38,7 @@ Run `fin [context] [target]`.
   - Choose `gh` when the current branch has an open or already-merged PR that corresponds to the branch being finalized.
   - Choose `local` when the current branch has no matching PR and the work should land directly from local git state.
 - Treat heartbeat-derived or active-task-derived PR targets as explicit `gh` targets, not as current-branch auto-detection.
-- If the argument is present but not one of `gh` / `local` / `nocheck`, stop and ask the user which context to use.
+- If the argument is present but not one of `gh` / `force` / `local` / `nocheck`, stop and ask the user which context to use. `force` is a positional command, not a flag for `local` or `nocheck`; reject combined contexts such as `fin local force` or `fin nocheck force` before any action.
 - Report whether the finalization context was explicitly provided or auto-detected.
 - Before reporting any PR status or blocker, print one target identity line: `Target: PR #<number>, branch <headRefName>, source=<current checkout|explicit user PR|heartbeat automation|active task context>`. When multiple PRs have been mentioned in the session, prefix every PR-specific state claim with the PR number.
 
@@ -158,17 +161,19 @@ context does not itself invoke cleanup.
 - If the `local` flow is blocked only by trunk drift, run `trigger:sync-branch` or otherwise rebase the current branch onto the merge target before retrying the check.
 - Continue after mergeability is confirmed, the matching PR is already merged, or a `gh` target meets the bounded-indeterminate conditions above. If repair cannot clear positive evidence of conflicts or unmergeability, stop and report the blockage instead of archiving the spec or landing the change.
 
-### Automatic Required-Review Bypass
+### `force`: Missing Required-Approval Bypass
 
-- In `gh` context, automatically use a repository-supported administrator or maintainer bypass when missing required approvals (including code-owner or last-push approval) are the only remaining merge blocker. Invoking `fin` authorizes this narrow bypass; do not ask for additional confirmation.
-- Before bypassing, verify the exact PR head, a passing default-branch gate, no merge conflicts, and successful required checks for that head. If required checks cannot be determined, are missing, pending, or failing, do not automatically bypass. Confirm that no unresolved review threads, changes-requested reviews, or other merge blockers remain; a generic `BLOCKED` status alone is insufficient evidence.
-- Preserve all normal completion, spec, downstream-PR, permission, file-preservation, and cleanup gates. Honor explicit user or repository instructions prohibiting bypass, including any RIPP auto-merge-only path. Do not change repository rules, bypass lists, or permissions to make this operation succeed.
-- Report the locked target and missing approvals being waived, then use `gh pr merge <number> --repo <owner/repo> --admin --match-head-commit <full-head-sha>` with the supported merge method. If GitHub rejects the bypass, report the exact remaining restriction; do not broaden the override. Verify the actual merged state before cleanup.
-- Record the automatic required-review bypass, exact head, waived approvals, and merge method in the final report. Other blocker overrides still require the explicit authorization below.
+- Only `force=true` authorizes this bypass. Ordinary `fin` / `fin gh` must not bypass missing approvals without a separately authorized Explicit Blocker Override. If no approval is missing, use the normal merge path without `--admin`.
+- Use only a repository-supported administrator or maintainer bypass that the caller already has permission to use. Missing required approvals (including code-owner or last-push approval when supported) must be the only remaining merge blocker; a generic `BLOCKED` status alone is insufficient evidence.
+- Immediately before bypassing, re-read the locked repository, PR number, head branch, base branch, and full head SHA. Stop on target or head drift. Require a passing default-branch gate and successful known required checks for that exact head. Unknown required-check requirements or missing, pending, or failing checks block force.
+- Confirm no merge conflicts, changes-requested reviews, unresolved review threads, or other merge blockers. Unknown review state or indeterminate mergeability blocks force; the ordinary bounded-indeterminate merge path does not authorize an admin attempt. Preserve completion and incomplete-scope gates, spec handling, downstream pull request protection (including automatic branch deletion policy), file preservation, final hooks, and cleanup.
+- Honor explicit user or repository bypass prohibitions, including RIPP auto-merge-only / no-admin-bypass rules. Follow the normal policy-compliant auto-merge path where applicable. Never change repository rules, permission grants, bypass lists, or authentication to make force succeed. Permission denial or policy prohibitions remain blockers.
+- Report the exact target, full head SHA, and missing approval requirement being waived. Then use `gh pr merge <number> --repo <owner/repo> --admin --match-head-commit <full-head-sha>` with the repository-supported merge method and downstream branch protection. If GitHub rejects the bypass, stop and report the exact restriction; do not broaden or retry the override. Verify the actual merged state before cleanup.
+- Record `fin force`, exact target and head, waived approval requirement, merge method, and actual merge outcome in the final report. `force` is not authorization to waive other blockers; those require the separate explicit instruction below.
 
 ### Explicit Blocker Override
 
-- Outside Automatic Required-Review Bypass, when finalization stops on named non-conflict blockers and the user explicitly says to merge or land while ignoring those blockers, treat that response as an auditable override limited to the blockers already reported for the locked target.
+- Separately from `fin force`, when finalization stops on named non-conflict blockers and the user explicitly says to merge or land while ignoring those blockers, treat that response as an auditable override limited to the blockers already reported for the locked target. `force` alone is not this authorization. Repository no-bypass rules, including RIPP, still apply.
 - Restate the target identity and the exact waived blockers before proceeding. Do not infer an override from a generic approval, an earlier broad permission, silence, or a request that does not clearly authorize landing.
 - An override may waive failing or pending checks, review/proof/approval gates, waiting periods, and incomplete-spec landing gates. It does not waive a missing or failed default-branch gate, a non-main merge target, an unmergeable/conflicting target, a target mismatch, unknown commit identity, dirty-worktree preservation, malformed or failed final hooks, missing repository permission, or post-merge verification and cleanup.
 - Keep incomplete specs and milestones active and unarchived. Do not mark them complete merely to satisfy the normal archival-before-landing order. Record the spec exception in the final report.
@@ -259,11 +264,12 @@ context does not itself invoke cleanup.
 4. Merge the PR
 - Before running a merge command, check the target PR state with GitHub. If the PR is already `MERGED`, do not run `trigger:merge-pr`; record the merge commit or merged-at details when available and proceed as an already-landed PR.
 - Before any merge command or auto-merge request for an open PR, complete Downstream Pull Request Protection using the locked repository and head branch. Pass `--delete-branch` only when its current exact-base query proves there are no open dependents.
+- Before selecting a merge command, if `force=true` and required approvals are missing, apply the `force`: Missing Required-Approval Bypass gates above. After spec completion and archival, use its target-aware command instead of `trigger:merge-pr`, then resume normal post-merge verification and cleanup. If those gates fail, stop or follow the required policy-compliant auto-merge path; do not fall through to an admin shortcut.
 - If the PR is not already merged and the target PR belongs to the current branch, run `trigger:merge-pr` immediately after the matching spec has been marked complete and archived.
 - If the PR is not already merged and the explicit target PR does not belong to the current branch, use a target-aware remote merge for that PR, such as `gh pr merge <target>`, after the matching spec has been marked complete and archived. Do not use current-branch merge shortcuts for a different PR.
 - Under an explicit blocker override, skip the archival prerequisite only for incomplete matching specs, leave them active, and use the target-aware override merge defined above.
 - Treat the merge as part of finalization, not a follow-up option.
-- If missing required approvals are the only remaining blocker, apply Automatic Required-Review Bypass before stopping for approval.
+- With `force=false`, report missing required approvals as a blocker or wait through normal repository-supported auto-merge; do not infer bypass authorization.
 - If direct merge is rejected because repository policy requires auto-merge, and checks/reviews are otherwise green, enable repository-supported auto-merge for the locked target PR instead of treating the rejection as a terminal merge failure.
 - After any successful auto-merge enablement, query the target PR for `autoMergeRequest`, `state`, `mergedAt`, `mergeCommit`, `mergeStateStatus`, and status checks.
 - Treat `autoMergeRequest` present with the PR still `OPEN` as `auto-merge pending`, not as `blocked`, while checks remain green and no explicit cancellation or failing required check is present.
@@ -350,6 +356,7 @@ context does not itself invoke cleanup.
 
 9. Report the finished state
 - State which context ran: `gh` or `local`.
+- For `fin force`, state `context=gh, force=true`, the exact target and head, waived approval requirement (or none), merge method, and actual merge outcome.
 - State whether that context was explicitly requested, implied by heartbeat or active task context, or auto-detected from current-branch PR state.
 - State the default-branch gate's `status`, `repository_default_branch`, `target_base_ref`, and `matches` fields. For a missing or failed gate, report the blocker and retarget-or-create-PR guidance instead of a finished state.
 - For `gh`, state the target identity line with PR number, branch, and source before reporting mergeability, checks, blockers, merge, or cleanup. If another PR was also present in the current checkout, explicitly state that it was not the finalization target.
@@ -426,7 +433,7 @@ workflow and returns before this section.
 For `nocheck`, use step 7 of its workflow instead. This checklist covers landing
 through `gh` / `local`.
 
-- `fin` was run with either an explicit `gh` / `local` argument, a heartbeat-derived or active-task-derived PR target, or no argument and a context auto-detected from current-branch PR state.
+- `fin` was run with either an explicit `gh` / `force` / `local` argument, a heartbeat-derived or active-task-derived PR target, or no argument and a context auto-detected from current-branch PR state. Explicit `force` ran as `gh` with the approval-only authorization locked to that target.
 - The repository's origin main branch was resolved authoritatively before mutation, and `./scripts/check_default_branch.py` returned exit `0` with `status: "pass"`, `matches: true`, and every `allow` field set to `true` for the exact PR base or local merge target. The JSON record was retained; a missing, malformed, or failed gate stopped finalization.
 - In `gh` mode, any explicit PR number, PR URL, branch target, heartbeat-derived PR target, or active-task-derived PR target was locked before current-branch PR detection and reused for every PR-state, mergeability, merge, automation, and cleanup decision.
 - Every PR status or blocker report included a target identity line with PR number, branch, and source; when multiple PRs were mentioned, every PR-specific claim was labeled with the PR number.
@@ -443,7 +450,7 @@ through `gh` / `local`.
 - For an open `gh` target, exact-head downstream PRs and `delete_branch_on_merge` were verified before merging or enabling auto-merge; dependent remote base branches were retained, or every explicitly authorized retarget was verified before deletion.
 - An unattended auto-merge-pending handoff has exactly one active heartbeat for the locked PR. The heartbeat was not deleted on first merge observation; it was deleted only after live `MERGED`, `mergedAt`, and `mergeCommit` verification and a terminal post-merge outcome from steps 5-9.
 - Any foreground watch was entered automatically only after persistent heartbeat automation was unavailable or failed, retained the locked PR number, branch, and exact head SHA, emitted concise progress at least every 60 seconds, and continued until verified `MERGED` or a reported terminal blocker. A verified merge resumed the normal refresh, containment proof, cleanup, Linear, and retrospective steps.
-- Any automatic required-review bypass met its exact-head, green-check, review-state, and permission conditions and was recorded in the final report.
+- Any `force` approval bypass met its exact-head, green-check, review-state, policy, and permission conditions and was recorded in the final report. Ordinary `fin` did not infer this authorization.
 - Any explicit blocker override recorded the locked target, exact waived blockers, authorizing user instruction, override merge method, and intentionally unarchived incomplete specs.
 - In `local` mode, the completed branch has been merged into local `main` or verified as already landed there.
 - The local base was refreshed or verified to contain the landed commit before cleanup, and every matching final hook succeeded.
