@@ -227,9 +227,12 @@ test("hosted list applies created and updated ranges and rejects unsafe filters"
       { field: "created", ...range },
       { field: "updated", ...range },
     ],
-    limit: 1,
+    limit: 1000,
   });
   assert.deepEqual((await matching.json()).map((row) => row.id), [mainTask.id]);
+
+  const oversized = await operation("list", { limit: 1001 });
+  assert.equal(oversized.status, 400);
 
   const excluded = await operation("list", {
     filters: [{ field: "created", start: range.end, end: "2099-01-01T00:00:00.000Z" }],

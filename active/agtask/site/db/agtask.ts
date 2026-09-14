@@ -117,8 +117,8 @@ function readStatus(value: unknown): TaskStatus {
 function readLimit(value: unknown, fallback: number): number {
   if (value === undefined || value === null) return fallback;
 
-  if (!Number.isSafeInteger(value) || Number(value) < 1 || Number(value) > 200) {
-    throw new TaskOperationError("limit must be an integer between 1 and 200.", 400);
+  if (!Number.isSafeInteger(value) || Number(value) < 1 || Number(value) > 1000) {
+    throw new TaskOperationError("limit must be an integer between 1 and 1000.", 400);
   }
 
   return Number(value);
