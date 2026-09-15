@@ -34,7 +34,7 @@ Before using a returned base, resolve its current configuration with `mem config
 
 Use `mem workspace build` when asked to discover or refresh meaningful projects across recent local work. It reads the last seven days of Codex rollouts, groups projects with the authenticated Codex CLI, and replaces `~/.mem/workspace/index.json`. Warning details are in a per-build file under `~/.mem/workspace/logs/`; the snapshot keeps `partial` and a relative `log_path`. Consult that log when explaining incomplete coverage, and treat priorities as current attention, not durable project status. See [workspace build](./CLI.md#workspace-build) for prerequisites and boundaries.
 
-Do not auto-write merely because information might be useful later. Require explicit durable-output intent or an applicable project instruction. Do not use `$mem` for transient answers or files whose repository-owned workflow and exact destination the user already specified.
+Do not auto-write merely because information might be useful later. Require explicit durable-output intent or an applicable project instruction. Do not use `$mem` for transient answers. Preserve a user-specified destination and its repository-owned workflow. When the request also authorizes organizing project knowledge, use the [canonical note and project pointer workflow](./references/knowledge-workflow.md#canonical-notes-and-project-pointers) for discoverability without relocating the document. An exact-file-only request does not authorize an additional pointer.
 
 ## Operating Modes
 
@@ -174,14 +174,14 @@ For schema fields, composition, authoring, and CLI behavior, read `./references/
 
 - Treat the selected base's resolved managed root as authoritative for knowledge operations.
 - Reject managed paths that resolve outside the workspace root or resolved managed root after processing `..`, symlinks, or relative segments.
-- Do not silently write to a drifted path because it already exists.
+- Preserve an explicitly selected or established canonical path; a schema mismatch alone does not authorize relocation. Resolve genuine path or ownership conflicts before writing.
 - Preserve `## Manual Notes` byte-for-byte unless the user explicitly asks to edit it.
 - Delete knowledge only when the user explicitly requests deletion.
 - Use schema descriptions as the primary placement signal and insertion policy only as a tiebreaker.
 - In the `project` schema, save initial findings in `raw/`. Create or update a `reports/` document from those findings only when the user explicitly promotes them; completing an investigation is not promotion. See [the project schema](./references/schemas/project/README.md).
 - Keep project context lookup read-only for knowledge documents and source files; permit only creation of the selected base's missing derived index. Search the relevant project, service, or package source with scoped `rg` only when managed knowledge is absent or insufficient.
 - When audit tracing is enabled, do not bypass a missing session ID, unsafe trace destination, lock failure, or trace write failure.
-- Create only the requested knowledge file, its parent directories, and the selected base's derived index when index initialization or refresh requires it.
+- Create only the authorized knowledge file and, when organizing project knowledge, its project pointer; create their parent directories and refresh each affected base's derived index as required.
 - Use `--unmanaged` only for an explicit repo-owned or temporary destination.
 
 ## Final Response

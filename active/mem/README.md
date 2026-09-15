@@ -53,6 +53,10 @@ mem workspace lookup --query "agent memory" --pretty
 
 See [`CLI.md`](./CLI.md) for the complete command reference.
 
+## Canonical notes and project discovery
+
+During authorized knowledge organization, preserve the established canonical note and, when it lives outside the associated project base, maintain one short reference pointer there. Agents follow that pointer to the maintained content during lookup; read-only requests do not create or repair pointers. Check search truncation and retry a narrower scope before treating a note as absent. See the [knowledge workflow](./references/knowledge-workflow.md#canonical-notes-and-project-pointers) for destination, containment, and index rules.
+
 ## Workspace project snapshots
 
 `mem workspace build` writes a fresh `~/.mem/workspace/index.json` from the last seven days of local Codex activity. Projects represent outcomes or continuing responsibilities: one can span repositories, and several can share a repository. The LLM chooses names, aliases, relevant resources, and priorities from 1 (primary focus) to 3 (background work), with an explanation and supporting task references.

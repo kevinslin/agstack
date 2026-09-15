@@ -431,6 +431,8 @@ Managed search and source fallback each have independent limits:
 
 The walker skips symlink files and directories, hidden directories, and common generated/dependency directories such as `.git`, `node_modules`, `vendor`, `build`, `dist`, and `__pycache__`. Non-UTF-8, binary, oversized, and unreadable files are skipped. `search_stats` records skipped files, read errors, scanned counts, and whether either search was truncated.
 
+When a lookup is truncated, agents should treat `no_matches` as incomplete coverage and retry against a known file or narrower `--source` directory before concluding that knowledge is absent. See [Finding knowledge](./references/knowledge-workflow.md#finding-knowledge). This recovery is an agent workflow; the CLI does not automatically retry.
+
 These bounds apply only to normal document/source lookup. Index build, check, lazy initialization, and post-creation refresh always scan all eligible Markdown paths without inheriting any lookup traversal cap.
 
 ### Result fields
