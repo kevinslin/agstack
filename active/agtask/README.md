@@ -186,6 +186,13 @@ authority for its task rows and rollout history. Switching modes does not copy,
 synchronize, merge, or fall back between stores. Existing local tasks therefore
 do not automatically appear on the Site.
 
+Direct Sites commands use a 30-second socket timeout; background hooks retain
+their 1.25-second budget. Timeout, transport, HTTP, and malformed-response errors
+are reported separately without exposing credentials or response bodies. Requests
+are not automatically retried. Hosted `list` and `search` accept `--limit 1..1000`;
+unsupported limits fail before sending a request. A result at the limit may be
+incomplete: this API has no cursor pagination, so do not claim exhaustive coverage.
+
 For direct commands, backend precedence, highest first, is the root
 `--mode local|sites` flag, `AGTASK_BACKEND_MODE`, the merged project/global
 `backend.mode`, and finally `local`. Independently launched hooks instead use

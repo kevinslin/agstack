@@ -89,8 +89,10 @@ SITES_MUTATING_OPERATIONS = {
     "reopen",
     "status",
 }
-SITES_REQUEST_TIMEOUT_SECONDS = 3.0
+SITES_REQUEST_TIMEOUT_SECONDS = 30.0
 SITES_HOOK_REQUEST_TIMEOUT_SECONDS = 1.25
+SITES_QUERY_LIMIT_MIN = 1
+SITES_QUERY_LIMIT_MAX = 1000
 PROMPT_HOOK_EVENTS = {"OnCreate", "OnPreClose", "OnPostClose"}
 DEFAULT_ON_PRE_CLOSE_PROMPT = (
     "Read and follow $agtask's bundled ./references/onclose.md OnPreClose "
@@ -1672,8 +1674,30 @@ def sites_request(
         return json.loads(body)
     except HTTPError as error:
         raise TaskError(f"Sites backend request failed with HTTP {error.code}") from None
-    except (URLError, TimeoutError, json.JSONDecodeError, UnicodeError) as error:
-        raise TaskError("Sites backend request failed or returned invalid JSON") from error
+    except TimeoutError as error:
+        raise TaskError(f"Sites backend {operation} request timed out") from error
+    except URLError as error:
+        reason = getattr(error, "reason", None)
+        if isinstance(reason, TimeoutError):
+            raise TaskError(f"Sites backend {operation} request timed out") from error
+        reason_name = type(reason).__name__ if reason is not None else type(error).__name__
+        raise TaskError(
+            f"Sites backend {operation} transport failed ({reason_name})"
+        ) from error
+    except json.JSONDecodeError as error:
+        raise TaskError(f"Sites backend {operation} returned malformed JSON") from error
+    except UnicodeError as error:
+        raise TaskError(f"Sites backend {operation} returned JSON with invalid text encoding") from error
+
+
+def validate_sites_query_limit(operation: str, limit: Any) -> None:
+    if operation not in {"list", "search"}:
+        return
+    if not isinstance(limit, int) or not SITES_QUERY_LIMIT_MIN <= limit <= SITES_QUERY_LIMIT_MAX:
+        raise TaskError(
+            f"Sites backend {operation} --limit must be between "
+            f"{SITES_QUERY_LIMIT_MIN} and {SITES_QUERY_LIMIT_MAX}"
+        )
 
 
 class SitesNoRedirectHandler(HTTPRedirectHandler):
@@ -1698,6 +1722,7 @@ def sites_payload(args: argparse.Namespace) -> dict[str, Any]:
         if args.apply is not None:
             payload["apply"] = args.apply
         return payload
+    validate_sites_query_limit(args.command, getattr(args, "limit", None))
     excluded = {"backend_mode", "command", "configuration", "handler", "json"}
     payload = {
         key: value

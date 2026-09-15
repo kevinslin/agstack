@@ -15,6 +15,7 @@ import stat
 import subprocess
 import tempfile
 import threading
+import time
 import unittest
 from urllib.parse import quote
 import uuid
@@ -2720,6 +2721,31 @@ class CliIntegrationTest(unittest.TestCase):
                 key.lower(): value for key, value in requests[-1]["headers"].items()
             }["idempotency-key"]
             self.assertEqual(first_key, retry_key)
+            self.assertFalse(self.db_path.exists())
+
+    def test_sites_client_accepts_slow_reads_and_rejects_invalid_limits(self) -> None:
+        def respond(request: dict[str, object]) -> tuple[int, object]:
+            # A healthy remote read can take longer than the former 3s timeout.
+            time.sleep(3.5)
+            return 200, []
+
+        with mock_sites_server(self.root, respond) as (url, certificate, requests):
+            environment = self.env | {
+                "SSL_CERT_FILE": str(certificate),
+                "AGTASK_SITES_BYPASS_TOKEN": "test-bypass",
+                "AGTASK_SITES_APP_TOKEN": "test-app",
+            }
+            self.write_config(self.home, {"backend": {"mode": "sites", "sites": {"url": url}}})
+            result = self.run_cli("list", "--filter", "created=2026-09-14", "--limit", "1000", "--json", env=environment)
+            self.assertEqual(json.loads(result.stdout), [])
+            self.assertEqual(len(requests), 1)
+            for operation in ("list", "search"):
+                for limit in ("0", "1001", "10000"):
+                    args = [operation] + (["example"] if operation == "search" else [])
+                    invalid = self.run_cli(*args, "--limit", limit, "--json", check=False, env=environment)
+                    self.assertNotEqual(invalid.returncode, 0)
+                    self.assertIn("--limit must be between 1 and 1000", invalid.stderr)
+            self.assertEqual(len(requests), 1)  # Reject before contacting Sites.
             self.assertFalse(self.db_path.exists())
 
     def test_sites_client_rejects_insecure_credentials_and_redacts_server_errors(self) -> None:
