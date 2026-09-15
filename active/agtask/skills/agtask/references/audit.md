@@ -6,6 +6,12 @@ ledger state. Local mode audits local SQLite; Sites mode audits hosted D1 and
 never falls back to the local ledger. Never infer archive state from a missing
 list result, task age, title, or conversation status.
 
+Invoking this workflow, directly or through an authorized cleanup run,
+authorizes marking positively verified archived Codex tasks `done` in the
+ledger without a separate approval. A request for preview or read-only audit
+stops after planning. Never archive Codex tasks or change unresolved rows as
+part of this reconciliation.
+
 1. Run `python3 ./scripts/agtask audit --json` using the capture and recovery
    procedure below. It returns every nonterminal
    ledger row whose status is `todo`, `active`, or `blocked`, plus one lookup
@@ -41,20 +47,24 @@ list result, task age, title, or conversation status.
    }
    ```
 
-4. Show the returned `affected_tasks` and every `unresolved` lookup to the
-   user. If there are affected tasks, ask for explicit confirmation to archive
-   exactly that displayed set. Do not treat silence, unavailable confirmation,
-   an earlier general instruction, or approval of a different set as consent.
-5. If the user declines or confirmation is unavailable, stop. The planning
-   command has made no ledger changes.
-6. After explicit confirmation, repeat every Codex lookup and build a fresh
-   observation document. Submit it with `--apply <plan_token> --json`. The CLI
+4. Retain the exact `affected_tasks` set and every `unresolved` lookup in the
+   run report. If no tasks are affected, stop; report unresolved lookups rather
+   than calling an incomplete audit successful. Stop here for a preview.
+5. For affected tasks, repeat every Codex lookup and build a fresh observation
+   document, then submit it with `--apply <plan_token> --json` without asking
+   for separate user confirmation. The CLI
    recomputes the token under its SQLite write lock or transactional D1 batch.
-   If Codex archive results,
-   the active set, or an affected row changed, it fails closed or returns no
-   candidates; show any new plan and ask again. Never reuse the
-   pre-confirmation observations without refreshing them or substitute a token
-   from another run.
+   If archive results, the active set, or an affected row changed, do not force
+   the old plan: build a new plan and refresh once more. Stop and report state
+   churn if that replacement plan also changes. Never reuse stale observations
+   or substitute a token from another run.
+6. Verify the apply result and the affected ledger rows are `done`. Report
+   tasks changed and all unresolved lookups or apply failures.
+
+The existing CLI protocol calls an unapplied candidate plan
+`confirmation_required`; this is the plan-token handshake, not a requirement
+for another human approval in this skill. Use JSON output and retain the
+plan-token and archive-state checks.
 
 The apply phase moves only still-auditable, positively observed archived
 sessions to the ledger's existing terminal `done` state. It sets `closed`,
@@ -74,13 +84,13 @@ output. For discovery, run this from the skill directory:
 
 ```sh
 umask 077
-audit_run_dir=$(mktemp -d "${TMPDIR:-/tmp}/agtask-audit.XXXXXX") || exit 125
-test -n "$audit_run_dir" && test -d "$audit_run_dir" || exit 125
-printf '%s\n' "$audit_run_dir"
-python3 ./scripts/agtask audit --json > "$audit_run_dir/stdout.json" 2> "$audit_run_dir/stderr.txt"
-audit_exit=$?
-printf '%s\n' "$audit_exit" > "$audit_run_dir/exit-status"
-exit "$audit_exit"
+AUDIT_RUN_DIR=$(mktemp -d "${TMPDIR:-/tmp}/agtask-audit.XXXXXX") || exit 125
+test -n "$AUDIT_RUN_DIR" && test -d "$AUDIT_RUN_DIR" || exit 125
+printf '%s\n' "$AUDIT_RUN_DIR"
+python3 ./scripts/agtask audit --json > "$AUDIT_RUN_DIR/stdout.json" 2> "$AUDIT_RUN_DIR/stderr.txt"
+AUDIT_EXIT=$?
+printf '%s\n' "$AUDIT_EXIT" > "$AUDIT_RUN_DIR/exit-status"
+exit "$AUDIT_EXIT"
 ```
 
 - Require exit status `0` and complete, parseable JSON before declaring the

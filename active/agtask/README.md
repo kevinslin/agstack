@@ -93,8 +93,9 @@ file has its attachment time, resolved absolute path, basename, and
 lookup requests for `todo`, `active`, and `blocked` tasks using their real
 Codex `session_id`. Supplied
 Codex app observations produce an exact affected set and plan token without
-writing. Only a second call with that token, made after explicit user
-confirmation, moves positively archived rows to `done`; missing or failed
+writing. The skill refreshes archive observations and automatically makes a
+second call with that token to move positively archived rows to `done`, without
+separate user approval. Preview requests stop at planning; missing or failed
 lookups retain their prior status and are reported as unresolved. See
 [the CLI contract](docs/CLI.md#audit). Agent runs retain stdout, stderr, and exit
 status and recover interrupted read-only calls through supported execution

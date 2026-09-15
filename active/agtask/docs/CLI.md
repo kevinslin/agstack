@@ -638,7 +638,7 @@ idempotent no-op.
 ## `audit`
 
 Reconcile active ledger rows with archive state observed through Codex app APIs.
-The command is deliberately split into discovery, planning, and confirmed apply
+The command is deliberately split into discovery, planning, and token-checked apply
 because the CLI cannot and does not call model-mediated Codex APIs.
 
 Audit always uses the selected backend: local mode reconciles local SQLite
@@ -668,12 +668,13 @@ python3 "$AGTASK" audit \
 If any `todo`, `active`, or `blocked` task has a positive `archived`
 observation, the result has
 `phase: "confirmation_required"`, lists the exact `affected_tasks`, and returns
-a deterministic `plan_token`; no state has changed. The caller must show that
-set and obtain explicit user confirmation. Declining, omitting, or being unable
-to obtain confirmation ends the workflow without another command.
+a deterministic `plan_token`; no state has changed. The phase name is the
+existing protocol label for the plan/apply handshake. The agtask skill does
+not require separate user approval for positively verified archived tasks;
+an explicit preview request stops at planning.
 
-Only after confirmation may the caller refresh every Codex lookup and submit
-the fresh observations with the returned token:
+The caller refreshes every Codex lookup and submits the fresh observations
+with the returned token:
 
 ```bash
 python3 "$AGTASK" audit \
@@ -698,7 +699,7 @@ matching auditable candidate.
 | Flag | Values and behavior |
 | --- | --- |
 | `--observations-json <json>` | Optional strict observation document. Omit for discovery. |
-| `--apply <plan-token>` | Apply the unchanged affected set after explicit user confirmation. Requires observations. |
+| `--apply <plan-token>` | Apply the unchanged affected set using fresh archive observations. No separate user approval is required by the skill. |
 | `--json` | Emit the structured protocol result. Human output lists lookup requests, affected tasks, and unresolved sessions. |
 
 Codex lookup requests always use `thread.session_id`; affected rows retain their

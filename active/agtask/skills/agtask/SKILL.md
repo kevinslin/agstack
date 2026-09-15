@@ -50,8 +50,9 @@ workflow: it creates exactly one child and attaches the note to that child.
 Add registers the current task without changing it in the Codex app.
 Standalone attach updates one local text file and links it to the current
 ledger task. A create/designate invocation creates at most one child; main
-designation never creates another task. Audit requires explicit confirmation
-before mutation. Rename coordinates the Codex app and ledger without silently
+designation never creates another task. Audit automatically marks verified
+archived tasks done through the guarded plan/apply workflow; no separate user
+confirmation is required. Rename coordinates the Codex app and ledger without silently
 accepting divergence. Close owns its merge lease through completion or release.
 
 ## Notification boundary
