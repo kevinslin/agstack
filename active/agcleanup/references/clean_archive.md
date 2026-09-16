@@ -45,14 +45,27 @@ archiving every matching task without an additional confirmation.
 6. Continue after individual archival failures. If the invoking task is itself
    in the section, archive it last so earlier tasks are not abandoned. Remove
    positively identified stale section items only through a supported Codex
-   sidebar action or API; never edit global-state JSON or SQLite directly. If
-   no supported removal action is available, retain the item and report it.
+   sidebar action or API. After verifying that a task is archived on its actual
+   host, explicitly call
+   `move_thread_to_sidebar_section({ threadId, hostId, sectionId: "threads" })`
+   to remove its custom-section membership. Prefer this explicit destination
+   over `null`, which can acknowledge success without clearing a migrated
+   remote membership. Never edit global-state JSON or SQLite directly. If no
+   supported removal action is available, retain the item and report it.
 7. Re-list the sidebar after archival with the same 180-second timeout and one
    transient retry. Report the section name and ID, initial and final member
    counts, eligible Codex tasks, local and remote archived counts based on
    their actual hosts, corrected stale host hints, stale items removed or
    retained, skipped non-task entries, unresolved remote hosts, and exact
    per-task errors.
+   A successful mutation response is not proof that membership disappeared:
+   verify the exact task ID is absent from the section's fresh `itemKeys`.
+   Connected hosts can reintroduce stale membership or duplicate sections;
+   if this occurs, report the unresolved state rather than claiming success.
+   Do not rebuild or delete a section during routine cleanup. A separately
+   authorized sidebar repair must snapshot its members, verify every member's
+   archive state, recheck unchanged membership before mutation, and preserve
+   unrelated sections and their ordering.
 
 ## Guardrails
 

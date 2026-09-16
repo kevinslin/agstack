@@ -85,6 +85,18 @@ def trusted_base(directory: Path, branch: str) -> str | None:
     return None
 
 
+def local_branch_exists(directory: Path, branch: str) -> bool:
+    result = git(directory, "show-ref", "--verify", "--quiet", f"refs/heads/{branch}")
+    if result.returncode == 0:
+        return True
+    if result.returncode == 1:
+        return False
+    detail = result.stderr.strip() or result.stdout.strip()
+    if detail:
+        raise ValueError(f"local branch existence check failed: {detail}")
+    raise ValueError(f"local branch existence check failed with exit {result.returncode}")
+
+
 def day_bounds(target_day: date) -> tuple[int, int]:
     timezone = datetime.now().astimezone().tzinfo
     start = datetime.combine(target_day, time.min, timezone)
@@ -143,14 +155,6 @@ def inspect(task: Task, unverified: set[str], current_directory: Path) -> dict[s
     }
     if task.branch in PROTECTED_BRANCHES:
         return candidate | {"outcome": "protected", "reason": "protected default branch"}
-    if unverified:
-        return candidate | {
-            "outcome": "uncertain",
-            "reason": "branch is referenced by unverified or active tasks",
-            "unverified_thread_count": len(unverified),
-            "unverified_thread_ids": sorted(unverified)[:10],
-            "unverified_thread_ids_truncated": len(unverified) > 10,
-        }
     if not task.cwd.is_absolute() or not task.cwd.is_dir():
         return candidate | {"outcome": "uncertain", "reason": "task checkout is inaccessible"}
     repository_result = git(task.cwd, "rev-parse", "--show-toplevel")
@@ -162,12 +166,29 @@ def inspect(task: Task, unverified: set[str], current_directory: Path) -> dict[s
     candidate["repository"] = str(repository)
     matches = [entry for entry in registered if entry.branch == task.branch]
     if len(matches) != 1:
-        reason = "no exact registered linked worktree" if not matches else "branch has ambiguous worktrees"
+        if not matches and not local_branch_exists(repository, task.branch):
+            return candidate | {
+                "outcome": "protected",
+                "reason": "stale task metadata: local branch is absent and no registered linked worktree exists",
+            }
+        reason = (
+            "local branch exists without an exact registered linked worktree"
+            if not matches
+            else "branch has ambiguous worktrees"
+        )
         return candidate | {"outcome": "uncertain", "reason": reason}
     target = matches[0]
     candidate["worktree"] = str(target.path)
     if target.path == registered[0].path:
         return candidate | {"outcome": "protected", "reason": "branch is checked out in the primary worktree"}
+    if unverified:
+        return candidate | {
+            "outcome": "uncertain",
+            "reason": "branch is referenced by unverified or active tasks",
+            "unverified_thread_count": len(unverified),
+            "unverified_thread_ids": sorted(unverified)[:10],
+            "unverified_thread_ids_truncated": len(unverified) > 10,
+        }
     if target.locked:
         return candidate | {"outcome": "uncertain", "reason": "worktree is locked"}
     if target.path == current_directory or target.path in current_directory.parents:

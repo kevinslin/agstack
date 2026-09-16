@@ -1,5 +1,17 @@
 # Cleanup reports
 
+Keep routine user-facing summaries succinct. When every command has verified
+success and exhaustive required coverage, say `Everything is successful.`
+Otherwise show only the issues found: command, concrete problem, and any action
+needed. Do not list successful commands alongside issues. A request for detail
+overrides this concise default.
+
+Retain the full run timestamp, discovered commands, per-command counts, exact
+errors, and coverage evidence in a detailed report or run artifact. Link it when
+useful; do not omit failures or partial coverage to shorten the summary.
+
+For the detailed report:
+
 Group cleanup command outcomes under `Unsuccessful runs` first, then
 `Successful runs`. Apply this order to manual runs and consolidated scheduled
 reports. List each command exactly once; write `None` for an empty group.

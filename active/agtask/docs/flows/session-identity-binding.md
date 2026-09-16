@@ -1,7 +1,7 @@
 ---
 created: 2026-07-17
-updated: 2026-07-21
-last_updated_session: codex/019f6e7b-6fee-7b22-9ee7-0448a1431036
+updated: 2026-09-16
+last_updated_session: codex/01a0abbf-4f6c-7be1-9451-ec0ae852357f
 ---
 
 # Session Identity Binding Flow
@@ -217,6 +217,14 @@ rollouts, updates `session_id` and the real prompt-derived description, and
 returns `session_rebound_from`. The following reserved bootstrap write records
 the canonical initial user turn.
 
+In Sites mode, the hosted D1 endpoint implements the same authoritative
+one-shot contract. The rebind is a guarded batch whose first statement updates
+only when the source session, immutable metadata, target-session uniqueness,
+active/unclosed state, and provisional rollout shape still match. The copied
+helper rollouts are deleted only after that guarded update succeeds. A stale
+extra user/meta rollout, changed identity field, claimed target session, or
+closed row fails the request without rebinding or deleting history.
+
 ## Notes
 
 - Hook registration remains first-writer-wins because a hook cannot identify
@@ -258,3 +266,5 @@ Logs:
 - 2026-07-17 11:00: Documented logical-ID to Codex-session binding, copied-bootstrap rejection, and parent reconciliation (codex/019f6e7b-6fee-7b22-9ee7-0448a1431036)
 - 2026-07-21 10:07: Moved the flow into the per-flow directory and linked it to the task-creation boundary (019f6e7b-6fee-7b22-9ee7-0448a1431036 - d0ab5633f6fc478e631614a90bf4c7e2054faafa)
 - 2026-07-22: Added authoritative one-shot reconciliation for copied helper sessions.
+- 2026-09-16: Added hosted Sites parity for authoritative one-shot
+  reconciliation with D1 guarded-update rollback behavior.

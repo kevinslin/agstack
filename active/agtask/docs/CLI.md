@@ -91,6 +91,10 @@ fail closed; hosted search uses parameterized substring matching rather than SQL
 FTS rank parity. `config`, `section-cache`, `install-hooks`, and
 `uninstall-hooks` remain available. Unsupported runtime hook bookkeeping fails
 open without local task writes.
+Hosted `register --authoritative-session` has parity with the local identity
+guard: it may rebind only an active child row with matching lineage/project/title,
+an unclaimed requested session, one `thread.created` meta rollout, exactly one
+user rollout, and no other metadata.
 
 The selected backend alone owns each operation. There is no implicit local
 fallback, migration, synchronization, or cross-backend task lookup. Recover
@@ -362,6 +366,9 @@ shape: one `thread.created` event, one user rollout, and no other metadata.
 The transaction removes copied helper user/assistant rollouts, rebinds
 `session_id`, replaces the description with the real prompt-derived value, and
 returns `session_rebound_from`. All other identity conflicts remain errors.
+In Sites mode, the hosted D1 operation performs the same check and mutation in
+one guarded batch; if the provisional row changes before the rebind applies,
+the request fails without deleting copied history.
 For compatibility with already-tracked rows, a retry may omit
 `--initial-prompt` and assert the exact stored description with `--description`.
 A retry returns an empty `hook_prompts` array. A `done` thread must be explicitly

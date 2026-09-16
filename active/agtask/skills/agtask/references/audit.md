@@ -20,14 +20,35 @@ part of this reconciliation.
 2. Resolve every requested session through Codex app thread APIs. Prefer an
    exact per-session read so an archived thread can be distinguished from a
    missing session. Do not interpret runtime load states such as `active`,
-   `idle`, or `notLoaded` as archive state. If the exact app read omits archive
-   state, query the current Codex-owned state database read-only for the exact
-   `threads.id` and use only its `archived` field. Treat multiple plausible
-   state databases or a failed query as `error`; treat an exact missing row as
-   `missing`. Classify each request as `archived`, `not_archived`, `missing`,
-   or `error`, and preserve the exact failure diagnostic in `detail`. Never
-   infer archive state from a missing list result, task age, title, or
-   conversation/runtime status.
+   `idle`, or `notLoaded` as archive state. If a no-host exact read is
+   ambiguous across duplicate host aliases, first resolve those aliases to a
+   canonical physical host when the app exposes one. If no canonical physical
+   host is available, read or list each named host explicitly and classify the
+   session only when every plausible copy has agreeing authoritative archive
+   evidence. Any conflicting, missing, unavailable, or unreadable copy remains
+   `error`. If the exact app read omits archive state, query the current
+   same-host Codex-owned state database read-only for the exact `threads.id`
+   and use only its `archived` field. A local state database is not
+   authoritative for a remote host. When that same-host database is unavailable
+   for a connected remote host, use that exact host's archived-thread listing
+   as the fallback archive authority: a positive listing match is `archived`;
+   an exact readable thread absent from an exhausted host listing is
+   `not_archived`.
+   Treat multiple plausible state databases, incomplete host sweeps,
+   unavailable hosts, or failed queries as `error`. An exact miss on connected
+   hosts does not establish absence on a known disconnected creation host;
+   retain that session as `error` with its host diagnostic. Do not reconnect or
+   create a replacement host without authorization. If original creation and
+   bootstrap evidence proves a stored session identity is wrong, use the
+   supported authoritative-registration recovery in
+   [`./create-advanced.md`](./create-advanced.md), then restart audit discovery.
+   Never infer a replacement identity from titles or timing. Treat verified
+   exact absence on the known host as `missing`. Classify each request as
+   `archived`, `not_archived`, `missing`, or `error`, and preserve the exact
+   failure diagnostic in `detail`. Never infer archive state from task age,
+   title, conversation/runtime status, or a missing archived-list result unless
+   paired with an exact readable thread on the same host and the bounded
+   host-list proof above.
 3. Pass one version-1 observation document to
    `audit --observations-json '<json>' --json`:
 

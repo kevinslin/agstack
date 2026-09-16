@@ -106,6 +106,23 @@ class CleanBranchesIntegrationTests(unittest.TestCase):
         self.assertEqual(result, 1 if report["failures"] else 0)
         return report
 
+    def cleanup_subprocess(self) -> dict:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT_PATH),
+                "--state-db",
+                str(self.database),
+                "--date",
+                self.day.isoformat(),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
     def assert_branch_exists(self) -> None:
         self.run_git(self.repository, "rev-parse", "--verify", f"refs/heads/{self.branch}")
 
@@ -196,6 +213,64 @@ class CleanBranchesIntegrationTests(unittest.TestCase):
 
         self.assertIn("primary worktree", report["protected"][0]["reason"])
         self.assertTrue(self.repository.exists())
+
+    def test_reports_primary_checkout_before_unverified_task_references(self) -> None:
+        self.run_git(self.repository, "checkout", "-b", "codex/primary-task")
+        self.task(branch="codex/primary-task", cwd=self.repository)
+        self.task("possibly-active", branch="codex/primary-task", cwd=self.repository, archived=False)
+
+        report = self.cleanup()
+
+        self.assertEqual(report["protected"][0]["reason"], "branch is checked out in the primary worktree")
+        self.assertEqual(report["uncertain"], [])
+        self.assertTrue(self.repository.exists())
+
+    def test_subprocess_reports_stale_absent_branch_metadata_as_protected_noop(self) -> None:
+        self.task(branch="codex/missing-worktree", cwd=self.repository)
+        self.task("possibly-active", branch="codex/missing-worktree", cwd=self.repository, archived=False)
+
+        report = self.cleanup_subprocess()
+
+        self.assertIn("local branch is absent", report["protected"][0]["reason"])
+        self.assertEqual(report["branches_cleaned"], [])
+        self.assertEqual(report["worktrees_removed"], [])
+        self.assertEqual(report["uncertain"], [])
+
+    def test_subprocess_reports_existing_branch_without_worktree_as_uncertain(self) -> None:
+        branch = "codex/branch-only"
+        self.run_git(self.repository, "branch", branch, "main")
+        self.task(branch=branch, cwd=self.repository)
+
+        report = self.cleanup_subprocess()
+
+        self.assertEqual(
+            report["uncertain"][0]["reason"],
+            "local branch exists without an exact registered linked worktree",
+        )
+        self.assertEqual(report["branches_cleaned"], [])
+        self.assertEqual(report["worktrees_removed"], [])
+        self.assertEqual(report["protected"], [])
+
+    def test_branch_lookup_git_error_does_not_become_stale_metadata_noop(self) -> None:
+        self.task(branch="codex/missing-worktree", cwd=self.repository)
+        original_git = cleanup.git
+
+        def fail_show_ref(directory: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
+            if arguments[:3] == ("show-ref", "--verify", "--quiet"):
+                return subprocess.CompletedProcess(
+                    ["git", "-C", str(directory), *arguments],
+                    128,
+                    "",
+                    "fatal: branch lookup failed",
+                )
+            return original_git(directory, *arguments)
+
+        with mock.patch.object(cleanup, "git", side_effect=fail_show_ref):
+            report = self.cleanup()
+
+        self.assertEqual(report["protected"], [])
+        self.assertEqual(report["uncertain"], [])
+        self.assertIn("local branch existence check failed", report["failures"][0]["error"])
 
     def test_dry_run_reports_eligible_without_mutation(self) -> None:
         self.merge()

@@ -27,7 +27,11 @@ See [Architecture](docs/ARCHITECTURE.md) for system boundaries and
 rollout updates, and closing. The canonical hosted dashboard, task API, D1
 schema, and Sites deployment configuration live together in [site/](site/);
 see the [hosted Site README](site/README.md) for development and deployment
-boundaries.
+boundaries. The hosted task API preserves the same guarded
+`register --authoritative-session` reconciliation used by the local ledger, so
+a copied helper/title-generation binding can be rebound to the real
+`create_thread` session only while the row still has its provisional first-turn
+shape.
 
 ## Install
 

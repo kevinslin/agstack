@@ -461,7 +461,9 @@ async function auditTasks(payload: Payload): Promise<Record<string, unknown>> {
   return report;
 }
 
-async function registerTask(payload: Payload): Promise<TaskDetail & { task_created: boolean }> {
+async function registerTask(
+  payload: Payload,
+): Promise<TaskDetail & { task_created: boolean; session_rebound_from?: string }> {
   const id = requiredString(payload, "id", 128);
 
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id)) {
@@ -473,6 +475,7 @@ async function registerTask(payload: Payload): Promise<TaskDetail & { task_creat
   const title = requiredString(payload, "title", 512);
   const kind = payload.kind;
   const status = readStatus(payload.status ?? "active");
+  const authoritativeSession = payload.authoritative_session === true;
   const parentSessionId =
     payload.parent_session_id === undefined || payload.parent_session_id === null
       ? null
@@ -498,6 +501,14 @@ async function registerTask(payload: Payload): Promise<TaskDetail & { task_creat
     throw new TaskOperationError("New tasks must be todo or active.", 400);
   }
 
+  if (authoritativeSession && kind !== "child") {
+    throw new TaskOperationError("authoritative_session is only valid for child tasks.", 400);
+  }
+
+  if (authoritativeSession && status !== "active") {
+    throw new TaskOperationError("authoritative_session requires active status.", 400);
+  }
+
   const initialPrompt =
     payload.initial_prompt === undefined || payload.initial_prompt === null
       ? null
@@ -521,6 +532,10 @@ async function registerTask(payload: Payload): Promise<TaskDetail & { task_creat
     throw new TaskOperationError("A normalized task description is required.", 400);
   }
 
+  if (authoritativeSession && initialPrompt === null) {
+    throw new TaskOperationError("authoritative_session requires initial_prompt.", 400);
+  }
+
   const d1 = database();
   const existing = await d1
     .prepare("SELECT * FROM agtask_threads WHERE id = ? OR session_id = ?")
@@ -537,14 +552,126 @@ async function registerTask(payload: Payload): Promise<TaskDetail & { task_creat
     row.description === description;
 
   if (existing.results.length > 0) {
-    if (existing.results.length !== 1 || !matchesRegistration(existing.results[0])) {
+    if (existing.results.length === 1 && matchesRegistration(existing.results[0])) {
+      return { ...(await taskDetail(id)), task_created: false };
+    }
+
+    const candidate = existing.results.length === 1 ? existing.results[0] : undefined;
+    if (
+      !authoritativeSession ||
+      candidate === undefined ||
+      candidate.id !== id ||
+      candidate.session_id === sessionId
+    ) {
       throw new TaskOperationError(
         "Task registration conflicts with an existing task or session.",
         409,
       );
     }
 
-    return { ...(await taskDetail(id)), task_created: false };
+    if (
+      candidate.parent_session_id !== parentSessionId ||
+      candidate.kind !== kind ||
+      candidate.project !== project ||
+      candidate.title !== title
+    ) {
+      throw new TaskOperationError(
+        "Task registration conflicts with an existing task or session.",
+        409,
+      );
+    }
+
+    if (candidate.status !== "active" || candidate.closed !== null) {
+      throw new TaskOperationError("Cannot rebind a non-provisional task.", 409);
+    }
+
+    const reboundFrom = candidate.session_id;
+    const timestamp = new Date().toISOString();
+
+    try {
+      await d1.batch([
+        d1
+          .prepare(
+            "UPDATE agtask_threads SET session_id = ?, description = ?, " +
+              "updated = ?, status = ?, closed = NULL WHERE id = ? " +
+              "AND session_id = ? AND parent_session_id = ? AND kind = ? " +
+              "AND project = ? AND title = ? AND status = 'active' AND closed IS NULL " +
+              "AND NOT EXISTS (" +
+              "SELECT 1 FROM agtask_threads WHERE session_id = ? AND id <> ?" +
+              ") " +
+              "AND (" +
+              "SELECT count(*) FROM agtask_rollouts WHERE thread_id = ? " +
+              "AND role = 'meta' AND turn_id = 'thread.created' " +
+              "AND message = 'thread.created'" +
+              ") = 1 " +
+              "AND NOT EXISTS (" +
+              "SELECT 1 FROM agtask_rollouts WHERE thread_id = ? AND role = 'meta' " +
+              "AND NOT (turn_id = 'thread.created' AND message = 'thread.created')" +
+              ") " +
+              "AND (" +
+              "SELECT count(*) FROM agtask_rollouts WHERE thread_id = ? AND role = 'user'" +
+              ") = 1",
+          )
+          .bind(
+            sessionId,
+            description,
+            timestamp,
+            status,
+            id,
+            reboundFrom,
+            parentSessionId,
+            kind,
+            project,
+            title,
+            sessionId,
+            id,
+            id,
+            id,
+            id,
+          ),
+        d1
+          .prepare(
+            "SELECT CASE WHEN changes() = 1 THEN 1 " +
+              "ELSE json_extract('invalid', '$') END AS applied",
+          ),
+        d1
+          .prepare(
+            "DELETE FROM agtask_rollouts WHERE thread_id = ? " +
+              "AND NOT (role = 'meta' AND turn_id = 'thread.created' " +
+              "AND message = 'thread.created')",
+          )
+          .bind(id),
+      ]);
+    } catch (error) {
+      const cause = error instanceof Error && error.cause instanceof Error
+        ? error.cause.message
+        : "";
+
+      if (
+        error instanceof Error &&
+        /malformed JSON|invalid/i.test(`${error.message} ${cause}`)
+      ) {
+        throw new TaskOperationError(
+          "Cannot rebind a task with non-provisional rollout history.",
+          409,
+        );
+      }
+
+      if (
+        error instanceof Error &&
+        /unique|constraint/i.test(`${error.message} ${cause}`)
+      ) {
+        throw new TaskOperationError("Task registration conflicts with existing data.", 409);
+      }
+
+      throw error;
+    }
+
+    return {
+      ...(await taskDetail(id)),
+      task_created: false,
+      session_rebound_from: reboundFrom,
+    };
   }
 
   const timestamp = new Date().toISOString();

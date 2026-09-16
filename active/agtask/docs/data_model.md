@@ -51,6 +51,14 @@ Supported hosted operations are `register`, `add`, `show`, `list`,
 `record-turn`, `append-rollout`, `status`, `reopen`, `search`, and `dashboard`;
 each operates only on those D1 records. Hosted search uses parameterized
 substring matching rather than a local FTS projection.
+Hosted `register --authoritative-session` is the narrow cross-session
+reconciliation exception. It may atomically replace the `session_id` and
+description for an active child row only when the requested session is
+unclaimed, lineage/project/title still match, the row is unclosed, and the
+rollout history still has exactly one `thread.created` meta event, exactly one
+user rollout, and no other metadata. The guarded batch updates the row before
+removing copied helper user/assistant rollouts; if any predicate is stale, the
+batch aborts and preserves the previous row and rollout history.
 
 The hosted slice is not a copy of local SQLite schema version 8. In
 particular, local FTS virtual tables and rank ordering, attachments and local
@@ -175,11 +183,13 @@ modes. Kind, project, and parent lineage are immutable after registration;
 ordinary re-registration also treats the session and description as immutable.
 The narrow exception is authoritative one-shot reconciliation of a provisional
 copied-helper binding, which replaces the session and prompt-derived
-description before canonical task history is recorded. Direct `add` treats the
-current Codex title as an exact reconciliation value and rejects a session
-already stored as child kind. Version 8 is an exact-schema compatibility
-boundary; the CLI migrates only exact version-5, version-6, and version-7
-ledgers.
+description before canonical task history is recorded. In Sites mode the same
+exception is fenced by D1 predicates on the source session, immutable lineage,
+target-session uniqueness, active/unclosed state, and provisional rollout
+shape. Direct `add` treats the current Codex title as an exact reconciliation
+value and rejects a session already stored as child kind. Version 8 is an
+exact-schema compatibility boundary; the CLI migrates only exact version-5,
+version-6, and version-7 ledgers.
 
 ### Thread indexes
 

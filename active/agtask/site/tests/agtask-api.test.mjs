@@ -248,6 +248,117 @@ test("hosted list applies created and updated ranges and rejects unsafe filters"
   }
 });
 
+test("hosted authoritative registration rebinds a provisional copied helper session", async () => {
+  const child = {
+    id: "b20bf864-c377-450f-8818-437dfb644a01",
+    session_id: "shadow-title-session",
+    parent_session_id: "parent-authoritative-session",
+    kind: "child",
+    project: "sites-authoritative",
+    title: "Hosted authoritative child",
+    description: "You are a helpful assistant.",
+    initial_prompt: "You are a helpful assistant.",
+    status: "active",
+  };
+
+  assert.equal((await operation("register", child)).status, 200);
+  assert.equal(
+    (
+      await operation("record-turn", {
+        id: child.id,
+        role: "user",
+        turn_id: "shadow-title-turn",
+        content: "You are a helpful assistant.",
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await operation("record-turn", {
+        id: child.id,
+        role: "assistant",
+        turn_id: "shadow-title-turn",
+        content: '{"title":"Hosted authoritative child","description":"Real work"}',
+      })
+    ).status,
+    200,
+  );
+
+  const authoritative = await operation("register", {
+    ...child,
+    session_id: "real-created-session",
+    description: "Do the real hosted child work.",
+    initial_prompt: "Do the real hosted child work.",
+    authoritative_session: true,
+  });
+  assert.equal(authoritative.status, 200);
+  const rebound = await authoritative.json();
+  assert.equal(rebound.session_id, "real-created-session");
+  assert.equal(rebound.session_rebound_from, "shadow-title-session");
+  assert.equal(rebound.description, "Do the real hosted child work.");
+  assert.deepEqual(
+    rebound.rollouts.map((row) => [row.role, row.turn_id]),
+    [["meta", "thread.created"]],
+  );
+
+  const bootstrap = await operation("record-turn", {
+    id: child.id,
+    role: "user",
+    turn_id: "bootstrap",
+    content: "Do the real hosted child work.",
+  });
+  assert.equal(bootstrap.status, 200);
+  assert.equal((await bootstrap.json()).rollouts.filter((row) => row.role === "user").length, 1);
+});
+
+test("hosted authoritative registration rejects stale provisional history without deletion", async () => {
+  const child = {
+    id: "c30bf864-c377-450f-8818-437dfb644a01",
+    session_id: "stale-shadow-title-session",
+    parent_session_id: "parent-authoritative-session",
+    kind: "child",
+    project: "sites-authoritative",
+    title: "Hosted stale authoritative child",
+    description: "You are a helpful assistant.",
+    initial_prompt: "You are a helpful assistant.",
+    status: "active",
+  };
+
+  assert.equal((await operation("register", child)).status, 200);
+  for (const turn_id of ["shadow-title-turn", "extra-user-turn"]) {
+    assert.equal(
+      (
+        await operation("record-turn", {
+          id: child.id,
+          role: "user",
+          turn_id,
+          content: `User rollout ${turn_id}.`,
+        })
+      ).status,
+      200,
+    );
+  }
+
+  const rejected = await operation("register", {
+    ...child,
+    session_id: "stale-real-created-session",
+    description: "Do the real hosted child work.",
+    initial_prompt: "Do the real hosted child work.",
+    authoritative_session: true,
+  });
+  assert.equal(rejected.status, 409);
+
+  const preserved = await operation("show", { id: child.id });
+  assert.equal(preserved.status, 200);
+  const task = await preserved.json();
+  assert.equal(task.session_id, "stale-shadow-title-session");
+  assert.deepEqual(
+    task.rollouts.filter((row) => row.role === "user").map((row) => row.turn_id).sort(),
+    ["extra-user-turn", "shadow-title-turn"],
+  );
+});
+
 test("turns are idempotent, bounded, and drive blocked/active status", async () => {
   const event = {
     session_id: mainTask.session_id,
