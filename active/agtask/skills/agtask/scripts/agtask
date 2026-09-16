@@ -2713,21 +2713,74 @@ def register_thread(
                 f"cannot rebind non-provisional thread {thread_id}: stored status "
                 f"{existing['status']}"
             )
-        rollout_shape = connection.execute(
-            "SELECT "
-            "sum(CASE WHEN role='meta' AND turn_id='thread.created' "
-            "AND message='thread.created' THEN 1 ELSE 0 END) AS created_count, "
-            "sum(CASE WHEN role='meta' AND NOT (turn_id='thread.created' "
-            "AND message='thread.created') THEN 1 ELSE 0 END) AS other_meta_count, "
-            "sum(CASE WHEN role='user' THEN 1 ELSE 0 END) AS user_count "
-            "FROM rollout WHERE thread_id=?",
+        rollouts = connection.execute(
+            "SELECT role,turn_id,message FROM rollout WHERE thread_id=?",
             (thread_id,),
-        ).fetchone()
+        ).fetchall()
+
+        def is_title_helper_assistant(message: str) -> bool:
+            try:
+                payload = json.loads(message)
+            except json.JSONDecodeError:
+                return False
+            return (
+                isinstance(payload, dict)
+                and set(payload) == {"title", "description"}
+                and isinstance(payload["title"], str)
+                and payload["title"].strip() != ""
+                and isinstance(payload["description"], str)
+                and payload["description"].strip() != ""
+            )
+
+        helper_assistants = [
+            row
+            for row in rollouts
+            if row["role"] == "assistant"
+            and is_title_helper_assistant(row["message"])
+        ]
+        helper_turn_id = helper_assistants[0]["turn_id"] if helper_assistants else None
+        title_helper_users = [
+            row
+            for row in rollouts
+            if row["role"] == "user"
+            and row["turn_id"] == helper_turn_id
+            and row["message"] == "You are a helpful assistant."
+        ]
+        bootstrap_users = [
+            row
+            for row in rollouts
+            if row["role"] == "user"
+            and row["turn_id"] == "bootstrap"
+            and row["message"] == requested_description
+        ]
+        provisional_rollouts = [
+            row
+            for row in rollouts
+            if (
+                row["role"] == "meta"
+                and row["turn_id"] == "thread.created"
+                and row["message"] == "thread.created"
+            )
+            or row in helper_assistants
+            or row in title_helper_users
+            or row in bootstrap_users
+        ]
         if (
-            rollout_shape is None
-            or rollout_shape["created_count"] != 1
-            or rollout_shape["other_meta_count"] != 0
-            or rollout_shape["user_count"] != 1
+            len(
+                [
+                    row
+                    for row in rollouts
+                    if row["role"] == "meta"
+                    and row["turn_id"] == "thread.created"
+                    and row["message"] == "thread.created"
+                ]
+            )
+            != 1
+            or len([row for row in rollouts if row["role"] == "assistant"]) != 1
+            or len(helper_assistants) != 1
+            or len(title_helper_users) > 1
+            or len(bootstrap_users) > 1
+            or len(provisional_rollouts) != len(rollouts)
         ):
             raise TaskError(
                 f"cannot rebind non-provisional thread {thread_id}: "

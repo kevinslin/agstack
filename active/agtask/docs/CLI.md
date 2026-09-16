@@ -362,10 +362,14 @@ to another session or a session bound to another ID.
 With `--authoritative-session`, a different stored session may be displaced
 only when the requested session is unclaimed, immutable parent/kind/project/title
 metadata matches, and the existing active row has the provisional first-turn
-shape: one `thread.created` event, one user rollout, and no other metadata.
-The transaction removes copied helper user/assistant rollouts, rebinds
-`session_id`, replaces the description with the real prompt-derived value, and
-returns `session_rebound_from`. All other identity conflicts remain errors.
+shape: one `thread.created` event, exactly one title-helper assistant JSON
+object with only nonempty `title` and `description` string fields, an optional
+same-turn `You are a helpful assistant.` user rollout, and an optional
+reserved `bootstrap` user rollout that exactly matches the real prompt-derived
+description. The transaction removes copied helper user/assistant rollouts,
+rebinds `session_id`, replaces the description with the real prompt-derived
+value, and returns `session_rebound_from`. All other identity conflicts or
+rollout shapes remain errors.
 In Sites mode, the hosted D1 operation performs the same check and mutation in
 one guarded batch; if the provisional row changes before the rebind applies,
 the request fails without deleting copied history.

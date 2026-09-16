@@ -507,11 +507,15 @@ also unclaimed; the same `(id, session_id)` pair reconciles idempotently after
 immutable metadata validation; and hook-side conflicts perform no writes or
 actions. Parent-side `register --authoritative-session` is the narrow exception:
 when a copied helper won first, the requested session must be unclaimed,
-lineage/kind/project/title must match, and the stored active row must have one
-creation event, one user turn, and no other metadata. The transaction discards
-copied user/assistant rows, rebinds to the returned primary session, and stores
-the primary prompt description. Primary-key and unique-session constraints
-remain race backstops.
+lineage/kind/project/title must match, and the stored active row must remain a
+copied-helper provisional row. A provisional row has one creation event,
+exactly one title-helper assistant JSON object with only nonempty `title` and
+`description` string fields, at most one same-turn helper user prompt, and at
+most one reserved `bootstrap` user rollout equal to the primary prompt
+description. The transaction discards copied helper and reserved-bootstrap
+rollouts, rebinds to the returned primary session, and stores the primary
+prompt description. Primary-key and unique-session constraints remain race
+backstops.
 
 Parent-side registration supplies both `--id` and `--session-id`; it and the
 reserved bootstrap write remain retries. A

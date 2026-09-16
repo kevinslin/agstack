@@ -184,7 +184,12 @@ metadata checks. It inserts when it wins the race and verifies without mutation
 when the real hook already won. One-shot creation additionally marks the
 session returned by `create_thread` as authoritative. If a copied helper hook
 won first, the parent may replace that provisional binding while ordinary
-registration remains fail-closed.
+registration remains fail-closed. The replacement guard accepts only copied
+title-helper history: one `thread.created` event, exactly one assistant JSON
+object with only nonempty `title` and `description` string fields, an optional
+same-turn helper user prompt, and an optional reserved `bootstrap` user equal
+to the real prompt description. Any other user, assistant, metadata, or
+duplicate reserved rollout blocks the rebind.
 
 #### 5.1 Preserve later lifecycle state
 

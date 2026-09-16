@@ -312,6 +312,115 @@ test("hosted authoritative registration rebinds a provisional copied helper sess
   assert.equal((await bootstrap.json()).rollouts.filter((row) => row.role === "user").length, 1);
 });
 
+test("hosted authoritative registration rebinds helper rows without a title prompt user", async () => {
+  const child = {
+    id: "d40bf864-c377-450f-8818-437dfb644a01",
+    session_id: "assistant-only-shadow-session",
+    parent_session_id: "parent-authoritative-session",
+    kind: "child",
+    project: "sites-authoritative",
+    title: "Hosted assistant-only shadow",
+    description: "You are a helpful assistant.",
+    initial_prompt: "You are a helpful assistant.",
+    status: "active",
+  };
+
+  assert.equal((await operation("register", child)).status, 200);
+  assert.equal(
+    (
+      await operation("record-turn", {
+        id: child.id,
+        role: "assistant",
+        turn_id: "shadow-title-turn",
+        content: '{"title":"Hosted assistant-only shadow","description":"Real work"}',
+      })
+    ).status,
+    200,
+  );
+
+  const authoritative = await operation("register", {
+    ...child,
+    session_id: "assistant-only-real-session",
+    description: "Do the real assistant-only child work.",
+    initial_prompt: "Do the real assistant-only child work.",
+    authoritative_session: true,
+  });
+  assert.equal(authoritative.status, 200);
+  const rebound = await authoritative.json();
+  assert.equal(rebound.session_id, "assistant-only-real-session");
+  assert.equal(rebound.session_rebound_from, "assistant-only-shadow-session");
+  assert.deepEqual(
+    rebound.rollouts.map((row) => [row.role, row.turn_id]),
+    [["meta", "thread.created"]],
+  );
+});
+
+test("hosted authoritative registration tolerates one previously recorded bootstrap", async () => {
+  const child = {
+    id: "e50bf864-c377-450f-8818-437dfb644a01",
+    session_id: "bootstrap-shadow-session",
+    parent_session_id: "parent-authoritative-session",
+    kind: "child",
+    project: "sites-authoritative",
+    title: "Hosted bootstrap shadow",
+    description: "You are a helpful assistant.",
+    initial_prompt: "You are a helpful assistant.",
+    status: "active",
+  };
+
+  const realPrompt = "Do the real bootstrap child work.";
+  assert.equal((await operation("register", child)).status, 200);
+  assert.equal(
+    (
+      await operation("record-turn", {
+        id: child.id,
+        role: "user",
+        turn_id: "shadow-title-turn",
+        content: "You are a helpful assistant.",
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await operation("record-turn", {
+        id: child.id,
+        role: "assistant",
+        turn_id: "shadow-title-turn",
+        content: '{"title":"Hosted bootstrap shadow","description":"Real work"}',
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await operation("record-turn", {
+        id: child.id,
+        role: "user",
+        turn_id: "bootstrap",
+        content: realPrompt,
+      })
+    ).status,
+    200,
+  );
+
+  const authoritative = await operation("register", {
+    ...child,
+    session_id: "bootstrap-real-session",
+    description: realPrompt,
+    initial_prompt: realPrompt,
+    authoritative_session: true,
+  });
+  assert.equal(authoritative.status, 200);
+  const rebound = await authoritative.json();
+  assert.equal(rebound.session_id, "bootstrap-real-session");
+  assert.equal(rebound.session_rebound_from, "bootstrap-shadow-session");
+  assert.deepEqual(
+    rebound.rollouts.map((row) => [row.role, row.turn_id]),
+    [["meta", "thread.created"]],
+  );
+});
+
 test("hosted authoritative registration rejects stale provisional history without deletion", async () => {
   const child = {
     id: "c30bf864-c377-450f-8818-437dfb644a01",
@@ -326,6 +435,17 @@ test("hosted authoritative registration rejects stale provisional history withou
   };
 
   assert.equal((await operation("register", child)).status, 200);
+  assert.equal(
+    (
+      await operation("record-turn", {
+        id: child.id,
+        role: "assistant",
+        turn_id: "shadow-title-turn",
+        content: '{"title":"Hosted stale authoritative child","description":"Real work"}',
+      })
+    ).status,
+    200,
+  );
   for (const turn_id of ["shadow-title-turn", "extra-user-turn"]) {
     assert.equal(
       (
@@ -357,6 +477,45 @@ test("hosted authoritative registration rejects stale provisional history withou
     task.rollouts.filter((row) => row.role === "user").map((row) => row.turn_id).sort(),
     ["extra-user-turn", "shadow-title-turn"],
   );
+});
+
+test("hosted authoritative registration rejects arbitrary assistant-only history", async () => {
+  const child = {
+    id: "f60bf864-c377-450f-8818-437dfb644a01",
+    session_id: "actual-assistant-shadow-session",
+    parent_session_id: "parent-authoritative-session",
+    kind: "child",
+    project: "sites-authoritative",
+    title: "Hosted real assistant shadow",
+    description: "You are a helpful assistant.",
+    initial_prompt: "You are a helpful assistant.",
+    status: "active",
+  };
+
+  assert.equal((await operation("register", child)).status, 200);
+  assert.equal(
+    (
+      await operation("record-turn", {
+        id: child.id,
+        role: "assistant",
+        turn_id: "actual-work-turn",
+        content: '{"title":"Hosted real assistant shadow","description":"Real work","extra":true}',
+      })
+    ).status,
+    200,
+  );
+
+  const rejected = await operation("register", {
+    ...child,
+    session_id: "actual-assistant-real-session",
+    description: "Do the real hosted child work.",
+    initial_prompt: "Do the real hosted child work.",
+    authoritative_session: true,
+  });
+  assert.equal(rejected.status, 409);
+
+  const preserved = await operation("show", { id: child.id });
+  assert.equal((await preserved.json()).session_id, "actual-assistant-shadow-session");
 });
 
 test("turns are idempotent, bounded, and drive blocked/active status", async () => {

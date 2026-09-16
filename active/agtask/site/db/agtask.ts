@@ -609,8 +609,85 @@ async function registerTask(
               "AND NOT (turn_id = 'thread.created' AND message = 'thread.created')" +
               ") " +
               "AND (" +
-              "SELECT count(*) FROM agtask_rollouts WHERE thread_id = ? AND role = 'user'" +
-              ") = 1",
+              "SELECT count(*) FROM agtask_rollouts AS a WHERE a.thread_id = ? " +
+              "AND a.role = 'assistant'" +
+              ") <= 1 " +
+              "AND (" +
+              "SELECT count(*) FROM agtask_rollouts AS a WHERE a.thread_id = ? " +
+              "AND a.role = 'assistant' " +
+              "AND json_valid(a.message) " +
+              "AND json_type(a.message, '$') = 'object' " +
+              "AND json_type(a.message, '$.title') = 'text' " +
+              "AND length(trim(json_extract(a.message, '$.title'))) > 0 " +
+              "AND json_type(a.message, '$.description') = 'text' " +
+              "AND length(trim(json_extract(a.message, '$.description'))) > 0 " +
+              "AND NOT EXISTS (" +
+              "SELECT 1 FROM json_each(a.message) AS field " +
+              "WHERE field.key NOT IN ('title', 'description')" +
+              ")" +
+              ") = 1 " +
+              "AND (" +
+              "SELECT count(*) FROM agtask_rollouts AS u WHERE u.thread_id = ? " +
+              "AND u.role = 'user' AND u.message = 'You are a helpful assistant.' " +
+              "AND EXISTS (" +
+              "SELECT 1 FROM agtask_rollouts AS a WHERE a.thread_id = u.thread_id " +
+              "AND a.role = 'assistant' AND a.turn_id = u.turn_id " +
+              "AND json_valid(a.message) " +
+              "AND json_type(a.message, '$') = 'object' " +
+              "AND json_type(a.message, '$.title') = 'text' " +
+              "AND length(trim(json_extract(a.message, '$.title'))) > 0 " +
+              "AND json_type(a.message, '$.description') = 'text' " +
+              "AND length(trim(json_extract(a.message, '$.description'))) > 0 " +
+              "AND NOT EXISTS (" +
+              "SELECT 1 FROM json_each(a.message) AS field " +
+              "WHERE field.key NOT IN ('title', 'description')" +
+              ")" +
+              ")" +
+              ") <= 1 " +
+              "AND (" +
+              "SELECT count(*) FROM agtask_rollouts AS u WHERE u.thread_id = ? " +
+              "AND u.role = 'user' AND u.turn_id = 'bootstrap' AND u.message = ?" +
+              ") <= 1 " +
+              "AND NOT EXISTS (" +
+              "SELECT 1 FROM agtask_rollouts AS r WHERE r.thread_id = ? " +
+              "AND NOT (" +
+              "r.role = 'meta' AND r.turn_id = 'thread.created' " +
+              "AND r.message = 'thread.created'" +
+              ") " +
+              "AND NOT (" +
+              "r.role = 'assistant' " +
+              "AND json_valid(r.message) " +
+              "AND json_type(r.message, '$') = 'object' " +
+              "AND json_type(r.message, '$.title') = 'text' " +
+              "AND length(trim(json_extract(r.message, '$.title'))) > 0 " +
+              "AND json_type(r.message, '$.description') = 'text' " +
+              "AND length(trim(json_extract(r.message, '$.description'))) > 0 " +
+              "AND NOT EXISTS (" +
+              "SELECT 1 FROM json_each(r.message) AS field " +
+              "WHERE field.key NOT IN ('title', 'description')" +
+              ")" +
+              ") " +
+              "AND NOT (" +
+              "r.role = 'user' AND r.message = 'You are a helpful assistant.' " +
+              "AND EXISTS (" +
+              "SELECT 1 FROM agtask_rollouts AS a WHERE a.thread_id = r.thread_id " +
+              "AND a.role = 'assistant' AND a.turn_id = r.turn_id " +
+              "AND json_valid(a.message) " +
+              "AND json_type(a.message, '$') = 'object' " +
+              "AND json_type(a.message, '$.title') = 'text' " +
+              "AND length(trim(json_extract(a.message, '$.title'))) > 0 " +
+              "AND json_type(a.message, '$.description') = 'text' " +
+              "AND length(trim(json_extract(a.message, '$.description'))) > 0 " +
+              "AND NOT EXISTS (" +
+              "SELECT 1 FROM json_each(a.message) AS field " +
+              "WHERE field.key NOT IN ('title', 'description')" +
+              ")" +
+              ")" +
+              ") " +
+              "AND NOT (" +
+              "r.role = 'user' AND r.turn_id = 'bootstrap' AND r.message = ?" +
+              ")" +
+              ")",
           )
           .bind(
             sessionId,
@@ -628,6 +705,12 @@ async function registerTask(
             id,
             id,
             id,
+            id,
+            id,
+            id,
+            description,
+            id,
+            description,
           ),
         d1
           .prepare(

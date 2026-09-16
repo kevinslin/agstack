@@ -38,9 +38,10 @@ runtime. Hosted audits preserve the CLI's read-only discovery and planning,
 exact-confirmation tokens, and transactional archived-task reconciliation
 without accessing the local ledger. Hosted registration also preserves the
 CLI's guarded `--authoritative-session` reconciliation for copied helper
-sessions: the D1 batch first proves the existing row is still provisional, then
-rebinds the real session before deleting copied helper rollouts. Generate a
-migration after changing the hosted schema:
+sessions: the D1 batch first proves the existing row is still provisional
+title-helper history, including the optional helper prompt or reserved
+bootstrap variants, then rebinds the real session before deleting copied helper
+rollouts. Generate a migration after changing the hosted schema:
 
 ```sh
 npm run db:generate

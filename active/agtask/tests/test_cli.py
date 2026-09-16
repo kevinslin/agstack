@@ -1445,6 +1445,111 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertEqual((ignored_old_stop.stdout, ignored_old_stop.stderr), ("", ""))
         self.assertEqual(self.show(logical_id), reconciled)
 
+    def test_parent_rebinds_assistant_only_title_shadow(self) -> None:
+        logical_id = fixture_creation_id("authoritative-session-assistant-only")
+        title_session_id = "assistant-only-title-generator-shadow"
+        real_session_id = "assistant-only-real-created-session"
+        title = "agtask/authoritative-assistant-only"
+        real_description = "Summarize the assistant-only copied helper task."
+        real_prompt = bootstrap_prompt(
+            logical_id,
+            title=title,
+            prompt=real_description,
+        )
+
+        self.register(
+            logical_id,
+            session_id=title_session_id,
+            title=title,
+            initial_prompt="You are a helpful assistant.",
+            description="You are a helpful assistant.",
+        )
+        self.run_cli(
+            "record-turn",
+            "--id",
+            logical_id,
+            "--role",
+            "assistant",
+            "--turn-id",
+            "title-turn",
+            "--content",
+            '{"title":"Summarize copied helper","description":"Summarize recent work"}',
+            "--json",
+        )
+
+        result = self.register(
+            logical_id,
+            session_id=real_session_id,
+            title=title,
+            initial_prompt=real_prompt,
+            description=real_description,
+            authoritative_session=True,
+        )
+
+        self.assertEqual(result["session_id"], real_session_id)
+        self.assertEqual(result["session_rebound_from"], title_session_id)
+        self.assertEqual(
+            [(row["role"], row["turn_id"]) for row in result["rollouts"]],
+            [("meta", "thread.created")],
+        )
+
+    def test_parent_rebinds_shadow_with_reserved_bootstrap_user(self) -> None:
+        logical_id = fixture_creation_id("authoritative-session-bootstrap-user")
+        title_session_id = "bootstrap-title-generator-shadow"
+        real_session_id = "bootstrap-real-created-session"
+        title = "agtask/authoritative-bootstrap-user"
+        real_description = "Summarize the copied helper task with bootstrap."
+        real_prompt = bootstrap_prompt(
+            logical_id,
+            title=title,
+            prompt=real_description,
+        )
+
+        self.hook(
+            {
+                "hook_event_name": "UserPromptSubmit",
+                "session_id": title_session_id,
+                "turn_id": "title-turn",
+                "prompt": bootstrap_prompt(
+                    logical_id,
+                    title=title,
+                    prompt="You are a helpful assistant.",
+                ),
+            }
+        )
+        self.hook(
+            {
+                "hook_event_name": "Stop",
+                "session_id": title_session_id,
+                "turn_id": "title-turn",
+                "last_assistant_message": (
+                    '{"title":"Summarize copied helper","description":"Summarize recent work"}'
+                ),
+            }
+        )
+        with self.connect() as connection:
+            connection.execute(
+                "INSERT INTO rollout(thread_id, turn_id, role, message, created) "
+                "VALUES (?, 'bootstrap', 'user', ?, '2026-09-16T00:00:00+00:00')",
+                (logical_id, real_description),
+            )
+
+        result = self.register(
+            logical_id,
+            session_id=real_session_id,
+            title=title,
+            initial_prompt=real_prompt,
+            description=real_description,
+            authoritative_session=True,
+        )
+
+        self.assertEqual(result["session_id"], real_session_id)
+        self.assertEqual(result["session_rebound_from"], title_session_id)
+        self.assertEqual(
+            [(row["role"], row["turn_id"]) for row in result["rollouts"]],
+            [("meta", "thread.created")],
+        )
+
     def test_authoritative_session_rebind_preserves_conflict_guards(self) -> None:
         logical_id = fixture_creation_id("authoritative-session-conflicts")
         shadow_session_id = "shadow-session"
