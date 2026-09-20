@@ -101,7 +101,7 @@ if resolved.kind == "child"
   trailer := canonical_v2_trailer(creation_id, section_id_when_pinning)
 if resolved.kind == "child" and resolved.mode == "clean" and task_text exists
   prompt := task_text + configured_on_create + trailer
-  plan := create_thread(prompt, saved_project_id, resolved.environment)
+  plan := create_thread(resolved.title, prompt, saved_project_id, resolved.environment)
 return resolved + creation_id + trailer + optional(plan)
 ```
 
@@ -121,6 +121,7 @@ isolated Git checkout for the child.
 
 ```ts
 result := create_thread(
+  title=resolved.title,
   prompt=clean_prompt_with_final_v2_trailer,
   target.environment=resolved.environment,
   model=resolved.model_when_explicit,

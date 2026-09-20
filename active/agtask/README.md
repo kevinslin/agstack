@@ -9,7 +9,9 @@ turns, and lifecycle updates. A task's description is derived once from its
 initial creation prompt and remains stable while later turns continue to update
 rollout history and lifecycle status.
 
-A bare invocation starts a clean child task in the active project. An explicit
+A bare invocation starts a clean child task in the active project. Clean creation
+submits the resolved title up front, including when worktree setup is queued;
+parent and child title actions remain idempotent reconciliation. An explicit
 fork or context-preservation request creates a same-directory fork. Child tasks
 record the invoking Codex session as `parent_session_id`. Every tracked task has
 a pre-creation logical `id` and a unique Codex `session_id`. Explicit `kind=main`

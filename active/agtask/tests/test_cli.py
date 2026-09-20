@@ -752,53 +752,60 @@ class CliIntegrationTest(unittest.TestCase):
         self.assertFalse(self.db_path.exists())
 
     def test_resolve_create_builds_exact_clean_creation_plan(self) -> None:
-        result = json.loads(
-            self.run_cli(
-                "resolve-create",
-                "--mode",
-                "clean",
-                "--title",
-                "agtask/database-proof",
-                "--parent-session-id",
-                "parent-thread",
-                "--project",
-                "agtask",
-                "--task",
-                "Write a compact database proof.",
-                "--project-id",
-                "saved-project-id",
-                "--model",
-                "gpt-5.6-sol",
-                "--thinking",
-                "high",
-                "--json",
-            ).stdout
-        )
-        creation_id = result["id"]
-        trailer = BOOTSTRAP_SECTION_TRAILER.replace(CREATION_ID, creation_id)
-        prompt = "Task:\nWrite a compact database proof.\n\n" + trailer
-        self.assertEqual(result["thinking"], "high")
-        self.assertTrue(result["include_thinking"])
-        self.assertEqual(
-            result["creation_plan"],
-            {
-                "version": 1,
-                "next_tool": {
-                    "name": "create_thread",
-                    "arguments": {
-                        "prompt": prompt,
-                        "model": "gpt-5.6-sol",
-                        "thinking": "high",
-                        "target": {
-                            "type": "project",
-                            "projectId": "saved-project-id",
-                            "environment": {"type": "local"},
+        for worktree in (False, True):
+            with self.subTest(worktree=worktree):
+                result = json.loads(
+                    self.run_cli(
+                        "resolve-create",
+                        "--mode",
+                        "clean",
+                        "--title",
+                        "agtask/database-proof",
+                        "--worktree",
+                        str(worktree).lower(),
+                        "--parent-session-id",
+                        "parent-thread",
+                        "--project",
+                        "agtask",
+                        "--task",
+                        "Write a compact database proof.",
+                        "--project-id",
+                        "saved-project-id",
+                        "--model",
+                        "gpt-5.6-sol",
+                        "--thinking",
+                        "high",
+                        "--json",
+                    ).stdout
+                )
+                creation_id = result["id"]
+                trailer = BOOTSTRAP_SECTION_TRAILER.replace(CREATION_ID, creation_id)
+                prompt = "Task:\nWrite a compact database proof.\n\n" + trailer
+                self.assertEqual(result["thinking"], "high")
+                self.assertTrue(result["include_thinking"])
+                self.assertEqual(
+                    result["creation_plan"],
+                    {
+                        "version": 1,
+                        "next_tool": {
+                            "name": "create_thread",
+                            "arguments": {
+                                "title": "agtask/database-proof",
+                                "prompt": prompt,
+                                "model": "gpt-5.6-sol",
+                                "thinking": "high",
+                                "target": {
+                                    "type": "project",
+                                    "projectId": "saved-project-id",
+                                    "environment": {
+                                        "type": "worktree" if worktree else "local"
+                                    },
+                                },
+                            },
                         },
                     },
-                },
-            },
-        )
-        self.assertFalse(self.db_path.exists())
+                )
+                self.assertFalse(self.db_path.exists())
 
     def test_resolve_create_plan_preserves_resolved_task_bytes(self) -> None:
         result = json.loads(

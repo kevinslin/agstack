@@ -182,7 +182,9 @@ python3 ./scripts/agtask resolve-create \
 - For child kind, pass `environment` directly to the clean or fork creation
   tool. Pass the explicitly resolved model and reasoning level on the operation
   that receives the child prompt. For clean one-shot creation, require the
-  resolver to include both values in `creation_plan.next_tool.arguments`.
+  resolver to include both values and the exact resolved `title` in
+  `creation_plan.next_tool.arguments`. Submit that title at creation, including
+  queued worktree creation; later title actions are idempotent reconciliation.
   For a fork, pass both supported values when sending the child prompt. Never
   omit either value merely because the user did not request an override: doing
   so selects the destination profile instead of preserving the parent.
@@ -443,7 +445,8 @@ remain effective; child backup actions do not run without an accepted prompt.
 
 If clean creation returns a pending `clientThreadId` instead of a real session
 ID, report queued partial success with that ID and end parent-side work at the
-queued state. The clean `create_thread` request already contains the version-2
+queued state. Its resolved title was submitted in the creation request;
+materialization is not yet verified. The request also contains the version-2
 trailer, so the materialized child's first hook binds the resolver ID to its
 real session, records the user turn, and renders title/pin actions without
 parent polling. Report this path as queued and self-registering rather than
@@ -560,7 +563,8 @@ Return:
 - `Database: ~/.llm/agtask/ledger.db`;
 - for main kind, the direct title result and resolved section-placement
   outcome, including legacy global-pinning degradation or any exact error;
-- for a queued child, `Title: <resolved-title> (deferred to child)` and
+- for a queued clean child, `Title: <resolved-title> (submitted at creation)`;
+  for a queued fork, `Title: <resolved-title> (deferred to child)`; report either with
   `Pin: true (section: <section-id>; deferred to child)` or
   `Pin: false (skipped)`; the child surfaces the eventual app-action results;
 - for every local or remote child with a real Codex session ID, the direct

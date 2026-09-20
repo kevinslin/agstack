@@ -1801,6 +1801,7 @@ def build_creation_prompt(
 
 def creation_plan(
     *,
+    title: str,
     task: str,
     project_id: Optional[str],
     environment: dict[str, str],
@@ -1814,7 +1815,7 @@ def creation_plan(
         hook_prompts=hook_prompts,
         trailer=trailer,
     )
-    delivery_arguments: dict[str, Any] = {"prompt": prompt}
+    delivery_arguments: dict[str, Any] = {"title": title, "prompt": prompt}
     if model != "inherit":
         delivery_arguments["model"] = model
     if thinking != "inherit":
@@ -5293,6 +5294,7 @@ def command_resolve_create(args: argparse.Namespace) -> None:
         result["thinking"] = thinking
         result["include_thinking"] = thinking != "inherit"
         result["creation_plan"] = creation_plan(
+            title=title,
             task=args.task,
             project_id=args.project_id,
             environment=environment,

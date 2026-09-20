@@ -67,7 +67,8 @@ python3 ./scripts/agtask resolve-create \
    `environment.type=local`, and `creation_plan.next_tool.name=create_thread`.
    Require `include_model=true`, `include_thinking=true`, and creation-tool
    arguments whose `model` and `thinking` equal the resolved effective parent
-   settings or the user's explicit overrides.
+   settings or the user's explicit overrides. Require `arguments.title` to
+   equal the resolved title so naming is submitted with creation.
    Here `environment.type=local` means use the saved project's existing
    checkout rather than a new worktree; it does not require the saved project
    itself to be on the local host.
@@ -86,7 +87,8 @@ Task: [<title>](codex://threads/<threadId>) — created
    `::created-thread{clientThreadId="<clientThreadId>"}`, report the queued ID,
    and stop. The prompt already contains the version-2 bootstrap trailer, so
    the materialized child's first hook self-registers it and performs deferred
-   title and pin actions.
+   title reconciliation and pin actions. The resolved title was already
+   submitted in the creation request; queued materialization is not yet verified.
 8. For every real `threadId`, local or remote, immediately set the resolved
    title from the parent. When pinning is enabled, prefer
    `move_thread_to_sidebar_section({threadId, sectionId})`; use

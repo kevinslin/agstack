@@ -211,6 +211,8 @@ When `--task` is present for a clean child, the result also contains `thinking`,
 `include_thinking`, and `creation_plan`. The exact prompt lives at
 `creation_plan.next_tool.arguments.prompt`, including configured `OnCreate`
 instructions and the canonical final bootstrap trailer.
+`creation_plan.next_tool.arguments.title` contains the exact resolved title,
+so naming does not depend on the child bootstrap running.
 `creation_plan.next_tool` is a directly executable `create_thread` call. Fork
 and main workflows retain their existing behavior. Legacy calls without
 `--task` retain their existing JSON shape.
