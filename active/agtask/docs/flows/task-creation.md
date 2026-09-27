@@ -74,6 +74,11 @@ graph TD
 
 ### 1. Resolve one creation attempt
 
+New child tasks default to `gpt-6-astra` with `high` reasoning. Explicit user
+model and reasoning overrides apply independently. Ordinary creation does not
+query the parent's execution settings or require a reasoning-level answer.
+The creation payload carries both values explicitly.
+
 The parent resolves task kind, clean-or-fork mode, environment, title, model,
 pin policy, project, inherited sidebar section, and one logical creation ID
 before calling a Codex task tool. That ID is reused for every registration and

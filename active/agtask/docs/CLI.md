@@ -185,8 +185,8 @@ python3 "$AGTASK" resolve-create \
 | `--parent-session-id <id>` | Required for child creation and forbidden for main creation. Embedded as immutable Codex-session lineage in the version-2 child trailer. |
 | `--title <text>` | Required non-empty one-line resolved title without surrounding whitespace. |
 | `--worktree <boolean>` | `true` or `false`. Built-in default: `false`. |
-| `--model <name>` | Non-empty model name, or `inherit` to omit an explicit model. Built-in default: `inherit`. |
-| `--thinking <level>` | Optional reasoning override: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, `ultra`, or `inherit`. Requires `--task`. |
+| `--model <name>` | Non-empty model name, or `inherit` to omit an explicit model. Built-in default: `gpt-6-astra`. |
+| `--thinking <level>` | Reasoning override: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, `ultra`, or `inherit`. Defaults to `high` with `--task`; explicit values require `--task`. |
 | `--task <text>` | Opt into the complete clean-child creation plan. The resolved task must contain non-whitespace content; its bytes are otherwise preserved. |
 | `--project-id <id>` | Saved Codex project ID. Required with `--task` in clean mode so `next_tool` is directly executable. |
 | `--pin <boolean>` | `true` or `false`. Built-in default: `true`. |

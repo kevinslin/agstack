@@ -592,11 +592,11 @@ class CliIntegrationTest(unittest.TestCase):
                         "title": "agtask/database-proof",
                     },
                     "bootstrap_trailer": BOOTSTRAP_SECTION_TRAILER,
-                    "include_model": False,
+                    "include_model": True,
                     "hook_prompts": [],
                     "kind": "child",
                     "mode": "clean",
-                    "model": "inherit",
+                    "model": "gpt-6-astra",
                     "pin": True,
                     "project": "agtask",
                     "title": "agtask/database-proof",
@@ -626,11 +626,11 @@ class CliIntegrationTest(unittest.TestCase):
                         "title": "agtask/database-proof",
                     },
                     "bootstrap_trailer": BOOTSTRAP_SECTION_TRAILER,
-                    "include_model": False,
+                    "include_model": True,
                     "hook_prompts": [],
                     "kind": "child",
                     "mode": "clean",
-                    "model": "inherit",
+                    "model": "gpt-6-astra",
                     "pin": True,
                     "project": "agtask",
                     "title": "agtask/database-proof",
@@ -658,11 +658,11 @@ class CliIntegrationTest(unittest.TestCase):
                         "title": "agtask/database-proof",
                     },
                     "bootstrap_trailer": BOOTSTRAP_SECTION_TRAILER,
-                    "include_model": False,
+                    "include_model": True,
                     "hook_prompts": [],
                     "kind": "child",
                     "mode": "fork",
-                    "model": "inherit",
+                    "model": "gpt-6-astra",
                     "pin": True,
                     "project": "agtask",
                     "title": "agtask/database-proof",
@@ -725,11 +725,11 @@ class CliIntegrationTest(unittest.TestCase):
                         "title": "agtask/database-proof",
                     },
                     "bootstrap_trailer": BOOTSTRAP_FALSE_TRAILER,
-                    "include_model": False,
+                    "include_model": True,
                     "hook_prompts": [],
                     "kind": "child",
                     "mode": "clean",
-                    "model": "inherit",
+                    "model": "gpt-6-astra",
                     "pin": False,
                     "project": "agtask",
                     "title": "agtask/database-proof",
@@ -827,13 +827,36 @@ class CliIntegrationTest(unittest.TestCase):
         creation_id = result["id"]
         trailer = BOOTSTRAP_SECTION_TRAILER.replace(CREATION_ID, creation_id)
         prompt = "Task:\n  Write a compact database proof.\n\n\n" + trailer
-        self.assertEqual(result["thinking"], "inherit")
-        self.assertFalse(result["include_thinking"])
+        self.assertEqual(result["thinking"], "high")
+        self.assertTrue(result["include_thinking"])
+        arguments = result["creation_plan"]["next_tool"]["arguments"]
+        self.assertEqual(arguments["model"], "gpt-6-astra")
+        self.assertEqual(arguments["thinking"], "high")
         self.assertEqual(
             result["creation_plan"]["next_tool"]["arguments"]["prompt"],
             prompt,
         )
         self.assertFalse(self.db_path.exists())
+
+    def test_resolve_create_execution_overrides_are_independent(self) -> None:
+        cases = [
+            (("--model", "gpt-6-sol"), "gpt-6-sol", "high"),
+            (("--thinking", "xhigh"), "gpt-6-astra", "xhigh"),
+            (("--model", "inherit", "--thinking", "inherit"), None, None),
+        ]
+        for overrides, model, thinking in cases:
+            with self.subTest(overrides=overrides):
+                result = json.loads(self.run_cli(
+                    "resolve-create", "--title", "agtask/override-proof",
+                    "--parent-session-id", "parent-thread", "--task", "Check overrides.",
+                    "--project-id", "saved-project-id", *overrides, "--json",
+                ).stdout)
+                arguments = result["creation_plan"]["next_tool"]["arguments"]
+                self.assertEqual(arguments.get("model"), model)
+                self.assertEqual(arguments.get("thinking"), thinking)
+                self.assertEqual(result["include_model"], model is not None)
+                self.assertEqual(result["include_thinking"], thinking is not None)
+                self.assertFalse(self.db_path.exists())
 
     def test_resolve_create_plan_appends_configured_oncreate_prompt(self) -> None:
         config = self.write_config(

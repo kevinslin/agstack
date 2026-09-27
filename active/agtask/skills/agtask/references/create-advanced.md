@@ -25,10 +25,9 @@ Main kind designates the invoking task itself and never creates another task.
 
 1. Resolve the invoking Codex session ID. Use the authoritative current app
    context; use `$dev.llm-session` when the ID is not already available.
-   For child creation, also resolve the parent's effective model and reasoning
-   level from authoritative current-session metadata. Preserve those exact
-   values unless the user explicitly overrides them; destination defaults and
-   the resolver's `inherit` sentinel do not inherit parent settings.
+   For child creation, use `gpt-6-astra` and `high` reasoning unless explicitly
+   overridden. Parent execution metadata is needed only when the user asks to
+   copy parent settings or a named profile.
 2. Resolve the task text, title, normalized initial-prompt description, topic,
    active CWD, creation mode, kind, and project. For a pin-enabled request,
    resolve the invoking task's existing custom sidebar section or the default
@@ -56,13 +55,11 @@ Main kind designates the invoking task itself and never creates another task.
 - Preserve the supplied task's meaning and separate explicit creation
   directives such as mode, worktree, model, reasoning, pin, kind, project, and
   title as execution settings.
-- Default an unspecified child model and reasoning level to the invoking
-  session's actual effective values, not its global configuration or saved
-  project's defaults. User-specified overrides win independently. A named
-  profile cannot be passed when the thread tool does not support `profile`;
-  copy its supported effective model/reasoning settings and explicitly report
-  any profile-only behavior that cannot be preserved. Ask before creating if
-  a required effective parent setting is unavailable.
+- Default an unspecified child model to `gpt-6-astra` and reasoning to `high`.
+  User overrides win independently. Do not ask for parent settings during
+  ordinary creation. If explicitly asked to copy parent settings or a named
+  profile, resolve supported model/reasoning values from authoritative metadata
+  and ask if unavailable. Do not invent unsupported profile arguments.
 - Treat the user's direct ask as the task's scope. Aspirational or background
   language such as "we want to implement" does not authorize implementation
   when the operative ask is to evaluate, explain, compare, recommend, or answer
@@ -151,15 +148,15 @@ python3 ./scripts/agtask resolve-create \
   [--project <project>] \
   [--parent-session-id <invoking-session-id>] \
   [--worktree <true|false>] \
-  [--model <effective-parent-model-or-explicit-user-override>] \
+  [--model <gpt-6-astra-or-explicit-override>] \
   [--pin <true|false> | --nopin] \
   [--section-id <resolved-section-id>] \
   --json
 ```
 
 - Translate explicit user settings into the matching resolver arguments. For
-  child creation, always pass the effective parent model unless the user
-  overrides it. Pass the effective parent reasoning level through `--thinking`
+  child creation, pass `gpt-6-astra` unless the user overrides it. Pass `high`
+  reasoning or the explicit override through `--thinking`
   when the resolver invocation includes `--task`; for fork or other supported
   flows without `--task`, pass that reasoning value directly to the operation
   that receives the child prompt. Never pass an unsupported resolver argument.
@@ -549,10 +546,9 @@ Return:
 - `Mode: current` for main kind, otherwise `Mode: fork` or `Mode: clean`;
 - `Worktree: not applicable` for main kind, otherwise `Worktree: true` or
   `Worktree: false`;
-- `Model: current (unchanged)` for main kind, otherwise the exact effective
-  parent model or explicit user override;
-- for child kind, the exact effective parent reasoning level or explicit user
-  override, and any unsupported profile-only setting that could not be copied;
+- `Model: current (unchanged)` for main kind, otherwise `gpt-6-astra` or the explicit
+  user override;
+- for child kind, `high` reasoning or the explicit user override;
 - `Kind: child` or `Kind: main`;
 - `Project: <project>`;
 - `Task: [title](codex://threads/<session-id>)`;

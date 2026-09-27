@@ -5217,13 +5217,15 @@ def command_resolve_create(args: argparse.Namespace) -> None:
         default="true" if defaults.get("worktree", False) else "false",
     )
     model = resolve_repeated_input(
-        args.model, label="model", default=defaults.get("model", "inherit")
+        args.model, label="model", default=defaults.get("model", "gpt-6-astra")
     )
     require_nonempty(model, "model")
     if model != model.strip():
         raise TaskError("model must not contain surrounding whitespace")
     thinking = resolve_repeated_input(
-        args.thinking, label="thinking", default="inherit"
+        args.thinking,
+        label="thinking",
+        default="high" if args.task is not None else "inherit",
     )
 
     pin_values = list(args.pin or [])

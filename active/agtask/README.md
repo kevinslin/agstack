@@ -136,7 +136,7 @@ Supported defaults and values are:
 | `kind` | `"main"` or `"child"` | `"child"` |
 | `project` | A non-empty string without surrounding whitespace | Current directory name |
 | `worktree` | `true` or `false` | `false` |
-| `model` | A non-empty model name without surrounding whitespace, or `"inherit"` to omit an explicit model | `"inherit"` |
+| `model` | A non-empty model name without surrounding whitespace, or `"inherit"` to omit an explicit model | `"gpt-6-astra"` |
 | `pin` | `true` or `false` | `true` |
 
 On first initialization, `init` creates this global file at
@@ -277,9 +277,12 @@ children also carry an optional strictly validated `section_id`:
 For clean child creation, pass the resolved task with `--task` and the saved
 Codex project ID with `--project-id`. The resolver then returns
 a versioned `creation_plan` containing the byte-exact initial prompt and the
-next Codex app tool call. Optional `--thinking` and the existing `--model`
-override are included directly in that tool payload. Calls that omit `--task`
-retain the legacy result shape.
+next Codex app tool call. New tasks default to `gpt-6-astra` with `high`
+reasoning; `--model` and `--thinking` override these independently and are
+included directly in the tool payload. Ordinary creation does not require
+parent model or reasoning discovery. Explicit `inherit` omits the corresponding
+field and selects destination defaults; it does not copy parent settings. Calls
+that omit `--task` retain the legacy result shape.
 
 Codex `SessionStart` runs before prompt submission but does not contain the
 prompt. The agtask hook therefore validates the envelope on the first
