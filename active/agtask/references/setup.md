@@ -29,10 +29,19 @@ setup with the same configuration makes no write. Invalid JSON, invalid hook
 structure, duplicate JSON keys, or a symlink at the hooks or backup path causes
 an error without replacing the configuration. Review the error before retrying.
 
-If Codex asks to trust the new handler, approve it in the app's hooks interface.
-Reload hooks or restart the session if the host requires it. This skill does not
-claim hot reload. Read back the saved configuration and report changed or no-op.
-Do not create a test chat unless the user explicitly requests it.
+Installation is not activation. New or changed non-managed hooks are skipped
+until their exact definition is trusted. In the app, open Settings → Hooks →
+User config and inspect the `UserPromptSubmit` command above. If it needs review,
+request action-time approval to trust only that handler. Never use Trust all,
+write trust records directly, or bypass hook trust. Reload hooks, then confirm
+that this handler is trusted and enabled. Restart the session only if required.
+
+Read back the saved configuration and report changed or no-op separately from
+activation. Do not report the hook as working until a live prompt receives its
+injected developer context; the visible metadata marker and successful parent
+pinning are not hook proof. Create a test chat only with explicit user permission,
+then archive it after verification. If trust approval or live proof is missing,
+report that exact incomplete step.
 
 ## Scope and limits
 

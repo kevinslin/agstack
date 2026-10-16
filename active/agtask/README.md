@@ -4,6 +4,7 @@
 
 Create one fresh, pinned Codex chat in the current project and checkout. Install
 one small prompt hook with `agtask setup`; app tools own all chat state.
+Setup must verify trust and activation separately from saving the hook file.
 
 - [Skill router](./SKILL.md)
 - [Create a task](./references/create.md)
