@@ -82,7 +82,7 @@ def hook():
         session, prompt = payload.get('session_id'), payload.get('prompt')
         if not canonical_uuid(session) or not isinstance(prompt, str):
             return
-        match = MARKER.search(prompt)
+        match = MARKER.search(prompt.rstrip())
         if not match or prompt.count('<agtask-start') != 1:
             return
         metadata = validate_metadata(json.loads(match[1], object_pairs_hook=unique_object))

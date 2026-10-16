@@ -11,7 +11,9 @@ Setup must verify trust and activation separately from saving the hook file.
 - [Set up the hook](./references/setup.md)
 
 The current app flow creates a setup-only chat, assigns its title and pinned
-section, then sends actual work to that same chat. It keeps native model defaults
+section, then submits actual work through that chat's normal composer so the
+prompt hook runs. Tool-origin messages did not trigger that hook in live tests.
+It keeps native model defaults
 and creates no ledger, cache, lifecycle records, or worktrees. Hook output asks
 the model to apply app actions; it does not apply them itself.
 

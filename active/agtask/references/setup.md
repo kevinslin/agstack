@@ -47,7 +47,8 @@ report that exact incomplete step.
 
 The hook accepts only a final `<agtask-start version="1">` JSON marker with
 exactly `title` and `section_id`. The title must follow the naming rule; a section
-is `pinned` or a canonical UUID. It takes `session_id` from the actual
+is `pinned` or a canonical UUID. Trailing whitespace after the marker is allowed;
+trailing text and duplicate markers are rejected. It takes `session_id` from the actual
 `UserPromptSubmit` input. It ignores other events and malformed input with exit
 code zero. It treats metadata as data and emits title and pin instructions for
 the model. It does not execute app actions or create a task.
