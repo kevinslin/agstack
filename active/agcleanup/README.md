@@ -8,8 +8,6 @@ defines eligibility, supported mutations, verification, and reporting.
 - Archive cleanup resolves the actual task host, explicitly removes verified
   archived tasks from their custom sidebar section, and checks fresh membership.
   An API acknowledgement alone is not a successful cleanup.
-- Task-ledger audits distinguish archived, readable non-archived, missing,
-  and failed lookups. Missing records never prove completion.
 - Branch cleanup protects primary checkouts. An absent local branch with no
   registered linked worktree is a stale-metadata no-op; an existing branch
   without a matching linked worktree remains a review candidate.

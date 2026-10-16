@@ -1,8 +1,7 @@
 ---
 name: agcleanup
 description: Keep Codex lean and responsive by cleaning up stale application state. Use when directly invoked for a supported cleanup subcommand.
-dependencies:
-- agtask
+dependencies: []
 ---
 
 # agcleanup
@@ -17,7 +16,6 @@ Treat the first positional word after `agcleanup` as the subcommand. Read the ma
 
 - `clean_thread`: Archive local and connected-devbox Codex tasks whose latest update is at least seven days old. See `./references/clean_thread.md`.
 - `clean_archive`: Archive every Codex task in the Archive sidebar section, regardless of age. See `./references/clean_archive.md`.
-- `clean_agtask`: Audit tracked tasks and automatically mark verified archived Codex tasks done in the ledger. See `./references/clean_agtask.md`.
 - `clean_branches`: Remove clean, proven-merged local worktrees and branches associated with today's archived or verified-completed Codex tasks. See `./references/clean_branches.md`.
 - `clean_mcps`: Reap orphaned computer-history MCP helpers without interrupting active tasks. See `./references/clean_mcps.md`.
 - `clean_devbox_connections`: Reap orphaned current-user DevBox websocket proxy and tunnel pairs without disrupting active connections. See `./references/clean_devbox_connections.md`.

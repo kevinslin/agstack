@@ -39,7 +39,8 @@ a top-level task.
 
 Treat the current task as a subtask when any available context identifies it as
 a subagent or delegated worker, its creation prompt contains an
-`<agtask-bootstrap version="2">` envelope, or verified agtask ledger metadata
+`<agtask-start version="1">` marker or a legacy
+`<agtask-bootstrap version="2">` envelope, or verified legacy agtask ledger metadata
 records `kind: child` or a non-null `parent_session_id`.
 
 This suppression overrides the default, background-task, and long-running-task

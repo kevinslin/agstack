@@ -3,7 +3,6 @@ name: dev.shortcuts
 description: Route any request containing literal `trigger:` before ordinary skill
   dispatch. Read at thread start and whenever `trigger` appears.
 dependencies:
-- agtask
 - babysit-pr
 - branch
 - dev.review
@@ -48,7 +47,7 @@ The file under `./references/shortcuts/[shortcut].md` remains the executable sou
 | `auto-merge` | Run `push-pr`, then `merge-pr-basic`. |
 | `check-ci` | Watch PR checks and classify Buildkite failures before reporting status. |
 | `checkout-worktree` | Use `arbor checkout` from the main checkout with an explicit worktree path, then verify cleanup. |
-| `close` | Close the tracked task, then archive its Codex thread. |
+| `close` | Archive the exact Codex chat without task bookkeeping or Git cleanup. |
 | `commit-code` | Run the canonical precommit flow, commit cleanly, and update the PR if one exists. |
 | `create-spec` | Create a spec with `specy`, then run looped `dev.review` and `spec-simulate` passes on it. |
 | `doit` | Implement the requested change, verify it, commit scoped changes, and push the current branch. |

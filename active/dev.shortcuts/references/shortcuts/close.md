@@ -1,25 +1,16 @@
 ---
 name: close
-description: Close the tracked task, then archive its Codex thread.
+description: Archive the exact Codex chat without task bookkeeping or Git cleanup.
 ---
 
 # Close
 
 Use for `trigger:close` or `trigger:close <thread-id>`.
 
-1. Resolve the target to the explicit thread ID when provided; otherwise use
-   the authoritative current Codex thread ID.
-2. Invoke `$agtask close <thread-id>` and follow its complete close workflow,
-   including any `OnPreClose` and `OnPostClose` instructions.
-3. Continue only when the tracked-task close succeeds or reports the target as
-   untracked, which is a successful no-op. If preparation, `OnPreClose`, or the
-   committing close fails or blocks, do not archive the thread.
-4. Call the Codex app `set_thread_archived` action with the exact target thread
-   ID and `archived: true`.
-5. Report:
-   - whether the tracked task was closed, already done, or untracked;
-   - whether the Codex thread was archived;
-   - any partial failure exactly.
+1. Resolve the explicit real thread ID, or the authoritative current chat ID.
+   Resolve its actual host. Do not select a chat from recency or title alone.
+2. Discover the native `set_thread_archived` schema and archive that exact chat.
+3. Report verified archive state or the exact error. Already archived is a no-op.
 
-Closing and archiving are idempotent. Never reopen, unarchive, delete, or unpin
-the target as part of this shortcut.
+This shortcut does not update a ledger or Sites, run lifecycle hooks, finalize
+Git work, delete worktrees, or remove pins. Never reopen or unarchive the target.
