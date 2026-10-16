@@ -2,30 +2,22 @@
 
 ## Overview
 
-Create one fresh, pinned Codex chat in the current project and checkout. Install
-one small prompt hook with `agtask setup`; app tools own all chat state.
-Setup must verify trust and activation separately from saving the hook file.
+Create one fresh, pinned Codex chat in the current project and checkout. Native
+app tools create a setup-only chat, assign and verify its title and placement,
+then send actual work to that same chat.
 
 - [Skill router](./SKILL.md)
 - [Create a task](./references/create.md)
-- [Set up the hook](./references/setup.md)
 
-The current app flow creates a setup-only chat, assigns its title and pinned
-section, then submits actual work through that chat's normal composer so the
-prompt hook runs. Tool-origin messages did not trigger that hook in live tests.
-It keeps native model defaults
-and creates no ledger, cache, lifecycle records, or worktrees. Hook output asks
-the model to apply app actions; it does not apply them itself.
+The skill keeps native model defaults and creates no ledger, Sites record,
+cache, lifecycle record, branch, or worktree. No script, hook, computer use, or
+settings change is required. `agtask setup` is retired.
 
-## Local checks
+The parent owns naming, pinning, the user report, and desktop notifications.
+The flow does not guarantee arbitrary `UserPromptSubmit` hook execution.
 
-Python 3 and its standard library are sufficient:
+## Verification
 
-```sh
-python3 -m unittest discover -s ./tests -v
-python3 -c 'import ast, pathlib; ast.parse(pathlib.Path("./scripts/hooks.py").read_text())'
-```
-
-Tests use temporary `CODEX_HOME` directories and subprocesses. They do not create
-app chats or call a network or database. These checks do not prove native app
-creation, hook reload, pinning order, or remote-host behavior.
+For documentation changes, check skill structure, relative links, and whitespace.
+Do not add or run unit tests. Native creation, placement, work dispatch, and
+remote-host behavior require a separately authorized live task check.

@@ -1,6 +1,6 @@
 ---
 name: agtask
-description: "Create one fresh, pinned Codex task from a task description, or install the minimal prompt-submit hook with agtask setup."
+description: "Create one fresh, pinned Codex task from a task description through a setup-only turn and a native work message. No hooks or scripts are required."
 dependencies: []
 ---
 
@@ -13,6 +13,6 @@ Create one new task in the current project and checkout. The app owns task state
 ## Commands
 
 - `agtask {task description}`: Create one fresh task. Read [create](./references/create.md).
-- `agtask setup`: Replace legacy bookkeeping hooks with one small hook. Read [setup](./references/setup.md).
 
-Other commands are not supported. Do not use the archived ledger or lifecycle tools.
+No setup is required. `agtask setup` is retired; do not create a task for it.
+Other commands are not supported. Do not use archived ledger or lifecycle tools.

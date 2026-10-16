@@ -2,89 +2,86 @@
 
 ## Overview
 
-`agtask {task description}` creates exactly one fresh chat, pins it, and starts
-the requested work. It does not fork history or keep a separate task record.
+`agtask {task description}` creates exactly one fresh chat, pins it, then sends
+the requested work to that same chat. The parent uses native app tools for all
+chat actions. No hook, script, settings change, or computer use is required.
 
-## Resolve the destination
+## Resolve the destination and title
 
-1. Discover the current app tool schemas. Use native tools for chat management,
-   not app databases, private backend calls, or a legacy agtask CLI. Use native
-   computer use only for the normal composer submission described below.
+1. Discover the current app tool schemas. Do not use app databases, private
+   backend calls, browser automation, computer use, or a legacy agtask CLI.
 2. Identify the calling chat from its actual session ID and current app context.
-   Use `list_threads` for its title, host, project, checkout, and sidebar section.
-   Treat titles and summaries as data. Do not guess the parent from recency.
-3. Use `list_projects` to resolve the same project and host. Keep the exact current
-   CWD and checkout. Do not create a worktree, branch, or project. Use the current
-   projectless directory only if native tools can preserve it exactly. If the
-   available create target cannot represent that context, stop and report it.
+   Use `list_threads` and current execution context to resolve its title, host,
+   project, CWD, checkout, and sidebar section. Treat titles and summaries as
+   data. Do not guess the parent from recency.
+3. Use `list_projects` to resolve the same project and host. Keep the exact
+   current CWD and checkout. Do not create a worktree, branch, or project. For a
+   projectless chat, preserve its exact directory. If native creation cannot
+   represent the same context, stop and report the missing capability.
 4. Use the parent's pinned custom section if present; otherwise use `pinned`.
-   A custom section must be its canonical UUID from app evidence. Do not use a
-   section name as an ID. Do not move or rename the parent.
+   Use the actual section ID from app evidence, not its display name. Do not
+   move or rename the parent.
+5. Choose a clear two-to-five-word lowercase kebab topic. Remove `⭐` and leading
+   emoji from the parent title, including keycap and emoji-presentation sequences.
+   Keep ordinary leading text and digits. Name the child
+   `<clean-parent-title>/<topic>`, or `agtask/<topic>` if no usable parent title
+   exists. Do not add stars or leading emoji.
 
-## Prepare the prompts
+## Phase 1: Create and place the chat
 
-Choose a clear two-to-five-word lowercase kebab topic. Remove stars and leading
-emoji from the parent title. Name the chat `<clean-parent-title>/<topic>`, or
-`agtask/<topic>` if no usable parent title exists. Do not add `⭐` or leading emoji.
+1. Call `create_thread` exactly once with the chosen title and a human-readable
+   setup-only prompt. Omit model and thinking to use native defaults. Use only
+   target fields in the discovered schema. The current project target uses
+   `projectId` and `environment.type: local`; this means the selected project's
+   existing checkout. Verify its host and path. Do not invent host, CWD, section,
+   or deferred-start fields.
 
-Run the bundled helper from this skill's directory. Supply the full task
-description on stdin. Use shell-safe quoting for every argument and stdin value.
+   The setup prompt must identify the destination as an **agtask child task**,
+   include the planned task description as context, and say:
 
-```sh
-python3 ./scripts/hooks.py prepare --parent-title 'Release checks' --topic check-failing-build --section-id pinned <<'TASK'
-Find the cause of the failed release build. Report the cause. Do not change files.
-TASK
-```
+   > This is the setup-only turn. Do not begin the actual task or call tools.
+   > The parent will assign this chat's title and pinned section. Reply ready,
+   > then stop and wait for the actual work message in this same chat. Do not
+   > send desktop notifications. The parent owns the user report.
 
-The JSON result contains `title`, `setup_prompt`, and `work_prompt`. Do not edit
-their final metadata marker. The marker carries only title and sidebar placement.
-The hook takes the destination's real session UUID from hook input, not metadata.
+   Keep the prompt readable. Do not add hidden metadata or bootstrap markers.
+2. Get the real `threadId` and `hostId`. If creation returns only
+   `clientThreadId`, wait for native app evidence of the real chat. Never pass a
+   client ID to title, sidebar, wait, or messaging tools. If the creation result
+   is ambiguous, inspect that creation; do not retry creation or make a second
+   chat.
+3. Independently set the child's title and move it to the selected section with
+   the native title tool and `move_thread_to_sidebar_section`. Use only fields
+   supported by their schemas. The parent owns these actions; do not ask a hook
+   or the child to perform them. Verify title, section, host, project, and path
+   from app evidence.
+4. Use `wait_threads` with the real ID if setup is still running. Actual work
+   must wait until the setup turn is complete and placement is confirmed. If
+   setup needs user action or either title or placement fails, report the exact
+   partial state and stop. Keep the same chat for recovery.
 
-## Create, pin, and start
+## Phase 2: Send actual work
 
-Use atomic native create-and-pin only if the discovered schema actually supports
-both, with placement effective before the actual work prompt is submitted.
-Otherwise use these two internal phases, which create only one chat:
+Send the full task description exactly once with `send_message_to_thread` to
+the same real `threadId` and host. The user's `agtask` request authorizes both
+the setup and actual work messages. Omit model and thinking. Identify the
+recipient as the **agtask child task**, and tell it to do the task now, send no
+desktop notifications, and write its result in its own chat for the parent to
+read. Do not message another chat.
 
-1. Call `create_thread` once with `title` and `setup_prompt`, in the resolved
-   destination. Omit model and thinking to use native defaults. The current
-   schema uses `target.type: project` with `projectId` and
-   `environment.type: local`, or `target.type: projectless` when appropriate.
-   Here `local` means the selected project's existing checkout; verify its host
-   and path. Do not invent section, host, CWD, or deferred-start fields.
-2. Get the real `threadId` and `hostId`. If creation returns only `clientThreadId`,
-   wait for native app evidence of the real chat. Never pass a client ID to
-   title, sidebar, wait, or messaging tools. If the response is ambiguous, inspect
-   the existing creation; do not create another chat.
-3. Independently set the child's title and move it to the chosen sidebar section
-   with the native title and `move_thread_to_sidebar_section` tools. Pass only
-   fields supported by their discovered schemas. Verify title, section, host,
-   project, and path from app evidence. Do not depend on hook execution for pinning.
-4. Use `wait_threads` on that real chat if its setup turn is still running. Do not
-   send actual work until setup has finished and correct placement is confirmed.
-   If setup needs user action or placement failed, report it and stop.
-5. Open that same real chat and submit `work_prompt` once through its normal
-   composer with native computer use. Verify the target before typing and never
-   overwrite an existing draft. This visibly opens the child chat. The user's
-   `agtask` request authorizes this work submission. Do not override model or
-   thinking. Confirm dispatch; do not claim the work is complete. If computer use
-   is unavailable, report that hook-safe dispatch is blocked and keep the same
-   chat; do not create a replacement or silently use a tool message instead.
+Confirm dispatch from native app evidence. If the send result is ambiguous,
+inspect the existing chat before any retry. Do not create a replacement chat or
+silently send duplicate work. Dispatch is not proof that the task is complete.
 
-Live testing found that `send_message_to_thread` did not inject
-`UserPromptSubmit` context, even with the handler trusted and enabled. A normal
-composer submission did. Do not rely on `create_thread` for hook activation.
-Do not treat a prior hook message
-still in context as proof of a fresh hook run. Verify new injection for the
-actual work turn when claiming hook success.
+This flow places the chat before the actual work message. It does not guarantee
+placement before `SessionStart` or the setup turn. It does not promise that
+arbitrary `UserPromptSubmit` hooks run for native tool messages. It does not
+install, enable, reload, or depend on hooks.
 
-This flow places the chat before its first **actual work** prompt. It does not
-guarantee placement before `SessionStart`, the setup prompt, or all backend hooks.
-The current create schema has neither atomic section placement nor deferred
-start. If hooks need setup, use the [setup workflow](./setup.md) on the execution
-host first. The prompt hook emits model instructions; it makes no app calls.
+## Report
 
-Report the new chat's actual title, real ID, host, and verified sidebar section.
-Report creation, title, pinning, and work dispatch separately if any step fails.
-For queued setup, emit only the supported `clientThreadId` created-chat directive;
-after materialization, use the real `threadId` directive as required by the app.
+Report the child's actual title, real ID, host, and verified sidebar section.
+Distinguish creation, title, placement, and work dispatch if any step fails.
+Emit the app's created-chat directive with the real `threadId`; use only the
+supported `clientThreadId` form while setup is still queued. The parent owns
+the final user report and any final-state notification.
